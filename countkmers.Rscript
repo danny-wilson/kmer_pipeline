@@ -1,0 +1,255 @@
+#!/apps/well/R/3.4.3/bin/Rscript
+#$ -cwd -V
+#$ -P bag.prjc -q short.qc
+#$ -N countkmers -j y
+#$ -pe shmem 1
+
+
+help = c("countkmers.Rscript count nucleotide or protein kmers",
+			"Usage: qsub -t 1:n -tc p countkmers.Rscript id_file analysis_dir output_prefix software_file [analyses_list]")
+
+# Get task number - architecture specific
+process = as.integer(Sys.getenv("SGE_TASK_ID"))
+
+## Read the command line arguments
+args = commandArgs(trailingOnly = TRUE)
+if(length(args!=0)){
+	if(args[1]=="-help" | args[1]=="-h"){
+		cat(help,sep="\n")
+		q("no")
+	}
+}
+
+if(length(args)!=4 & length(args)!=5){
+	cat(help,sep="\n")
+	cat("Received arguments: ", args, "\n")
+	stop("\nIncorrect usage\n")
+}
+
+
+###################################################################################################
+## Functions and software paths
+###################################################################################################
+
+proteinKmerCount = function(protein = NULL, kmerLen = NULL){
+	if(nchar(protein)>=kmerLen){
+		s = c(1:(nchar(protein)-(kmerLen-1)))
+		kmers = substring(protein, s, (s+kmerLen-1))
+		return(kmers)
+	}
+}
+
+
+count_protein_kmers = function(fastaFile = NULL, writeToFile = FALSE, kmerLen = 31, kmerDir = NULL, id = NULL, oneLetterCodes = NULL){
+	# Read in contigs
+	proteins = scan(gzfile(fastaFile), what = character(0), sep = "\n", quiet = TRUE)
+	# Only keep the rows with the translated contigs in, not the fasta header rows
+	which_contigs = sapply(proteins, function(x) any(unlist(gregexpr(">", x))==-1), USE.NAMES = F)
+	proteins = proteins[which_contigs]
+	if(any(is.na(match(unlist(strsplit(proteins,"")), oneLetterCodes)))) stop("Error: unexpected characters in proteins","\n")
+	# Count kmers for all contigs
+	kmers = unlist(sapply(proteins, function(x) proteinKmerCount(x, kmerLen), USE.NAMES = F))
+	# Write kmers to file
+	if(writeToFile){
+		if(!file.exists(kmerDir)){
+			stop("Error: kmer file directory doesn't exist","\n")
+		}
+		kmers = table(kmers)
+		out = cbind(names(kmers), as.vector(kmers))
+		final_kmer_file = paste0(kmerDir, id, ".kmer", kmerLen, ".unsorted.txt")
+		write.table(out, file = final_kmer_file, row = F, col = F, sep = "\t", quote = F)
+		system(paste0("gzip ", final_kmer_file))
+		return(paste0(final_kmer_file, ".gz"))
+	# Or return counted kmer sequences
+	} else {
+		return(kmers)
+	}
+}
+
+create_kmercount_dir = function(dir = NULL, kmertype = NULL, kmerlength = NULL){
+	kmer_dir = file.path(dir,paste0(kmertype,"kmer", kmerlength,"/"))
+	if(!dir.exists(kmer_dir)) dir.create(kmer_dir)
+	cat(paste0("Counting ", kmertype, " kmers of length ", kmerlength), "\n")
+	return(kmer_dir)
+}
+
+nucleotide_kmer_counting = function(output_dir = NULL, kmerlength = NULL, dsk_path = NULL, dsk2ascii_path = NULL, contig_path = NULL, sample_id = NULL){
+	
+		# If it doesn't exist, create a directory to contain kmers for this kmer length
+		kmer_dir = create_kmercount_dir(dir = output_dir, kmertype = "nucleotide", kmerlength = kmerlength)
+		setwd(kmer_dir)
+		# Run DSK
+		system(paste0(dsk_path, " -file ", contig_path," -kmer-size ", kmerlength," -max-disk 0 -abundance-min 1 -out ", sample_id))
+		# Convert DSK format into text file
+		system(paste0(dsk2ascii_path, " -file ", sample_id,".h5 -out ", sample_id,".kmer31_unsorted.txt"))
+		# Sort the kmers
+		system.time((system(paste0("sort -k 1 ", sample_id, ".kmer31_unsorted.txt > ", sample_id,".kmer31.txt"))))
+		# Write the number of kmers to file
+		nKmers = as.numeric(unlist(strsplit(system(paste0("wc -l ", sample_id, ".kmer31.txt"), intern = T)," "))[1])
+		cat(paste(c("Total", nKmers), collapse = "\t"), file = paste0(sample_id, ".kmer31.total.txt"), sep = "\n")
+		# Gzip the sorted kmer file
+		system(paste0("gzip ", sample_id,".kmer31.txt"))
+		# Remove intermediate files
+		system(paste0("rm ", sample_id, ".h5"))
+		system(paste0("rm ", sample_id, ".kmer31_unsorted.txt"))
+		kmerfile = paste0(kmer_dir, sample_id, ".kmer31")
+		cat(paste0("Counted nucleotide kmers length ", kmerlength, " for sample ID ", sample_id, ". Output files: ", kmerfile, ".txt.gz ", kmerfile, ".total.txt"), "\n")
+		return(kmer_dir)
+	
+}
+
+protein_kmer_counting = function(output_dir = NULL, kmerlength = NULL, translated_contigs_path = NULL, sample_id = NULL, oneLetterCodes = NULL, sort_strings = NULL){
+	
+		# If it doesn't exist, create a directory to contain kmers for this kmer length
+		kmer_dir = create_kmercount_dir(dir = output_dir, kmertype = "protein", kmerlength = kmerlength)
+		# Count protein kmers - unsorted
+		kmerfile_unsorted = count_protein_kmers(fastaFile = translated_contigs_path, writeToFile = TRUE, kmerLen = kmerlength, kmerDir = kmer_dir, id = sample_id, oneLetterCodes = oneLetterCodes)
+		# Sort the kmer file
+		sorted_kmerfile = paste0(kmer_dir, sample_id, ".kmer", kmerlength, ".txt.gz")
+		sortCommand = paste(c(sort_strings, kmerfile_unsorted, "| gzip -c >", sorted_kmerfile), collapse=" ")
+		system(sortCommand, intern = T)
+		system(paste0("rm ", kmerfile_unsorted))
+		# Write the number of kmers to file
+		nKmers = as.numeric(unlist(strsplit(system(paste0("zcat ", sorted_kmerfile, " | wc -l"), intern = T)," "))[1])
+		cat(paste(c("Total", nKmers), collapse = "\t"), file = paste0(kmer_dir, sample_id, ".kmer", kmerlength, ".total.txt"), sep = "\n")
+		cat(paste0("Counted protein kmers length ", kmerlength, " for sample ID ", sample_id, ". Output file: ", sorted_kmerfile), "\n")
+	
+		return(kmer_dir)
+		
+}
+
+write_kmer_filepaths_to_file = function(process = NULL, id_file = NULL, kmertype = NULL, kmerlength = NULL, output_dir = NULL, output_prefix = NULL, kmer_dir = NULL){
+	
+	# For the last file count, create file containing paths to all output files
+	# Won't check if they are all created - flag warning
+	if(process==nrow(id_file)){
+		all_outfiles = paste0(kmer_dir, as.character(id_file$id), ".kmer", kmerlength, ".txt.gz")
+		all_outfiles_path = paste0(output_dir, "/", output_prefix, "_", kmertype, kmerlength, "_kmers_filepaths.txt")
+		cat(paste0("Writing file paths to all kmer counts for ", kmertype, " kmer length ", kmerlength), "to file (Warning: have not checked that all kmer counting is completed and all files exist):", all_outfiles_path, "\n")
+		cat(all_outfiles, file = all_outfiles_path, sep = "\n")
+	}
+	
+}
+
+
+###################################################################################################
+
+start.time = proc.time()[3]
+
+id_file = as.character(args[1])
+output_dir = as.character(args[2])
+output_prefix = as.character(args[3])
+software_file = as.character(args[4])
+if(length(args)>4) analyses_list = as.character(args[5]) else analyses_list = NULL
+
+
+# Check input arguments
+if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n")
+if(unlist(strsplit(output_dir,""))[length(unlist(strsplit(output_dir,"")))]=="/") output_dir = substr(output_dir,1,(nchar(output_dir)-1))
+if(!file.exists(id_file)) stop("Error: sample ID file doesn't exist","\n")
+if(!file.exists(software_file)) stop("Error: software file doesn't exist","\n")
+if(!is.null(analyses_list)){
+	if(!file.exists(analyses_list)) stop("Error: analyses list file doesn't exist","\n")	
+} else {
+	cat("No kmer type input so counting nucleotide kmers of length 31bp", "\n")
+}
+
+# Read in software file
+software_paths = read.table(software_file, h = T, sep = "\t", quote = "")
+# Required software and script paths
+# Begin with software
+required_software = c("scriptpath", "dsk","dsk2ascii")
+if(any(is.na(match(required_software, as.character(software_paths$name))))) stop(paste0("Error: missing required software path in the software file - requires ",paste(required_software, collapse = ", ")),"\n")
+dsk_path = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="dsk")]
+if(!file.exists(dsk_path)) stop("Error: dsk path doesn't exist","\n")
+dsk2ascii_path = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="dsk2ascii")]
+if(!file.exists(dsk2ascii_path)) stop("Error: dsk2ascii path doesn't exist","\n")
+# Get the script location and then create missing paths
+script_location = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="scriptpath")]
+if(!dir.exists(script_location)) stop("Error: script location directory specified in the software paths file doesn't exist","\n")
+sort_strings = file.path(script_location, "sort_strings")
+if(!file.exists(sort_strings)) stop("Error: sort_strings path doesn't exist - check pipeline script location in the software file","\n")
+sequence_functions_Rfile = file.path(script_location, "sequence_functions.R")
+if(!file.exists(sequence_functions_Rfile)) stop("Error: sequence_functions.R path doesn't exist - check pipeline script location in the software file","\n")
+source(sequence_functions_Rfile, chdir = TRUE)
+
+# Report variables
+cat("#############################################", "\n")
+cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
+cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
+cat("SGE task ID:",Sys.getenv("SGE_TASK_ID"),"\n")
+cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Command line arguments","\n")
+cat(args, "\n\n")
+cat("Parameters:","\n")
+cat("ID file path:", id_file,"\n")
+cat("Analysis directory:", output_dir,"\n")
+cat("Output prefix:", output_prefix,"\n")
+cat("Software file:", software_file, "\n")
+cat("Script location:", script_location, "\n")
+cat("dsk path:", dsk_path,"\n")
+cat("dsk2ascii path:", dsk2ascii_path,"\n")
+cat("Analyses list file path:", analyses_list,"\n")
+cat("Process:",process, "\n")
+cat("#############################################", "\n\n")
+
+
+# Read in ID file
+id_file = read.table(id_file, h = T, sep = "\t")
+# Just keep the sample ID of the current process
+sample_id = as.character(id_file$id)[process]
+contig_path = as.character(id_file$paths)[process]
+# Check that the contig file exists
+if(!file.exists(contig_path)) stop("Error: contig path",contig_path,"doesn't exist","\n")
+
+if(!dir.exists(paste0(output_dir, "/translated_contigs"))) dir.create(paste0(output_dir,"/translated_contigs"))
+
+# Read in analyses to run
+if(!is.null(analyses_list)){
+	kmertype = read.table(analyses_list, h = T, sep = "\t")
+	kmertype[,1] = tolower(kmertype[,1])
+	if(any(is.na(match(kmertype[,1],c("protein","nucleotide"))))) stop("Error: kmer type must be either 'nucleotide' or 'protein'","\n")
+	if(any(is.na(as.integer(kmertype[,2])))) stop("Error: kmer length must be an integer","\n")
+} else {
+	kmertype = cbind("kmertype" = c("nucleotide"), "kmerlength" = 31)
+}
+
+
+if(any(tolower(kmertype[,1])=="protein")){
+	
+	## For each assembly, translate all contigs into 6 reading frames
+	cat("Translating contigs for ID", sample_id, "\n")
+	# Translate contigs
+	translated_contigs_path = translate_6_frames(contig_path = contig_path, id = sample_id, outDir = paste0(output_dir, "/translated_contigs/"), oneLetterCodes = oneLetterCodes, revcompl = revcompl)
+	cat(paste0("Translated contigs for ID ", sample_id,". Output file: ", translated_contigs_path), "\n")
+	
+	# Protein kmer lengths to count
+	protein_kmer_lengths = as.numeric(kmertype[which(tolower(kmertype[,1])=="protein"),2])
+	
+	for(i in 1:length(protein_kmer_lengths)){
+		kmer_dir = protein_kmer_counting(output_dir = output_dir, kmerlength = protein_kmer_lengths[i], translated_contigs_path = translated_contigs_path, sample_id = sample_id, oneLetterCodes = oneLetterCodes, sort_strings = sort_strings)
+		write_kmer_filepaths_to_file(process = process, id_file = id_file, kmertype = "protein", kmerlength = protein_kmer_lengths[i], output_dir = output_dir, output_prefix = output_prefix, kmer_dir = kmer_dir)
+	}
+	cat("\n")
+	cat("#############################################", "\n\n")
+
+
+}
+
+if(any(tolower(kmertype[,1])=="nucleotide")){
+
+	nucleotide_kmer_lengths = as.numeric(kmertype[which(tolower(kmertype[,1])=="nucleotide"),2])
+	
+	for(i in 1:length(nucleotide_kmer_lengths)){
+		kmer_dir = nucleotide_kmer_counting(output_dir = output_dir, kmerlength = nucleotide_kmer_lengths[i], dsk_path = dsk_path, dsk2ascii_path = dsk2ascii_path, contig_path = contig_path, sample_id = sample_id)
+		write_kmer_filepaths_to_file(process = process, id_file = id_file, kmertype = "nucleotide", kmerlength = nucleotide_kmer_lengths[i], output_dir = output_dir, output_prefix = output_prefix, kmer_dir = kmer_dir)
+	}
+	
+	cat("#############################################", "\n\n")
+
+}
+
+cat("Completed in",(proc.time()[3]-start.time)/60,"minutes\n")
+
+
+

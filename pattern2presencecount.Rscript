@@ -1,0 +1,92 @@
+#!/apps/well/R/3.4.3/bin/Rscript
+#$ -cwd -V
+#$ -P bag.prjc -q short.qc
+#$ -N pattern2presencecount -j y
+#$ -pe shmem 2
+
+
+start.time = proc.time()[3]
+
+## *** WRITE HELP ***
+help = "XXX"
+
+## Read the command line arguments
+args = commandArgs(trailingOnly = TRUE)
+if(length(args!=0)){
+	if(args[1]=="-help" | args[1]=="-h"){
+		cat(help,sep="\n")
+		q("no")
+	}
+}
+
+
+###################################################################################################
+## Functions and software paths
+###################################################################################################
+
+get_pc = function(x, notNA){
+	return(sum(as.numeric(unlist(strsplit(x,"")))[notNA]))
+}
+
+###################################################################################################
+
+
+# # Initialize variables
+kmerfilePrefix = as.character(args[1])
+kmerKeySizeFile = paste0(kmerfilePrefix, ".patternmerge.patternKeySize.txt")
+kmerKey = paste0(kmerfilePrefix, ".patternmerge.patternKey.txt.gz")
+output_dir = as.character(args[2])
+id_file = as.character(args[3])
+if(length(args)>3) includeNA = as.logical(args[4]) else includeNA = TRUE
+
+if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n")
+if(unlist(strsplit(output_dir,""))[length(unlist(strsplit(output_dir,"")))]!="/") output_dir = paste0(output_dir, "/")
+if(!file.exists(kmerKeySizeFile)) stop("Error: kmer pattern key size file doesn't exist","\n")
+if(!file.exists(kmerKey)) stop("Error: kmer pattern file doesn't exist","\n")
+if(!file.exists(id_file)) stop("Error: sample id file does not exist","\n")
+if(is.na(includeNA)) stop("Error: include NAs must be a logical","\n")
+
+# Remove any directories in kmerfilePrefix
+kmerfilePrefix_noDir = unlist(strsplit(kmerfilePrefix,"/"))[length(unlist(strsplit(kmerfilePrefix,"/")))]
+
+# Read in ID file and phenotype
+id_file = read.table(id_file, h = T, sep = "\t")
+pheno = as.numeric(id_file$pheno)
+# Which genomes are not NA for this pheno
+# If includeNA is TRUE, set this to include all samples
+if(!includeNA & any(is.na(pheno))){
+	pheno_notNA = which(!is.na(pheno))
+	cat("Calculating presence counts for samples with non NA phenotypes:",paste0(length(which(!is.na(pheno))),"/",length(pheno)),"samples","\n")
+	} else {
+	pheno_notNA = 1:length(pheno)
+	cat("Calculating presence counts for all samples","\n")
+}
+
+# Read in total number of kmer patterns
+nPatterns = scan(kmerKeySizeFile, quiet = TRUE)
+cat("Number of patterns:",nPatterns,"\n")
+
+s = round(seq(from = 1, to = nPatterns, length.out = 21))
+
+# cat("Reading patterns in",(length(s)-1), "batches","\n")
+
+presencecount = c()
+for(i in 1:(length(s)-1)){
+	beg = s[i]
+	len = s[i+1]-s[i]
+	if(i!=(length(s)-1)){
+		pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), nlines = len, quiet = TRUE)
+	} else {
+		beg = s[i]
+		pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), quiet = TRUE)
+	}
+	presencecount = c(presencecount, sapply(pat.i, function(x, notNA) get_pc(x, notNA), notNA = pheno_notNA, USE.NAMES = F))
+}
+if(length(presencecount)!=nPatterns) stop("Error: length of presence count vector not equal to total number of patterns","\n")
+
+presencecountfile = paste0(output_dir, kmerfilePrefix_noDir, ".patternmerge.presenceCount.txt")
+cat(presencecount, file = presencecountfile, sep = "\n")
+system(paste0("gzip ", presencecountfile))
+cat("Written presence counts to file:",paste0(presencecountfile,".gz"), "\n")
+
+

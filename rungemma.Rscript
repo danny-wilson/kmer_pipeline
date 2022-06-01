@@ -1,0 +1,194 @@
+#!/apps/well/R/3.4.3/bin/Rscript
+#$ -cwd -V
+#$ -P bag.prjc -q short.qc
+#$ -N rungemma -j y
+#$ -pe shmem 1
+
+# Start time
+start.time = proc.time()[3]
+args = commandArgs(trailingOnly=TRUE)
+
+# Get task number - architecture specific
+t = as.integer(Sys.getenv("SGE_TASK_ID"))
+
+# Process arguments
+help = paste(
+"rungemma.Rscript run gemma on a subset of the unique patterns",
+"Daniel Wilson (2018)",
+"",
+"Usage: qsub -t 1:p -tc p rungemma.Rscript p kmerFilePrefix id_file output_prefix analysis_dir kmertype kmer_length software_file [covariate_file]",
+sep="\n") # SGE changed pheno to id_file, added out-dir, kmertype, kmerlen, cov-file, software_file
+if(length(args)<8 | length(args)>9) {
+	cat(help,sep="\n")
+	cat("Received arguments: ",args,"\n")
+	stop("\nIncorrect usage\n")
+}
+
+###################################################################################################
+## Functions and software paths
+###################################################################################################
+
+###################################################################################################
+
+# Initialize variables
+p = as.integer(args[1])
+prefix = as.character(args[2])
+id_file = as.character(args[3])
+output_prefix = as.character(args[4])
+output_dir = as.character(args[5])
+kmertype = tolower(as.character(args[6]))
+kmerlen = as.integer(args[7])
+software_file = as.character(args[8])
+if(length(args)>8) covariate_file = as.character(args[9]) else covariate_file = NULL
+
+# p = 10
+# prefix = "/well/bag/earle/Saureus/ares992/analysis/saur_fusacid_test12_protein11"
+# id_file = "/well/bag/earle/Saureus/ares992/saur_992_fusidicacid_12isolates_id_path_pheno.txt"
+# output_prefix = "saur_fusacid_test12"
+# output_dir = "/well/bag/earle/Saureus/ares992/analysis"
+# kmertype = "protein"
+# kmerlen = 11
+# covariate_file = NULL
+
+if(is.na(p)) stop("Error: p must be an integer","\n")
+if(!file.exists(id_file)) stop("Error: sample ID file doesn't exist","\n") # SGE added
+if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n") # SGE added
+if(unlist(strsplit(output_dir,""))[length(unlist(strsplit(output_dir,"")))]!="/") output_dir = paste0(output_dir, "/") # SGE added
+if(kmertype!="protein" & kmertype!="nucleotide") stop("Error: kmer type must be either 'protein' or 'nucleotide'","\n")
+if(is.na(kmerlen)) stop("Error: kmer length must be an integer","\n")
+if(!file.exists(software_file)) stop("Error: software file doesn't exist","\n")
+if(!is.null(covariate_file)) if(!file.exists(covariate_file)) stop("Error: covariate file doesn't exist","\n")
+
+keyfile = paste0(prefix,".patternmerge.patternKey.txt.gz")
+keySizefile = paste0(prefix,".patternmerge.patternKeySize.txt")
+kinfile = paste0(prefix,".kinshipmerge.kinship.txt.gz")
+
+if(!file.exists(keyfile)) stop("Error: pattern key file doesn't exist","\n") # SGE added
+if(!file.exists(keySizefile)) stop("Error: pattern key size file doesn't exist","\n") # SGE added
+if(!file.exists(kinfile)) stop("Error: kinship file doesn't exist","\n") # SGE added
+
+# Sanity check covariate file
+if(!is.null(covariate_file)){
+	nsamples = unlist(strsplit(system(paste0("wc -l ", id_file), intern = T)," "))
+	nsamples = as.numeric(nsamples[which(nsamples!="")][1])-1
+	covariates = read.table(covariate_file, h = F, sep = "\t")
+	if(!all(as.numeric(covariates[,1])==1)) stop("Error: first column of covariate file must be a column of 1s for the intercept","\n")
+	if(nsamples!=nrow(covariates)) stop("Error: covariate file is not the same length as the number of samples in id_file","\n")
+}
+
+# Read in software file
+software_paths = read.table(software_file, h = T, sep = "\t", quote = "")
+# Required software and script paths
+# Begin with software
+required_software = c("gemma")
+if(any(is.na(match(required_software, as.character(software_paths$name))))) stop(paste0("Error: missing required software path in the software file - requires ",paste(required_software, collapse = ", ")),"\n")
+gemmapath = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="gemma")]
+if(!file.exists(gemmapath)) stop("Error: GEMMA path specified in the software paths file doesn't exist","\n")
+if(any(tolower(as.character(software_paths$name))=="gemma_libraries")){
+	gemma_libraries_path = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="gemma_libraries")]
+	if(!dir.exists(gemma_libraries_path)) stop("Error: directory for GEMMA libraries does not exist","\n")
+	gemmapath = paste0("export LD_LIBRARY_PATH=LD_LIBRARY_PATH:", gemma_libraries_path, "; ", gemmapath)
+}
+
+
+# Report variables # SGE updated
+cat("#############################################", "\n")
+cat("SGE job name: ",Sys.getenv("JOB_NAME"),"\n")
+cat("SGE job ID: ",Sys.getenv("JOB_ID"),"\n")
+cat("SGE task ID: ",Sys.getenv("SGE_TASK_ID"),"\n")
+cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Command line arguments","\n")
+cat(args, "\n\n")
+cat("Parameters:","\n")
+cat("p:", p,"\n")
+cat("Kmer file prefix:", prefix,"\n")
+cat("ID file path:", id_file,"\n")
+cat("Output prefix:", output_prefix,"\n")
+cat("Analysis directory:", output_dir,"\n")
+cat("Kmer type:", kmertype,"\n")
+cat("Kmer length:", kmerlen,"\n")
+cat("Software file:", software_file, "\n")
+cat("GEMMA path:", gemmapath,"\n")
+cat("Covariate file:", covariate_file,"\n")
+cat("Process:",t, "\n")
+cat("\n")
+cat("Kmer pattern key file:", keyfile,"\n")
+cat("Kmer pattern key size file:", keySizefile,"\n")
+cat("Kmer kinship file:", kinfile,"\n")
+cat("#############################################", "\n\n")
+
+
+
+
+# Create gemma directory if doesn't already exist
+gemma_dir = file.path(output_dir,paste0(kmertype,"kmer", kmerlen,"_gemma","/"))
+if(!dir.exists(gemma_dir)) dir.create(gemma_dir)
+
+# Number of unique patterns
+n = scan(keySizefile,what=integer(0))
+if(is.na(n)) stop("Could not read ",keySizefile)
+if(n<1) stop("Read n<1 from ",keySizefile)
+# Read in pheno file - SGE added
+id_file = read.table(id_file, h = T, sep = "\t")
+pheno = as.numeric(id_file$pheno)
+phenofile = paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, "_gemma_formatted_phenotype_process",t,".txt")
+cat("Writing phenotype to gemma formatted file:", phenofile,"\n")
+cat(pheno, file = phenofile, sep = "\n")
+
+# Compute other variables
+b = as.integer(ceiling(n/p))
+if(p != as.integer(ceiling(n/b))) {
+    cat("Warning: adjusting number of processes to equal ceiling(n/b)\n")
+    p = as.integer(ceiling(n/b))
+}
+
+
+if(t>p) {
+    cat("Task",t,"not required\n")
+    quit("no")
+}
+
+# Create a temporary bimbam file from the unique patterns
+beg = b*(t-1)+1
+end = min(b*t, n)
+if(end<beg) stop("Problem with input arguments, please check")
+# SGE changed file paths
+genofile.prefix = paste0(gemma_dir, output_prefix,"_",kmertype,kmerlen,".",beg,"-",end,".prefix.bimbam.txt")
+genofile = paste0(gemma_dir, output_prefix,"_",kmertype,kmerlen,".",beg,"-",end,".bimbam.txt")
+# No directory for output file as gemma will always put files in subdirectory 'output'
+outfile.prefix = paste0(output_prefix,"_",kmertype,kmerlen,".",beg,"-",end,"")
+write(t(cbind(beg:end,1,0)),genofile.prefix,ncol=3,sep="\t")
+system(paste0("zcat ",keyfile," | head -n ",end," | tail -n ",end-beg+1," | sed 's/./&\t/g' | paste ",genofile.prefix," /dev/stdin > ",genofile))
+
+# If it does not exist, create output directory with correct permissions
+if(!dir.exists(file.path(gemma_dir,"output"))) dir.create(file.path(gemma_dir,"output"))
+# Move to directory above output directory as gemma will always put file in subdirectory output
+setwd(gemma_dir)
+
+# Run gemma
+#kinfile.txt = gsub(".txt.gz",paste0(".",beg,"-",end,".txt"),kinfile,fixed=TRUE) # SGE replaced with below
+kinfile.txt = paste0(gemma_dir, output_prefix,"_",kmertype,kmerlen,".kinship.",beg,"-",end,".txt") # SGE added
+if(kinfile.txt!=kinfile) system(paste0("zcat ",kinfile," > ",kinfile.txt))
+if(is.null(covariate_file)){
+	system(paste0(gemmapath, " -g ",genofile," -p ",phenofile," -k ",kinfile.txt," -lmm 4 -maf 0 -o ",outfile.prefix))
+} else {
+	system(paste0(gemmapath, " -g ",genofile," -p ",phenofile," -k ",kinfile.txt," -c ",covariate_file," -lmm 4 -maf 0 -o ",outfile.prefix))
+}
+
+# Delete temporary files
+cat("Deleting intermediate files","\n")
+if(kinfile.txt!=kinfile) unlink(kinfile.txt)
+unlink(genofile.prefix)
+unlink(genofile)
+unlink(phenofile)
+
+# Extract LRT p-value from column 10 and compress results
+assoc.file = paste0(gemma_dir,"output/",outfile.prefix,".assoc.txt")
+log.file = paste0(gemma_dir,"output/",outfile.prefix,".log.txt")
+pval.file = paste0(gemma_dir,"output/",outfile.prefix,".pval.txt.gz")
+system(paste0("cut -f10 ",assoc.file," | tail -n +2 | gzip -c > ",pval.file))
+system(paste0("gzip ",assoc.file))
+system(paste0("gzip ",log.file))
+
+
+cat("Finished in",(proc.time()[3]-start.time)/60,"minutes\n")

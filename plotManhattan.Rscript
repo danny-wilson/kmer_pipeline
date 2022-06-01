@@ -1,0 +1,583 @@
+#!/apps/well/R/3.4.3/bin/Rscript
+#$ -cwd -V
+#$ -P bag.prjc -q short.qc
+#$ -N plotmanhattan -j y
+#$ -pe shmem 4
+
+# Start time
+start.time = proc.time()[3]
+args = commandArgs(trailingOnly=TRUE)
+
+help = c("plotManhattan.Rscript plot QQ and Manhattan plots",
+			"Usage: qsub plotManhattan.Rscript output_prefix analysis_dir kmerfilePrefix ref_gb ref_fa gene_lookup_file id_file nucmerident min_count kmer_type kmer_length minor_allele_threshold software_file blastident [annotateGeneFile override_signif]")
+
+
+if(length(args!=0)){
+	if(args[1]=="-help" | args[1]=="-h"){
+		cat(help,sep="\n")
+		q("no")
+	}
+}
+
+if(length(args)!=14 & length(args)!=16){
+	cat(help,sep="\n")
+	cat("Received arguments: ", args, "\n")
+	stop("\nIncorrect usage\n")
+}
+
+
+###################################################################################################
+## Functions and software paths
+###################################################################################################
+
+get_gene_xpos = function(gene_lookup_file = NULL, ref_gb = NULL){
+	
+	ref_length = scan(ref_gb, what = character(0), sep = "\n", nlines = 1, quiet = TRUE)
+	ref_length = as.numeric(unlist(strsplit(ref_length," "))[which(unlist(strsplit(ref_length," "))!="")][3])
+	if(is.na(ref_length)) stop("Error retrieving the reference genome length from the genbank file","\n")
+	cat("Reference genome length:", ref_length,"\n")
+	
+	# Read in gene lookup
+	gene_lookup = read.table(gene_lookup_file, h = F, sep = "\t", quote = "")
+
+	# Read in reference genbank file
+	ref = reorder_reference_gbk(ref_gb = ref_gb)
+	
+	# Get the midpoint for all genes/intergenic regions to plot them at on the Manhattan
+	gene_lookup_pos = c()
+	for(i in 1:nrow(gene_lookup)){
+		if(i!=nrow(gene_lookup)){
+			if(any(unlist(strsplit(as.character(gene_lookup[i,1]),""))==":")){
+				genes = unlist(strsplit(as.character(gene_lookup[i,1]),":"))
+				start = as.numeric(ref$end[which(ref$name==genes[1])])+1
+				end = as.numeric(ref$start[which(ref$name==genes[2])])-1
+			} else {
+				gene = as.character(gene_lookup[i,1])
+				wh = which(ref$name==gene)
+				start = as.numeric(ref$start[wh]); end = as.numeric(ref$end[wh])
+			}
+		} else {
+			gene = unlist(strsplit(as.character(gene_lookup[i,1]),":"))
+			start = as.numeric(ref$start[which(ref$name==gene)])
+			end = ref_length
+		}
+		gene_lookup_pos[i] = ((end-start)/2)+start
+	}
+	cat("Read in reference genbank file","\n")
+	return(list("gene_lookup" = gene_lookup, "ref" = ref, "gene_lookup_pos" = gene_lookup_pos, "ref_length" = ref_length))
+}
+
+
+read_kmer_alignment = function(alignPosFile = NULL, alignCountFile = NULL, min_count = NULL, gene_lookup_pos = NULL, gene_lookup = NULL, kmerIndex = NULL, ref_length = NULL){
+	
+	alignPos = scan(gzfile(alignPosFile), what = character(0), sep = "\n", quiet = TRUE)
+	alignPos = sapply(alignPos, function(x) unlist(strsplit(x, ",")), USE.NAMES = F)
+	if(nrow(alignPos)!=2){
+		cat("Length alignPos:", length(alignPos),"\n")
+		cat("Nrow alignPos:", nrow(alignPos),"\n")
+		cat("Ncol alignPos:", ncol(alignPos),"\n")
+		stop("Error: Align pos matrix is not two rows","\n")
+	}
+	count = scan(gzfile(alignCountFile), sep = "\n", quiet = TRUE)
+	count = as.numeric(count)
+	alignPos = alignPos[,which(count>=min_count)]
+	count = count[which(count>=min_count)]
+	alignPosPCH = rep(1, length(alignPos))
+	alignPosPCH[which(count==1)] = 2
+	alignPosPCH[which(count>1 & count<=5)] = 0
+
+	final_kmer_pos_index = as.numeric(alignPos[1,])
+	final_kmer_pos = gene_lookup_pos[as.numeric(alignPos[2,])]
+	final_kmer_genes = as.character(gene_lookup[,1])[as.numeric(alignPos[2,])]
+	rm(alignPos)
+	final_kmer_pos_index_missing = which(is.na(match(1:length(kmerIndex), final_kmer_pos_index)))
+	if(length(final_kmer_pos_index_missing)>0){
+		final_kmer_pos_index = c(final_kmer_pos_index, final_kmer_pos_index_missing)
+		final_kmer_pos = c(final_kmer_pos, seq(from=ref_length+100000, by = 0.01, length.out = length(final_kmer_pos_index_missing)))
+		final_kmer_genes = c(final_kmer_genes, rep(NA, length(final_kmer_pos_index_missing)))
+		alignPosPCH = c(alignPosPCH, rep(1, length(final_kmer_pos_index_missing)))
+	}
+
+	cat("Got final kmer positions","\n")
+	return(list("alignPosPCH" = alignPosPCH, "final_kmer_pos_index" = final_kmer_pos_index, "final_kmer_pos" = final_kmer_pos, "final_kmer_genes" = final_kmer_genes))
+	
+}
+
+
+###################################################################################################
+
+
+
+
+# # Initialize variables
+output_prefix = as.character(args[1])
+output_dir = as.character(args[2])
+kmerfilePrefix = as.character(args[3])
+ref_gb = as.character(args[4])
+ref_fa = as.character(args[5])
+gene_lookup_file = as.character(args[6])
+id_file = as.character(args[7])
+nucmerident = as.integer(args[8])
+min_count = as.integer(args[9])
+kmer_type = tolower(as.character(args[10]))
+kmer_length = as.integer(args[11])
+minor_allele_threshold = as.numeric(args[12])
+software_file = as.character(args[13])
+blastident = as.integer(args[14])
+if(length(args)>14){
+	annotateGeneFile = as.character(args[15])
+	override_signif = as.logical(args[16])
+} else {
+	annotateGeneFile = NULL
+	override_signif = FALSE
+}
+
+# # # # # Initialize variables
+# output_prefix = "saur_fusacid_160_ccmatch"
+# output_dir = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch/"
+# kmerfilePrefix = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch/saur_fusacid_160_ccmatch_nucleotide31"
+# ref_gb = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.gb"
+# ref_fa = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.fasta"
+# gene_lookup_file = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch/nucleotidekmer31_kmergenealign/saur_fusacid_160_ccmatch_nucleotide31_NC_002953.3_gene_id_name_lookup.txt"
+# id_file = "/well/bag/earle/Saureus/ares992/saur_fusacid_80cases_80controls_ccmatch_comid_paths_pheno.txt"
+# nucmerident = 90
+# min_count = 1
+# kmer_type = "nucleotide"
+# kmer_length = 31
+# minor_allele_threshold = 0.01
+# software_file = "/well/bag/earle/Saureus/ares992/test_pipeline_software_location_file.txt"
+# blastident = 70
+# annotateGeneFile = NULL
+
+# # # # # Initialize variables
+# output_prefix = "saur_fusacid_160_ccmatch"
+# output_dir = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch_2/"
+# kmerfilePrefix = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch_2/saur_fusacid_160_ccmatch_protein11"
+# ref_gb = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.gb"
+# ref_fa = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.fasta"
+# gene_lookup_file = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch_2/proteinkmer11_kmergenealign/saur_fusacid_160_ccmatch_protein11_NC_002953.3_gene_id_name_lookup.txt"
+# id_file = "/well/bag/earle/Saureus/ares992/saur_fusacid_80cases_80controls_ccmatch_comid_paths_pheno.txt"
+# nucmerident = 90
+# min_count = 1
+# kmer_type = "protein"
+# kmer_length = 11
+# minor_allele_threshold = 0.01
+# software_file = "/well/bag/earle/Saureus/ares992/pipeline_software_location.txt"
+# blastident = 70
+# annotateGeneFile = NULL
+# override_signif = FALSE
+
+# Currently hard coded to look at the top 20 genes
+ngenes = 20
+
+
+# Check file inputs
+if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n")
+if(unlist(strsplit(output_dir,""))[length(unlist(strsplit(output_dir,"")))]!="/") output_dir = paste0(output_dir, "/")
+
+if(!file.exists(ref_gb)) stop("Error: reference genbank file doesn't exist","\n")
+if(!file.exists(ref_fa)) stop("Error: reference fasta file doesn't exist","\n")
+if(!file.exists(gene_lookup_file)) stop("Error: reference gene ID file doesn't exist","\n")
+if(!file.exists(id_file)) stop("Error: sample ID file doesn't exist","\n")
+if(nucmerident>100 | nucmerident<0) stop("Error: nucmer identity threshold must be between 0-100","\n")
+if(is.na(min_count)) stop("Error: min count must be an integer","\n")
+if(kmer_type!="protein" & kmer_type!="nucleotide") stop("Error: kmer type must be either 'protein' or 'nucleotide'","\n")
+if(is.na(kmer_length)) stop("Error: kmer length must be an integer","\n")
+if(is.na(minor_allele_threshold)) stop("Error: minor allele threshold must be a number","\n")
+if(minor_allele_threshold>0.5 & minor_allele_threshold<1) stop("Error: minor allele threshold must be <=0.5 or >=1")
+if(!file.exists(software_file)) stop("Error: software file doesn't exist","\n")
+if(blastident>100 | blastident <0) stop("Error: blast identity threshold must be between 0-100","\n")
+if(!is.null(annotateGeneFile)) if(!file.exists(annotateGeneFile)) stop("Error: annotate gene file doesn't exist","\n")
+if(!is.logical(override_signif)) stop("Error: override_signif must be a logical","\n")
+
+ref.name = scan(ref_fa, what = character(0), sep = "\n", nlines = 1, quiet = TRUE)
+ref.name = unlist(strsplit(ref.name, " "))[1]
+if(substr(ref.name,1,1)!=">") stop("Error: reference fasta file does not begin with a name starting with '>'","\n")
+ref.name = substr(ref.name,2,1e6)
+
+kmerKeySizeFile = paste0(kmerfilePrefix, ".patternmerge.patternKeySize.txt")
+kmerIndexFile = paste0(kmerfilePrefix, ".patternmerge.patternIndex.txt.gz")
+kmerPresenceCountFile = paste0(kmerfilePrefix, ".patternmerge.presenceCount.txt.gz")
+kmerSeqFile = paste0(kmerfilePrefix, ".kmermerge.txt.gz")
+alignPosFile = paste0(kmerfilePrefix, ".", ref.name, "_t", nucmerident, ".kmeralignmerge.txt.gz")
+alignCountFile = paste0(kmerfilePrefix, ".", ref.name, "_t", nucmerident, ".kmeralignmerge.count.txt.gz")
+
+if(!file.exists(kmerKeySizeFile)) stop("Error: kmer pattern key size file doesn't exist","\n")
+if(!file.exists(kmerIndexFile)) stop("Error: kmer pattern index file doesn't exist","\n")
+if(!file.exists(kmerPresenceCountFile)) stop("Error: kmer presence count file doesn't exist","\n")
+if(!file.exists(alignPosFile)) stop("Error: align pos file doesn't exist","\n")
+if(!file.exists(alignCountFile)) stop("Error: align count file doesn't exist","\n")
+if(!file.exists(kmerSeqFile)) stop("Error: kmer sequence file doesn't exist","\n")
+
+# Read in software file
+software_paths = read.table(software_file, h = T, sep = "\t", quote = "")
+# Required software and script paths
+# Begin with software
+required_software = c("scriptpath", "genoPlotR", "blast")
+if(any(is.na(match(required_software, as.character(software_paths$name))))) stop(paste0("Error: missing required software path in the software file - requires ",paste(required_software, collapse = ", ")),"\n")
+
+
+# Get the script location and then create missing paths
+script_location = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="scriptpath")]
+if(!dir.exists(script_location)) stop("Error: script location directory specified in the software paths file doesn't exist","\n")
+sequence_functions_Rfile = file.path(script_location, "sequence_functions.R")
+if(!file.exists(sequence_functions_Rfile)) stop("Error: sequence_functions.R path doesn't exist - check pipeline script location in the software file","\n")
+source(sequence_functions_Rfile, chdir = TRUE)
+manhattan_functions_Rfile = file.path(script_location, "Manhattan_functions.R")
+if(!file.exists(manhattan_functions_Rfile)) stop("Error: Manhattan_functions.R path doesn't exist - check pipeline script location in the software file","\n")
+source(manhattan_functions_Rfile, chdir = TRUE)
+alignment_functions_Rfile = file.path(script_location, "alignmentfunctions.R")
+if(!file.exists(alignment_functions_Rfile)) stop("Error: alignmentfunctions.R path doesn't exist - check pipeline script location in the software file","\n")
+
+
+genoPlotRlocation = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="genoplotr")]
+if(!dir.exists(genoPlotRlocation)) stop("Error: genoPlotR installation directory specified in the software paths file doesn't exist","\n")
+
+library(genoPlotR, lib.loc = genoPlotRlocation)
+
+blast_dir = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="blast")]
+if(!dir.exists(blast_dir)) stop("Error: blast installation directory specified in the software paths file doesn't exist","\n")
+if(kmer_type =="protein") blastname = "blastp" else blastname = "blastn"
+blastPath = file.path(blast_dir, blastname)
+if(!file.exists(blastPath)) stop("Error: blast path",blastPath,"doesn't exist","\n")
+
+
+
+# Report variables
+cat("#############################################", "\n")
+cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
+cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
+cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Command line arguments","\n")
+cat(args, "\n\n")
+cat("Parameters:","\n")
+cat("Output prefix:", output_prefix,"\n")
+cat("Analysis directory:", output_dir,"\n")
+cat("Kmer file prefix:", kmerfilePrefix,"\n")
+cat("Kmer pattern key size file:", kmerKeySizeFile,"\n")
+cat("Kmer pattern index file:", kmerIndexFile,"\n")
+cat("Kmer pattern presence count file:", kmerPresenceCountFile,"\n")
+cat("Kmer list file:", kmerSeqFile,"\n")
+cat("Kmer alignment gene file:", alignPosFile,"\n")
+cat("Kmer alignment gene count file:", alignCountFile,"\n")
+
+cat("Reference genbank file:", ref_gb,"\n")
+cat("Reference fasta file:", ref_fa,"\n")
+cat("Kmer alignment gene ID file:", gene_lookup_file,"\n")
+cat("ID file path:", id_file,"\n")
+cat("Nucmer alignment minimum % identity:", nucmerident,"\n")
+cat("Kmer alignment min genome count:", min_count,"\n")
+cat("Kmer type:", kmer_type, "\n")
+cat("Kmer length:", kmer_length,"\n")
+cat("Minor allele threshold:", minor_allele_threshold,"\n")
+cat("BLAST alignment minimum % identity:", blastident,"\n")
+
+cat("Software file:", software_file, "\n")
+cat("Script location:", script_location, "\n")
+cat("genoPlotR library installation directory:", genoPlotRlocation,"\n")
+
+if(!is.null(annotateGeneFile)){
+	cat("Annotate gene file:", annotateGeneFile,"\n")
+	cat("Override significance threshold:", override_signif,"\n")
+}
+cat("#############################################", "\n\n")
+
+
+# Create an output directory
+figures_dir = create_figures_dir(dir = output_dir, kmer_type = kmer_type, kmer_length = kmer_length, alignmenttype = "kmergenealign")
+
+# Get GEMMA input directory
+gemma_dir = file.path(output_dir,paste0(kmer_type,"kmer",kmer_length,"_gemma"), "output/")
+if(!dir.exists(gemma_dir)) stop("Error: gemma directory", gemma_dir," doesn't exist","\n")
+
+if(!is.null(annotateGeneFile)) if(!file.exists(annotateGeneFile)) stop("Error: genes to annotate file does not exist","\n")
+if(minor_allele_threshold==0){
+	cat("Assuming no minor allele threshold - plotting results for all kmers","\n")
+	macormaf = NULL
+} else {
+	if(minor_allele_threshold<1){
+		cat("Minor allele threshold below 1 - reading as a minor allele frequency (MAF) threshold of:", minor_allele_threshold,"\n")
+		macormaf = "maf"
+	} else {
+		cat("Minor allele threshold above 1 - reading as a minor allele count (MAC) threshold of:", minor_allele_threshold,"\n")
+		macormaf = "mac"
+	}
+}
+
+
+
+# Read in sample IDs
+# Read in ID file
+id_file = read.table(id_file, h = T, sep = "\t")
+ids = as.character(id_file$id)
+pheno = as.numeric(id_file$pheno)
+nsamples = length(which(!is.na(pheno)))
+
+# Check count threshold variable
+if(min_count <1 | min_count>length(ids)) stop("Error: minimum count must be at least 1 and less than the total number of samples","\n")
+
+# Read in total number of kmer patterns
+nPatterns = scan(kmerKeySizeFile, quiet = TRUE)
+# Read in index
+kmerIndex = scan(gzfile(kmerIndexFile), quiet = TRUE)
+kmerIndex = as.numeric(kmerIndex)+1
+
+cat("Read in number of patterns and kmer index", "\n")
+cat("Number of kmers:", length(kmerIndex),"\n")
+cat("Number of patterns:", nPatterns, "\n")
+if(length(unique(kmerIndex))!=nPatterns) stop("Error: number of unique kmer indices does not equal the number of patterns","\n")
+
+# Read in reference and gene look up
+gene_xpos = get_gene_xpos(gene_lookup_file = gene_lookup_file, ref_gb = ref_gb)
+ref_length = gene_xpos$ref_length
+ref = gene_xpos$ref
+gene_lookup = gene_xpos$gene_lookup
+gene_lookup_pos = gene_xpos$gene_lookup_pos
+rm(gene_xpos)
+
+
+# Read in gemma files
+###########################
+assoc = read_gemma_files(input_dir = gemma_dir, prefix = output_prefix, kmer_type = kmer_type, kmer_length = kmer_length, nPatterns = nPatterns)
+
+## Read in MAF
+###########################
+
+# Read in pattern presence counts
+macpatterns = scan(gzfile(kmerPresenceCountFile), what = numeric(0), sep = "\n", quiet = TRUE)
+if(any(is.na(pheno))) cat(paste0("Calculating MAFs using number of samples with non NA phenotypes (",length(which(!is.na(pheno))), ") as denominator"),"\n")
+length_nonNApheno = length(which(!is.na(pheno)))
+macpatterns[which(macpatterns>(length_nonNApheno/2))] = length_nonNApheno-macpatterns[which(macpatterns>(length_nonNApheno/2))]
+mac = macpatterns[kmerIndex]
+mafpatterns = macpatterns/length_nonNApheno
+maf = mafpatterns[kmerIndex]
+
+cat("Read in pattern counts and converted into MAC and MAF", "\n")
+
+# Define separate variable mapatterns and ma so don't have to look for mac/maf later on
+if(macormaf=="maf"){
+	mapatterns = mafpatterns
+	ma = maf
+} else {
+	mapatterns = macpatterns
+	ma = mac
+}
+ma_all = ma
+
+## Get Bonferroni threshold
+cat("Bonferroni threshold calculated using",macormaf,"threshold", minor_allele_threshold,"\n")
+bonferroni = -log10(0.05/length(unique(kmerIndex[which(ma>= minor_allele_threshold & !is.na(assoc[kmerIndex,1]))])))
+cat("Bonferroni threshold:",bonferroni,"\n")
+
+## Plot QQ plots
+###########################
+
+plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = 0, kmer_type = kmer_type, kmer_length = kmer_length)
+plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = minor_allele_threshold, macormaf = macormaf, mapatterns = mapatterns, kmer_type = kmer_type, kmer_length = kmer_length)
+
+
+
+## Read in alignment results
+###########################
+
+kmer_alignment = read_kmer_alignment(alignPosFile = alignPosFile, alignCountFile = alignCountFile, min_count = min_count, gene_lookup_pos = gene_lookup_pos, gene_lookup = gene_lookup, kmerIndex = kmerIndex, ref_length = ref_length)
+final_kmer_pos_index = kmer_alignment$final_kmer_pos_index
+final_kmer_pos = kmer_alignment$final_kmer_pos
+final_kmer_genes = kmer_alignment$final_kmer_genes
+alignPosPCH = kmer_alignment$alignPosPCH
+rm(kmer_alignment)
+
+
+### Plot Manhattan plots
+###########################
+
+
+## Get y position
+ypos = as.numeric(assoc[,6])[kmerIndex[final_kmer_pos_index]]
+cat("Got ypos","\n")
+
+# Get plotting colours
+# Get the type of phenotype - binary or continuous for the beta legend
+pheno_type = get_pheno_type(pheno)
+kmerCOLS = get_Manhattan_colours(final_kmer_pos_index = final_kmer_pos_index, assoc_patterns = assoc, kmerIndex = kmerIndex, colour_selection = colour_selection, ypos = ypos, bonferroni = bonferroni, mafpatterns = mafpatterns, pheno_type = pheno_type)
+multialignCOL = kmerCOLS$multialignCOL
+betaCOL = kmerCOLS$betaCOL
+mafCOL = kmerCOLS$mafCOL
+rm(kmerCOLS)
+
+# PCH by alignment count
+pch_standard = rep(1, length(final_kmer_pos))
+
+# Subsample for faster plotting
+# s = union(sample(c(1:length(final_kmer_pos)),1e6),which(ypos>2))
+# s = union(sample(c(which(!is.na(ypos))),1e6),which(ypos>2))
+if(length(which(!is.na(ypos)))<1e6){
+	s = 1:length(ypos)
+} else {
+	s = union(sample(c(which(!is.na(ypos))),1e6),which(ypos>2))
+	cat("Subsampling kmers below -log10(p)=2 for faster plotting, plotting",length(s),"kmers","\n")
+}
+
+xpos = final_kmer_pos[s]
+ypos = ypos[s]
+multialignCOL = multialignCOL[s]
+betaCOL = betaCOL[s]
+mafCOL = mafCOL[s]
+ma = ma[final_kmer_pos_index[s]]
+gene_names = final_kmer_genes[s]
+pch_standard = pch_standard[s]
+alignPosPCH = alignPosPCH[s]
+
+### Top 20 genes
+###########################
+
+# Find the top 20 genes by p-value and store the gene name plus the most significant p-value per gene
+
+gene_conversion = gene_names
+names(gene_conversion) = gene_names
+
+top20genes(gene_names = gene_names, ma = ma, minor_allele_threshold = minor_allele_threshold, ypos = ypos, macormaf = macormaf, output_dir = figures_dir, prefix = output_prefix, min_count = min_count, ident_threshold = nucmerident, kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
+
+
+# Plot
+# multialignCOL (kmers above MAF threshold)
+# betaCOL (kmers above MAF threshold)
+# mafCOL (all kmers and kmers above threshold)
+
+# How to colour each figure by name
+filecol = c("alignCOL","betaCOL","mafCOL","mafCOL")
+# Set which MAF threshold to plot for each figure
+ma_threshold_all = c(minor_allele_threshold, minor_allele_threshold, 0, minor_allele_threshold)
+# Colour vectors for each figure
+allCOLS = list(multialignCOL, betaCOL, mafCOL, mafCOL)
+# PCH vectors for each figure
+# Could change the first to alignPosPCH
+allPCH = list(pch_standard, pch_standard, pch_standard, pch_standard)
+
+# Figure legend
+legendtext = c("Bonferroni-corrected","significance threshold","")
+legendcol = c("black","white","white")
+legendtext_align = c("Multiple alignments","Single alignments")
+legendtext_MAF = c("MAF < 0.01","0.01 \u2264 MAF < 0.05", "MAF \u2265 0.05")
+legendtext_beta = c("\u03B2 < 0", "\u03B2 > 0")
+redgrey = c(colour_selection[6], "grey50")
+redbluegrey = c(colour_selection[6], colour_selection[5], "grey50")
+redblue = c(colour_selection[6], colour_selection[5])
+bluered = c(colour_selection[5], colour_selection[6])
+redbluegreengrey = c(colour_selection[6], colour_selection[5], colour_selection[3],"grey50")
+legendtext = list(c(legendtext, legendtext_align),
+					c(legendtext, legendtext_beta),
+					c(legendtext, legendtext_MAF),
+					c(legendtext, legendtext_MAF))
+legendcol = list(c(legendcol, redgrey),
+					c(legendcol, bluered),
+					c(legendcol, redbluegreengrey),
+					c(legendcol, redbluegreengrey))
+legendpch = c(rep(NA,3),rep(16,3))
+legendlty = c(2,rep(NA,5))
+
+# # Alternate the y-axis limit between max in figure and ylimit of 50 (if above a threshold)
+ylims_options = c(NA, 50)
+
+which_to_plot = c(1:length(filecol))
+
+for(i in which_to_plot){
+	
+	outfilename_prefix = paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref.name, "_LMM_kmergenealign_ct", min_count,"_Manhattan_", filecol[i],"_", macormaf, ma_threshold_all[i])
+	
+	for(j in 1:length(ylims_options)){
+		
+		if(is.na(ylims_options[j])){
+			outfilename = paste0(outfilename_prefix, ".png")
+			ylims.i = NULL
+			which_genes_to_annotate.i = which(!is.na(gene_names) & ma>=ma_threshold_all[i])
+			ma_threshold_pass = which(ma>=ma_threshold_all[i])
+			plot.i = TRUE
+			annotateGenerow = 0
+		} else {
+			outfilename = paste0(outfilename_prefix, "_ylim",ylims_options[j],".png")
+			ylims.i = c(0, ylims_options[j])
+			which_genes_to_annotate.i = which(!is.na(gene_names) & ypos<=max(ylims.i) & ma>=ma_threshold_all[i])
+			ma_threshold_pass = which(ma>=ma_threshold_all[i])
+			if(max(ypos, na.rm = T)<(max(ylims.i)+(max(ylims.i)/2))) plot.i = FALSE else plot.i = TRUE
+			annotateGenerow = max(ylims.i)
+		}
+	
+		if(plot.i){
+			plot_manhattan(outfilename = outfilename, xpos = xpos, ma_threshold_pass = ma_threshold_pass, ypos = ypos, ylims.i = ylims.i, annotateGeneFile = annotateGeneFile, ref = ref, gene_names = gene_names, which_genes_to_annotate.i = which_genes_to_annotate.i, gene_conversion = gene_conversion, allCOLS = allCOLS, allPCH = allPCH, i = i, bonferroni = bonferroni, legendtext = legendtext, legendcol = legendcol, legendpch = legendpch, legendlty = legendlty, beta = as.numeric(assoc[,2]), pheno_type = pheno_type)
+
+		}
+	}
+	
+	
+}
+
+# Get kmers for top 10 genes
+
+
+
+which_genes_to_annotate.i = which(!is.na(gene_names) & ma>=(minor_allele_threshold))
+top10genes = as.character(get_genes_to_plot(gene_names = gene_names[which_genes_to_annotate.i], y = ypos[which_genes_to_annotate.i], gene_conversion = gene_conversion[which_genes_to_annotate.i], ymax = 10, gene_panel = c(), ref = ref, ngenes = ngenes)[,1])
+
+final_kmer_list = scan(gzfile(kmerSeqFile), what = character(0), sep = "\n", quiet = TRUE)
+
+cat("Writing unaligned significant kmers to file","\n")
+output_file_prefix = paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref.name, "_", macormaf,"_", minor_allele_threshold,"_alignIdent_", nucmerident ,"_alignPosMinCount_", min_count)
+# Write unaligned significant kmers to file
+wh.i = which(final_kmer_pos>ref_length)
+output_file = paste0(output_file_prefix, "_unaligned_kmersandpvals.txt")
+write_top_gene_kmers_to_file(wh.i = wh.i, final_kmer_list = final_kmer_list, final_kmer_pos_index = final_kmer_pos_index, assoc = assoc, kmerIndex = kmerIndex, mac = mac, output_file = output_file)
+
+
+
+# If the annotate gene file has been provided, read in the gene names to annotate
+# and annotate them on the Manhattan plot, and create files containing all kmers
+# assigned to those genes/IRs
+# Otherwise, do this for the 20 most significant genes/IRs
+# Feed them into the alignment figures
+if(!is.null(annotateGeneFile)){
+	# Write provided gene names to file
+	cat("Writing kmers for gene names in", annotateGeneFile,"to file","\n")
+	annotateGene = scan(annotateGeneFile, what = character(0), sep = "\n", quiet = TRUE)
+	namedgenes_outputfiles = paste0(output_file_prefix,"_namedgene_",1:length(annotateGene),"_", annotateGene,"_kmersandpvals.txt")
+	for(i in 1:length(annotateGene)){
+		# Which kmers are within gene i
+		wh.i = which(final_kmer_genes==annotateGene[i])
+		output_file = namedgenes_outputfiles[i]
+		write_top_gene_kmers_to_file(wh.i = wh.i, final_kmer_list = final_kmer_list, final_kmer_pos_index = final_kmer_pos_index, assoc = assoc, kmerIndex = kmerIndex, mac = mac, output_file = output_file)
+	}
+	# Define the gene names to be fed into alignment function
+	genes_all = list("genes" = namedgenes_outputfiles, "genes_names" = annotateGene)
+	
+} else {
+	# Write top genes to file
+	cat("Writing kmers for top 20 genes to file","\n")
+	topgenes_outputfiles = paste0(output_file_prefix,"_topgene_",1:length(top10genes),"_", top10genes,"_kmersandpvals.txt")
+	for(i in 1:length(top10genes)){
+		# Which kmers are within gene i
+		wh.i = which(final_kmer_genes==top10genes[i])
+		output_file = topgenes_outputfiles[i]
+		write_top_gene_kmers_to_file(wh.i = wh.i, final_kmer_list = final_kmer_list, final_kmer_pos_index = final_kmer_pos_index, assoc = assoc, kmerIndex = kmerIndex, mac = mac, output_file = output_file)
+	}
+	# Define the gene names to be fed into alignment function
+	genes_all = list("genes" = topgenes_outputfiles, "genes_names" = top10genes)
+}
+
+
+
+rm(final_kmer_list)
+
+## Plot close up alignments
+
+source(alignment_functions_Rfile, chdir = TRUE)
+
+plot_closeup_alignments(ref = ref, ref_length = ref_length, ref_gb = ref_gb, ref_fa = ref_fa, figures_dir = figures_dir, output_prefix = output_prefix, ngenes = ngenes, nsamples = nsamples, bonferroni = bonferroni, gene_lookup = gene_lookup, oneLetterCodes = oneLetterCodes, kmer_type = kmer_type, kmer_length = kmer_length, blastPath = blastPath, perident = blastident, col_lib_nuc = col_lib_nuc, col_lib_pro = col_lib_pro, ref.name = ref.name, alignmenttype = "kmergenealign", override_signif = override_signif, genes_all = genes_all)
+
+
+
+cat("Finished in",(proc.time()[3]-start.time)/60,"minutes\n")
+
+
+
+
+

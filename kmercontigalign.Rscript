@@ -1,0 +1,662 @@
+#!/apps/well/R/3.4.3/bin/Rscript
+#$ -cwd -V
+#$ -P bag.prjc -q short.qc
+#$ -N kmercontigalign -j y
+#$ -pe shmem 2
+
+
+help = c("kmercontigalign.Rscript align contigs to the reference genome using nucmer and assign kmers to genes or intergenic regions",
+			"qsub -t 1:n -tc p kmercontigalign.Rscript n output_prefix output_dir id_file ref_fa ref_gb kmer_type kmer_length nucmerident kmerSeqFile software_file [kstart=9 kend=100]")
+
+# Start time
+start.time = proc.time()[3]
+args = commandArgs(trailingOnly=TRUE)
+
+# Get task number - architecture specific
+process = as.integer(Sys.getenv("SGE_TASK_ID"))
+
+## Read the command line arguments
+args = commandArgs(trailingOnly = TRUE)
+if(length(args!=0)){
+	if(args[1]=="-help" | args[1]=="-h"){
+		cat(help,sep="\n")
+		q("no")
+	}
+}
+
+if(length(args)!=11 & length(args)!=13){
+	cat(help,sep="\n")
+	cat("Received arguments: ", args, "\n")
+	stop("\nIncorrect usage\n")
+}
+
+
+###################################################################################################
+## Functions and software paths
+###################################################################################################
+
+create_contigalign_dir = function(dir = NULL, kmer_type = NULL, kmer_length = NULL){
+	contigalign_dir = file.path(dir,paste0(kmer_type,"kmer", kmer_length, "_kmergenealign/"))
+	if(!dir.exists(contigalign_dir)) dir.create(contigalign_dir)
+	return(contigalign_dir)
+}
+
+
+get_alignment_pos_indiv = function(x){
+	x = unlist(strsplit(x," "))
+	return(as.numeric(x[c(6, 8, 11, 13)]))
+}
+
+get_alignment_pos = function(x){
+	x = unlist(strsplit(x," "))
+	x = x[which(x!="" & x!="|")]
+	x[length(x)] = unlist(strsplit(x[length(x)],"\t"))[2]
+	return(x)
+}
+
+get_alignment = function(x){
+	align.split = unlist(strsplit(x,""))
+	wh.space = which(align.split==" ")
+	return(paste(align.split[(wh.space[length(wh.space)]+1):length(align.split)], collapse = ""))
+}
+
+translate_6_frames_fromcontig = function(contig = NULL, oneLetterCodes = NULL){
+	return(sapply(1:6, function(frame, contig, oneLetterCodes, revcompl) translate_function(contig, frame, oneLetterCodes, revcompl), contig = contig, revcompl = revcompl, oneLetterCodes = oneLetterCodes, USE.NAMES = F))
+}
+
+kmerCount = function(protein = NULL, kmer_length = NULL){
+	if(nchar(protein)>=kmer_length){
+		s = c(1:(nchar(protein)-(kmer_length-1)))
+		kmers = substring(protein, s, (s+kmer_length-1))
+		return(kmers)
+	}
+}
+
+count_protein_kmers = function(proteins = NULL, kmer_length = 31){
+	# Count kmers for all contigs
+	return(unlist(sapply(proteins, function(x) kmerCount(x, kmer_length), USE.NAMES = F)))
+}
+
+count_varlength_kmers = function(seq = NULL, kmerLengths = c(9, 100)){
+	if(kmerLengths[2]>nchar(seq)) kmerLengths[2] = nchar(seq)
+	if(kmerLengths[1]>nchar(seq)){
+		return(NULL)
+	} else {
+		return(unlist(sapply(kmerLengths[1]:kmerLengths[2], function(x, seq) kmerCount(seq, x), seq = seq, USE.NAMES = F)))
+	}
+}
+
+get_varlength_pos_kmer = function(pos, kmer_length){
+	s1 = c(1:(length(pos)-kmer_length +1))
+	return(sapply(s1, function(x, pos, kmer_length) list(pos[x:(x+ kmer_length-1)]), pos = pos, kmer_length = kmer_length, USE.NAMES = F))
+}
+
+get_contigs = function(index, coords, contigs){
+	if(index!=length(coords)){
+		return(paste(contigs[(wh.contig.start[index]+1):(wh.contig.start[index+1]-1)], collapse = ""))
+	} else {
+		return(paste(contigs[(wh.contig.start[index]+1):length(contigs)], collapse = ""))
+	}
+}
+
+remove_Ns = function(contig){
+	contigs = unlist(strsplit(contig,"N"))
+	return(contigs[which(contigs!="")])
+}
+
+get_varlength_allks = function(pos, k){
+	return(get_varlength_pos_kmer(pos, k))
+}
+
+
+
+read_reference_files = function(ref_gb = NULL, ref.fa = NULL, ref_length = NULL, process = NULL, output_dir = NULL, prefix = NULL, kmer_type = NULL, kmer_length = NULL){
+	
+	
+	# Get the reference name
+	ref.name = scan(ref.fa, what = character(0), sep = "\n", nlines = 1, quiet = TRUE)
+	ref.name = unlist(strsplit(ref.name, " "))[1]
+	if(substr(ref.name,1,1)!=">") stop("Error: reference fasta file does not begin with a name starting with '>'","\n")
+	ref.name = substr(ref.name,2,1e6)
+	cat("Reference name:",ref.name,"\n")
+	ref_length = scan(ref_gb, what = character(0), sep = "\n", nlines = 1)
+	ref_length = as.numeric(unlist(strsplit(ref_length," "))[which(unlist(strsplit(ref_length," "))!="")][3])
+	if(is.na(ref_length)) stop("Error retrieving the reference genome length from the genbank file","\n")
+	cat("Reference genome length:", ref_length,"\n")
+	
+	# Read in reference genbank file
+	ref = reorder_reference_gbk(ref_gb = ref_gb)
+
+	# Get a gene/IR ID for every position in the reference
+	# A position can have multiple gene IDs as there are overlapping genes
+	ref.pos.gene.id = vector(mode = "list", length = ref_length)
+	for(i in 1:nrow(ref)){
+		for(j in as.numeric(ref$start[i]):as.numeric(ref$end[i])){
+			ref.pos.gene.id[[j]] = c(ref.pos.gene.id[[j]], i)
+		}
+	}
+	# Intergenic ID only assigned if the start of one gene is after the end of the previous gene
+	intergenic_names = c()
+	for(i in 2:nrow(ref)){
+		inter_start = as.numeric(ref$end[i-1])+1
+		inter_end = as.numeric(ref$start[i])-1
+		if(inter_start<=inter_end){
+			intergenic_names = c(intergenic_names, paste(c(ref$name[i-1], ref$name[i]), collapse = ":"))
+			for(j in (inter_start):(inter_end)){
+				ref.pos.gene.id[[j]] = c(ref.pos.gene.id[[j]], nrow(ref)+length(intergenic_names))
+			}
+		}
+		if(i==nrow(ref)){
+			intergenic_names = c(intergenic_names, paste0(ref$name[length(ref$name)], ":"))
+			for(j in (as.numeric(ref$end[nrow(ref)]):length(ref.pos.gene.id))){
+				ref.pos.gene.id[[j]] = c(ref.pos.gene.id[[j]], nrow(ref)+length(intergenic_names))
+			}
+		}
+	}
+	
+	cat("Read in reference and assigned a gene/intergenic region ID to every position","\n")
+	if(process==1){
+		# Create a lookup table to get a gene name/IR name for every ID assigned
+		gene_id_lookup = as.list(c(ref$name, intergenic_names)); names(gene_id_lookup) = 1:length(unique(unlist(ref.pos.gene.id)))
+		write.table(cbind(gene_id_lookup, names(gene_id_lookup)), file = paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name,"_gene_id_name_lookup.txt"), row = F, col = F, sep = "\t", quote = F)
+		cat("Written gene/IR ID lookup to file","\n")
+	}
+	
+	return(list("ref" = ref, "ref.pos.gene.id" = ref.pos.gene.id, "ref_length" = ref_length, "ref.name" = ref.name))
+		
+}
+
+read_ids = function(id_file = NULL){
+	ids = read.table(id_file, h = T, sep = "\t", as.is = T, comment.char = "")
+	colnames(ids) = tolower(colnames(ids))
+	if(any(is.na(match(c("id","paths"), colnames(ids))))) stop("Column names for sample ID and assembly path file must be 'id' and 'paths' in any case", "\n")
+	assemblies = as.character(ids[,which(colnames(ids)=="paths")])
+	ids = as.character(ids[,which(colnames(ids)=="id")])
+	if(!all(file.exists(assemblies))) stop("Error: not all assembly files exist","\n")
+	return(list("ids" = ids, "assemblies" = assemblies))
+}
+
+read_sorted_kmers = function(kmerSeqFile = NULL){
+	# Read in full list of sorted kmers
+	if(substr(kmerSeqFile, (nchar(kmerSeqFile)-2), nchar(kmerSeqFile))==".gz"){
+		final_kmer_list = scan(gzfile(kmerSeqFile), what = character(0), sep = "\n", quiet = TRUE)
+	} else {
+		final_kmer_list = scan(kmerSeqFile, what = character(0), sep = "\n", quiet = TRUE)
+	}
+	return(final_kmer_list)
+}
+
+write_kmergenecomb_filepaths_to_file = function(ids = NULL, kmer_type = NULL, kmer_length = NULL, prefix = NULL, output_prefix = NULL, ident_threshold = NULL, ref.name = NULL, output_dir = NULL, final_file_prefix = NULL){
+	
+	# For the last process, create file containing paths to all output files
+	# Won't check if they are all created - flag warning
+	all_outfiles = paste0(final_file_prefix, ids, "_nucmeralign_kmer_list_gene_IDs.txt.gz")
+	all_outfiles_path = paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_",ref.name,"_kmergenecombination_filepaths.txt")
+	cat(paste0("Writing file paths to all kmer gene combinations per sample for ", kmer_type, " kmer length ", kmer_length), "to file (Warning: have not checked that all kmer contig alignment is completed and all files exist):", all_outfiles_path, "\n")
+	cat(all_outfiles, file = all_outfiles_path, sep = "\n")
+	return(all_outfiles_path)
+}
+
+# Allowed characters in the alignments from nucmer - check all alignments against this to make sure no other characters are present
+allowed.chars = c("a","c","g","t",".","n")
+###################################################################################################
+
+
+# # # Initialise variables
+n = as.integer(args[1])
+prefix = as.character(args[2])
+output_dir = as.character(args[3])
+id_file = as.character(args[4])
+ref.fa = as.character(args[5])
+ref_gb = as.character(args[6])
+kmer_type = tolower(as.character(args[7]))
+kmer_length = as.numeric(args[8])
+ident_threshold = as.numeric(args[9])
+kmerSeqFile = as.character(args[10])
+software_file = as.character(args[11])
+if(length(args)>11){
+	kstart = as.integer(args[12])
+	kend = as.integer(args[13])
+} else {
+	kstart = 9
+	kend = 100
+	if(kmer_length==0) cat("Assuming variable kmer lengths between 9-100 bases long","\n")
+}
+
+
+
+# Check file inputs
+if(is.na(n)) stop("Error: n must be an integer","\n")
+if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n")
+if(unlist(strsplit(output_dir,""))[length(unlist(strsplit(output_dir,"")))]!="/") output_dir = paste0(output_dir, "/")
+if(!file.exists(id_file)) stop("Error: sample ID file doesn't exist","\n")
+if(!file.exists(ref.fa)) stop("Error: reference fasta file doesn't exist","\n")
+if(!file.exists(ref_gb)) stop("Error: reference genbank file doesn't exist","\n")
+if(kmer_type!="protein" & kmer_type!="nucleotide") stop("Error: kmer type must be either protein or nucleotide","\n")
+if(is.na(kmer_length)) stop("Error: kmer length must be an integer","\n")
+if(ident_threshold>100 | ident_threshold<0) stop("Error: nucmer identity threshold must be between 0-100","\n")
+if(!file.exists(kmerSeqFile)) stop("Error: kmer sequence file doesn't exist","\n")
+if(!file.exists(software_file)) stop("Error: software file doesn't exist","\n")
+
+if(kmer_length==0 | length(args)>10) if(is.na(kstart) | is.na(kend)) stop("Error: kstart and kend must be integers","\n")
+
+
+# Read in software file
+software_paths = read.table(software_file, h = T, sep = "\t", quote = "")
+# Required software and script paths
+# Begin with software
+required_software = c("scriptpath", "R","mummer","genoPlotR")
+if(any(is.na(match(required_software, as.character(software_paths$name))))) stop(paste0("Error: missing required software path in the software file - requires ",paste(required_software, collapse = ", ")),"\n")
+
+Rpath = as.character(software_paths$path)[which(toupper(as.character(software_paths$name))=="R")]
+Rscriptpath = paste0(Rpath, "script")
+if(!file.exists(Rscriptpath)) stop("Error: Rscript path",Rscriptpath,"doesn't exist","\n") # SGE added
+script_location = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="scriptpath")]
+if(!dir.exists(script_location)) stop("Error: script location directory specified in the software paths file doesn't exist","\n")
+kmercontigalignmergepath = file.path(script_location, "kmercontigalignmerge.Rscript")
+if(!file.exists(kmercontigalignmergepath)) stop("Error: kmercontigalignmerge.Rscript path doesn't exist - check pipeline script location in the software file","\n")
+
+sequence_functions_Rfile = file.path(script_location, "sequence_functions.R")
+if(!file.exists(sequence_functions_Rfile)) stop("Error: sequence_functions.R path doesn't exist - check pipeline script location in the software file","\n")
+source(sequence_functions_Rfile, chdir = TRUE)
+
+mummer_path = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="mummer")]
+if(!file.exists(mummer_path)) stop("Error: mummer software directory path doesn't exist","\n")
+if(unlist(strsplit(mummer_path,""))[length(unlist(strsplit(mummer_path,"")))]!="/") mummer_path = paste0(mummer_path, "/")
+
+genoPlotRlocation = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="genoplotr")]
+if(!dir.exists(genoPlotRlocation)) stop("Error: genoPlotR installation directory specified in the software paths file doesn't exist","\n")
+
+library(genoPlotR, lib.loc = genoPlotRlocation)
+
+sortstringspath = file.path(script_location, "sort_strings")
+if(!file.exists(sortstringspath)) stop("Error: sort_strings path doesn't exist - check pipeline script location in the software file","\n")
+
+
+
+
+
+
+# Report variables
+cat("#############################################", "\n")
+cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
+cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
+cat("SGE task ID:",Sys.getenv("SGE_TASK_ID"),"\n")
+cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Command line arguments","\n")
+cat(args, "\n\n")
+cat("Parameters:","\n")
+cat("n:", n,"\n")
+cat("Output prefix:", prefix,"\n")
+cat("Analysis directory:", output_dir,"\n")
+cat("ID file path:", id_file,"\n")
+cat("Reference fasta file:", ref.fa,"\n")
+cat("Reference genbank file:", ref_gb,"\n")
+cat("Kmer type:", kmer_type,"\n")
+cat("Kmer length:", kmer_length,"\n")
+cat("Nucmer alignment minimum % identity:", ident_threshold,"\n")
+cat("Kmer list file:", kmerSeqFile,"\n")
+cat("Software file:", software_file, "\n")
+cat("Script location:", script_location, "\n")
+cat("Rscript path:", Rscriptpath,"\n")
+cat("mummer path:", mummer_path,"\n")
+cat("genoPlotR library installation directory:", genoPlotRlocation,"\n")
+if(length(args)>11 | kmer_length==0){
+	cat("Kmer start length:", kstart,"\n")
+	cat("Kmer end length:", kend,"\n")
+}
+cat("Process:",process, "\n")
+cat("#############################################", "\n\n")
+
+
+
+# Create an output directory
+contigalign_dir = create_contigalign_dir(dir = output_dir, kmer_type = kmer_type, kmer_length = kmer_length)
+
+# Read in sample IDs
+ids = read_ids(id_file = id_file)
+assemblies = ids$assemblies
+ids = ids$ids
+
+# Read in reference genbank file
+ref = read_reference_files(ref_gb = ref_gb, ref.fa = ref.fa, ref_length = ref_length, process = process, output_dir = contigalign_dir, prefix = prefix, kmer_type = kmer_type, kmer_length = kmer_length)
+ref.pos.gene.id = ref$ref.pos.gene.id
+ref_length = ref$ref_length
+ref.name = ref$ref.name
+ref = ref$ref
+# Read in full list of sorted kmers
+final_kmer_list = read_sorted_kmers(kmerSeqFile = kmerSeqFile)
+
+for(i in process){
+	# Find the contig file for sample ID i
+	contig_file = assemblies[i]
+	cat("\n")
+	cat("Running nucmer","\n")
+	cat("\n")
+	
+	# Changed to remove Ns from contig before alignment
+	contig_seq = read_contigs_removeNs(contig_file)
+	cat(paste(contig_seq$contig_names_final, contig_seq$contig_seq, sep = "\n"), file = paste0(contigalign_dir, ids[i], "_", kmer_type, kmer_length, "_contigs_temp.fa"), sep = "\n")
+	
+	system(paste0(mummer_path, "nucmer --prefix=", contigalign_dir, ids[i],"_", kmer_type, kmer_length, "_query ", ref.fa, " ", contigalign_dir, ids[i], "_", kmer_type, kmer_length, "_contigs_temp.fa"))
+	
+	cat("\n")
+
+	contig_id = contig_seq$contig_names_final
+	contig_id = substr(contig_id, 2, 1e7)
+	contigs = contig_seq$contig_seq
+	contig_length = nchar(contigs)
+	
+	
+	# Get positions for all alignments for contig file i
+	alignment.pos = system(paste0(mummer_path,"show-coords ", contigalign_dir, ids[i],"_", kmer_type, kmer_length, "_query.delta"), intern = T)
+	alignment.pos = alignment.pos[6:length(alignment.pos)]
+	alignment.pos = t(sapply(alignment.pos, get_alignment_pos, USE.NAMES = F))
+	colnames(alignment.pos) = c("ref_start","ref_end","contig_start","contig_end","length_ref","length_contig","identity","contig")
+	cat("Got all alignment positions","\n")
+	
+	all_kmers_genome_i = c()
+	all_kmers_gene_index_i = list()
+	length_contig_no_match = c()
+	
+	for(c in 1:length(contig_id)){
+		
+		if(kmer_type=="protein"){
+			# Translate contig c
+			contig.translate.c = translate_6_frames_fromcontig(contig = contigs[c], oneLetterCodes = oneLetterCodes)
+			# contig.translate.corrected = translate_6_frames_fromcontig(contig = contigs[c], oneLetterCodes = oneLetterCodesCorrected)
+			# Get the kmers for each of the translated contigs
+			kmers.contig.c = sapply(contig.translate.c, function(x, kmer_length) list(count_protein_kmers(x, kmer_length)), kmer_length = kmer_length, USE.NAMES = F)
+			cat("Translated contig",c,"\n")
+		} else if(kmer_type=="nucleotide"){
+			# Pull out contig c and set to uppercase
+			contigs_c = toupper(contigs[c])
+			# Remove Ns, creating multiple 'contigs' from the contig if Ns present
+			if(any(unlist(strsplit(contigs_c,""))=="N")) contigs_c = remove_Ns(contigs_c)
+			# If there is a fixed kmer length above 0 count kmers
+			if(kmer_length>0){
+				kmers.contig.c = unlist(sapply(contigs_c, function(x, kmer_length) list(kmerCount(x, kmer_length)), kmer_length = kmer_length, USE.NAMES = F))
+			# Else if variable kmer lengths count kmers
+			} else {
+				kmers.contig.c = unlist(sapply(contigs_c, function(x, kstart, kend) list(count_varlength_kmers(x, c(kstart, kend))), kstart = kstart, kend = kend, USE.NAMES = F))
+			}			
+		}
+		
+		# Run for every contig
+		contig.alignment.c = system(paste0(mummer_path, "show-aligns ", contigalign_dir, ids[i],"_", kmer_type, kmer_length, "_query.delta ", ref.name, " ", contig_id[c]), intern = T)
+		
+		if(length(contig.alignment.c)>0 & !is.null(kmers.contig.c)){
+			# Find the lines in the alignment output containing the start and end of each alignment
+			wh.begin = which(sapply(contig.alignment.c, function(x) any(unlist(gregexpr("BEGIN alignment", x))!=-1), USE.NAMES = F))
+			wh.end = which(sapply(contig.alignment.c, function(x) any(unlist(gregexpr("END alignment", x))!=-1), USE.NAMES = F))
+			# Check that the length of start and end are the same
+			if(length(wh.begin)!=length(wh.end)) stop("Error: number of BEGIN alignment matches is not equal to the number of END alignment matches for ID",ids[i],"and contig",c,contig_id[c],"\n")
+			# Pull out from the alignment the start and end positions for contig c
+			alignment.pos.alignfile = t(sapply(contig.alignment.c[wh.begin], get_alignment_pos_indiv, USE.NAMES = F))
+			# Pull out from the full alignment positions matrix the rows for contig c
+			alignment.pos.coordsfile = matrix(alignment.pos[which(alignment.pos[,8]==contig_id[c]),], ncol = 8, byrow = F)
+			for(j in 1:nrow(alignment.pos.alignfile)){
+				if(any(as.numeric(alignment.pos.alignfile[j,])!=as.numeric(alignment.pos.coordsfile[j,1:ncol(alignment.pos.alignfile)]))) stop("Error: alignment coordinates do not match between the alignment file and the coordinates file","\n")
+			}
+			# Get all bases which are covered by an alignment for contig c that pass the identity threshold
+			all_alignment_pos = unlist(apply(matrix(alignment.pos.alignfile[which(as.numeric(alignment.pos.coordsfile[,7])>=ident_threshold),3:4], ncol = 2, byrow = T), 1, function(x) x[1]:x[2]))
+			# Write the number of bases that are not part of any alignment for contig c
+			length_contig_no_match[c] = length(which(is.na(match(c(1:contig_length[c]), all_alignment_pos))))
+		
+			contig_pos_all = c()
+			ref_pos_all = c()
+			
+			
+			# For every alignment for contig c
+			# for(j in 1:length(wh.begin)){
+			for(j in which(as.numeric(alignment.pos.coordsfile[,7])>=ident_threshold)){
+				# First pull out the lines of the alignment j
+				align.j.lines = contig.alignment.c[(wh.begin[j]+1):(wh.end[j]-1)]
+				# Remove all empty lines
+				align.j.lines = align.j.lines[which(align.j.lines!="")]
+				# Find which rows do not start with a space - these contain the alignments
+				wh.notgaps = sapply(align.j.lines, function(x) unlist(strsplit(x,""))[1]!=" ", USE.NAMES = F)
+				# Only keep those that don't start with a space
+				align.j.lines = align.j.lines[wh.notgaps]
+				# Run get alignment function to only keep the bases
+				align.j.lines = sapply(align.j.lines, get_alignment, USE.NAMES = F)
+				# Concatenate the reference and query alignments, which alternate in lines
+				ref.align = unlist(strsplit(paste(align.j.lines[seq(from = 1, by = 2, length.out = length(align.j.lines)/2)], collapse = ""),""))
+				query.align = unlist(strsplit(paste(align.j.lines[seq(from = 2, by = 2, length.out = length(align.j.lines)/2)], collapse = ""),""))
+				# Check that there are no unknown characters in either alignment
+				if(any(is.na(match(ref.align, allowed.chars)))) stop("Unknown characters in reference sequence","\n")
+				if(any(is.na(match(query.align, allowed.chars)))) stop("Unknown characters in reference sequence","\n")
+				# Get the length of the reference and query in the alignment that are not gaps
+				ref.nchar = length(which(ref.align!="."))
+				query.nchar = length(which(query.align!="."))
+				# Ensure that the reference and query alignments are the same length as each other (including gaps)
+				if(length(ref.align)!=length(query.align)) stop("Error: reference alignment length not equal to query alignment length for ID", ids[i],"and contig",c,contig_id[c],"j",j,"\n")
+				# Check that the non gapped lengths of the alignments match those in the full alignment stats matrix
+				if(ref.nchar!=alignment.pos.coordsfile[j,5]) stop("Error: reference alignment extracted is not the correct length for ID", ids[i],"and contig",c,contig_id[c],"j",j,"\n")
+				if(query.nchar!=alignment.pos.coordsfile[j,6]) stop("Error: reference alignment extracted is not the correct length for ID", ids[i],"and contig",c,contig_id[c],"j",j,"\n")
+				# For every position in the reference alignment that is not a gap, assign it it's position in the reference
+				# For every position that is a gap, assign it the highest leftmost position that is not a gap
+				ref.pos = rep(0, length(ref.align)); ref.pos[which(ref.align!=".")] = alignment.pos.alignfile[j,1]:alignment.pos.alignfile[j,2]
+				if(any(ref.pos==0)){
+					ref.pos.new = ref.pos
+					for(k in 1:length(which(ref.pos==0))){
+						max.k.pos = ref.pos[1:which(ref.pos==0)[k]]
+						ref.pos.new[which(ref.pos==0)[k]] = max.k.pos[which(max.k.pos!=0)][length(max.k.pos[which(max.k.pos!=0)])]
+					}
+					ref.pos = ref.pos.new
+				}
+				contig_pos_all = c(contig_pos_all, c(alignment.pos.alignfile[j,3]:alignment.pos.alignfile[j,4]))
+				ref_pos_all = c(ref_pos_all, ref.pos[which(query.align!=".")])
+			}
+			# Alignment positions out
+			
+			if(length(contig_pos_all)>0){
+				s1 = aggregate(ref_pos_all, by = list(contig_pos_all), FUN = "unique")
+			
+				out = sapply(s1[,2], function(x, ref_gene) list(unlist(ref_gene[x])), ref_gene = ref.pos.gene.id, USE.NAMES = F)[match(c(1:contig_length[c]), as.numeric(s1[,1]))]
+				
+				if(kmer_type=="protein"){
+
+					# Get a reference gene for every amino acid in the translated contigs (use the middle base of the amino acid)
+					# Use the corrected translated contigs so that each amino acid directly corresponds to the right contig position
+					pos.frames = list()
+					pos.frames[[1]] = out[seq(from = 2, by = 3, length.out = nchar(contig.translate.c[1]))]
+					pos.frames[[2]] = out[seq(from = 3, by = 3, length.out = nchar(contig.translate.c[2]))]
+					pos.frames[[3]] = out[seq(from = 4, by = 3, length.out = nchar(contig.translate.c[3]))]
+					pos.frames[[4]] = out[seq(from = (nchar(contigs[c])-1), by = -3, length.out = nchar(contig.translate.c[4]))]
+					pos.frames[[5]] = out[seq(from = (nchar(contigs[c])-2), by = -3, length.out = nchar(contig.translate.c[5]))]
+					pos.frames[[6]] = out[seq(from = (nchar(contigs[c])-3), by = -3, length.out = nchar(contig.translate.c[6]))]
+
+
+		
+					# Get the genes/IRs that each kmer sequence is in
+					kmers.genes.c = list()
+					for(j in 1:length(pos.frames)){
+						# ** update this now the translate function is fixed and no Ns are kept and translated
+						# still works but there are no longer any X's in the translations
+						wh.notX = which(unlist(strsplit(contig.translate.c[j],""))!="X")
+						s1 = sapply(1:length(kmers.contig.c[[j]]), function(x, kmer_length, wh.notX) list(wh.notX[c(1: kmer_length)+x-1]), kmer_length = kmer_length, wh.notX = wh.notX, USE.NAMES = F)
+						kmers.genes.c = c(kmers.genes.c, sapply(s1, function(x, pos.frames.j) list(unique(unlist(pos.frames.j[x]))), pos.frames.j = pos.frames[[j]], USE.NAMES = F))	
+					}
+				
+				} else if(kmer_type=="nucleotide"){
+					
+					kmers.genes.c = list()
+					# Which positions in the contig are not Ns
+					wh.notN = which(unlist(strsplit(contigs[c],""))!="N")
+					# Where are the gaps within these numbers where the Ns were
+					which.break = which(diff(wh.notN)>1)
+					# which.break = which(sapply(1:(length(wh.notN)-1), function(x, notN) (notN[x+1]-notN[x])>1, notN = wh.notN, USE.NAMES = F))
+					# Find the not Ns position split by new contigs (Ns removed)
+					if(length(which.break)>0){
+						wh.notN.breaks = list()
+						for(k in 1:length(which.break)){
+							# If looking at the first break, add the numbers to the list
+							if(k==1){
+								wh.notN.breaks[[k]] = wh.notN[1:which.break[k]]
+								if(length(which.break)==1){
+									wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[1]+1):length(wh.notN)]
+								}
+							# If there are multiple breaks and it is not the last one, fill in for that
+							} else if(k!=length(which.break)){
+								wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k-1)]+1):which.break[k]]
+							# If it is the last break, add the final two
+							} else {
+								wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k-1)]+1):which.break[k]]
+								wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k)]+1):length(wh.notN)]
+								
+								# wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k-1)]+1):length(wh.notN)]
+							}
+						}
+					} else {
+						wh.notN.breaks = list(wh.notN)
+					}
+					s1 = list()
+					# If there is a fixed kmer length
+					if(kmer_length>0){
+						for(j in 1:length(wh.notN.breaks)){
+							# For each subcontig with a contig (if broken up by Ns) get the positions in the contig for each kmer
+							s1 = c(s1, sapply(1:(length(wh.notN.breaks[[j]])-kmer_length+1), function(x, kmer_length, wh.notN.breaks) list(wh.notN.breaks[c(1: kmer_length)+x-1]), wh.notN.breaks = wh.notN.breaks[[j]], kmer_length = kmer_length, USE.NAMES = F))
+						}
+					} else {
+						# If the kmer length is variable, get positions for each variable kmer
+						for(j in 1:length(wh.notN.breaks)){
+							kstart_j = kstart; 
+							kend_j = kend; kend_j = min(c(kend, length(wh.notN.breaks[[j]])))
+							s1 = c(s1, unlist(sapply(kstart_j:kend_j, function(x, pos) get_varlength_pos_kmer(pos, x), pos = wh.notN.breaks[[j]], USE.NAMES = F), recursive=FALSE))
+						}
+					}
+					kmers.genes.c = c(kmers.genes.c, sapply(s1, function(x, out) list(unique(unlist(out[x]))), out = out, USE.NAMES = F))	
+				}
+			} else {
+				# If none of the alignments were above the identity threshold, set all kmers to NULL
+				kmers.genes.c = sapply(1:length(unlist(kmers.contig.c)), function(x) list(NULL), USE.NAMES = F)
+			}
+		} else {
+			# If there were no alignments at all for contig c, set length of no match to the length of the contig
+			# and set all kmers to NULL
+			length_contig_no_match[c] = contig_length[c]
+			kmers.genes.c = sapply(1:length(unlist(kmers.contig.c)), function(x) list(NULL), USE.NAMES = F)
+		}
+		# Add the kmers and gene pos for the kmers from contig c to the total
+		all_kmers_genome_i = c(all_kmers_genome_i , unlist(kmers.contig.c))
+		all_kmers_gene_index_i = c(all_kmers_gene_index_i, kmers.genes.c)
+		cat("Finished for contig",c,"of", length(contig_id),as.character(Sys.time()), "\n")
+	}
+	if(length(all_kmers_genome_i)!=length(all_kmers_gene_index_i)) stop("Length all_kmers_genome_i != length all_kmers_gene_index_i", "\n")
+	# Remove all that do not have a gene
+	wh.alignment = !sapply(all_kmers_gene_index_i, is.null, USE.NAMES = F)
+	all_kmers_genome_i = all_kmers_genome_i[wh.alignment]
+	all_kmers_gene_index_i = all_kmers_gene_index_i[wh.alignment]
+
+	
+	# Get list of unique kmers in genome i
+	# For every unique kmer sequence, get all gene IDs
+	aggregate_kmers = split(all_kmers_gene_index_i, all_kmers_genome_i)
+	aggregate_kmers = sapply(aggregate_kmers, function(x) unique(unlist(x)))
+	# Now for each unique kmer sequence, unlist and turn into character vector for each kmer
+	unique_kmer_index_expanded = unlist(sapply(c(1:length(aggregate_kmers)), function(index, agg_kmers) rep(index, length(agg_kmers[[index]])), agg_kmers = aggregate_kmers, USE.NAMES = F))
+	unique_kmers_genes = as.numeric(unlist(aggregate_kmers))
+	unique_kmers_genes_names = names(aggregate_kmers)[unique_kmer_index_expanded]
+	## Add in for reverse complement kmers
+	if(kmer_type=="nucleotide"){		
+		unique_kmers_genes_names_revcompl = sapply(unique_kmers_genes_names, function(x) paste(rev(unlist(rev_base[unlist(strsplit(x,""))])), collapse = ""), USE.NAMES = F)
+	}
+	
+	cat("Got list of all unique gene IDs for each kmer in genome",i,"\n")
+	
+	# # Match to full list of sorted kmers
+	unique_kmers_index_match = match(unique_kmers_genes_names, final_kmer_list)
+	if(kmer_type=="nucleotide"){
+		unique_kmers_index_match_revcompl = match(unique_kmers_genes_names_revcompl, final_kmer_list)
+		which_match_revcompl = which(is.na(unique_kmers_index_match) & !is.na(unique_kmers_index_match_revcompl))
+		unique_kmers_index_match[which_match_revcompl] = unique_kmers_index_match_revcompl[which_match_revcompl]
+	}
+	
+	# For any kmers not in the dsk output, just remove them with a warning
+	if(any(is.na(unique_kmers_index_match))){
+		cat("Warning: removing", length(which(is.na(unique_kmers_index_match))), "kmers not in the provided kmer list","\n")
+		unique_kmers_genes = unique_kmers_genes[which(!is.na(unique_kmers_index_match))]
+		unique_kmers_index_match = unique_kmers_index_match[which(!is.na(unique_kmers_index_match))]
+	}
+	
+	# Write outfile - concatenate the index and the genes into a string for matching later
+	# As matches have been done using the reverse complement as well as forward, some of the gene/kmer pairings may now be duplicated, can deduplicate here
+	out = paste(unique_kmers_index_match, unique_kmers_genes, sep = ",")
+	out = unique(out)
+	out = cbind(out, rep(1, length(out)))
+	
+	
+	# Write to /tmp/
+	# outfile = paste0("/tmp/", prefix, "_nucmeralign_kmer_list_gene_IDs_", ids[i], "_t", ident_threshold,"_unsorted.txt")
+	outfile = paste0(contigalign_dir, prefix, "_nucmeralign_kmer_list_gene_IDs_", ids[i], "_t", ident_threshold,"_unsorted.txt")
+	write.table(out, file = outfile, row = F, col = F, sep = "\t", quote = F)
+	# Sort the file
+	final_file_prefix = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name, "_t",ident_threshold, "_")
+	final.kmer.txt.gz = paste0(final_file_prefix, ids[i], "_nucmeralign_kmer_list_gene_IDs.txt.gz")
+	sortCommand = paste(c(sortstringspath, outfile, "| gzip -c >", final.kmer.txt.gz), collapse=" ")
+	cat("Sort command:","\n")
+	cat(sortCommand, "\n")
+	cat("\n")
+	system(sortCommand)
+	# Remove the /tmp/ files
+	# Unsorted file
+	system(paste0("rm ", outfile))
+	system(paste0("rm ", contigalign_dir, ids[i],"_", kmer_type, kmer_length, "_query.delta"))
+	# Contig file
+	# if(substr(contig_file, (nchar(contig_file)-2), nchar(contig_file))==".gz") system(paste0("rm /tmp/", ids[i], "_contigs_temp.fa"))
+	system(paste0("rm ", contigalign_dir, ids[i], "_", kmer_type, kmer_length, "_contigs_temp.fa"))
+	cat("Number of unaligned bases for ID",ids[i],sum(length_contig_no_match), "of",sum(contig_length),(sum(length_contig_no_match)/sum(contig_length))*100,"%", "\n")
+	
+
+	# For the last process, create file containing paths to all kmer/gene combinations
+	if(i==length(ids)){
+		all_outfiles_path = write_kmergenecomb_filepaths_to_file(ids = ids, kmer_type = kmer_type, kmer_length = kmer_length, prefix = prefix, output_prefix = prefix, ident_threshold = ident_threshold, ref.name = ref.name, output_dir = contigalign_dir, final_file_prefix = final_file_prefix)
+	}
+	
+	# Create completed file
+	outfile_completed = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length,"_",ids[i],".kmercontigalign.completed.txt") # SGE added
+	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added
+	
+
+	cat("Finished aligning contigs to the reference genome for process",i,"\n")	
+}
+
+
+# For a subset of the processes, use to merge the batches created by the other processes
+# SGE incorporated from kmeralignmerge.Rscript
+
+# Which processes to keep
+p = floor(n/5); p = ifelse(p==0, 1, p)
+
+if(process>p) {
+	
+	cat("Task",process,"not required for kmer contig align merging","\n")
+	cat("Finished in",(proc.time()[3]-start.time)/3600,"hours\n")
+	quit("no")
+	
+} else {
+	
+	cat("Running kmer contig align merge","\n\n")
+	
+	input_files_filepath = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length, "_",ref.name,"_kmergenecombination_filepaths.txt")
+	
+	final_file_prefix = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name, "_t",ident_threshold, "_")
+	input_files = paste0(final_file_prefix, ids, "_nucmeralign_kmer_list_gene_IDs.txt.gz")
+	input_files_completed = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length,"_",ids,".kmercontigalign.completed.txt")
+	
+	nattempts = 0
+	while(!all(file.exists(input_files_completed)) | !all(file.exists(input_files))) {
+		nattempts=nattempts+1
+		if(nattempts>100) stop("Could not find files", input_files_completed)
+		Sys.sleep(60) # SGE changed from 1 to 60
+	}
+	
+	system(paste0(Rscriptpath, " ", kmercontigalignmergepath," ", n, " ", p, " ", prefix, " ", output_dir," ", input_files_filepath, " ", kmer_type, " ", kmer_length," ", ref.fa," ", ident_threshold, " ", software_file))
+	
+}
+
+
+
+cat("Finished in",(proc.time()[3]-start.time)/60,"minutes\n")
+
