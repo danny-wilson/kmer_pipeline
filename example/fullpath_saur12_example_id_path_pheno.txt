@@ -1,0 +1,13 @@
+id	paths	pheno
+C00007096	/tmp/tut/example/contigs/4c851b71-811c-4b19-86a4-63ed1e94f0a3__v3.contigs.fa.gz	1
+C00001164	/tmp/tut/example/contigs/2ad4ee81-e1ee-4083-94f9-fb45d65eb3b2__v3.contigs.fa.gz	1
+C00012748	/tmp/tut/example/contigs/42d1c2c7-76af-405a-87a7-0df10be0f9c7__v3.contigs.fa.gz	1
+C00000830	/tmp/tut/example/contigs/db7fe57b-83a9-43fd-a371-46f6035bc895__v3.contigs.fa.gz	0
+C00003095	/tmp/tut/example/contigs/6de77a96-63c1-49c8-9c65-edd1066318f4__v3.contigs.fa.gz	0
+C00001250	/tmp/tut/example/contigs/f57aafd1-d401-4a4d-9e88-37741afbff61__v3.contigs.fa.gz	0
+C00000814	/tmp/tut/example/contigs/231596ab-6d22-4bea-a9f5-a4ea0d7be6a5__v3.contigs.fa.gz	1
+C00012796	/tmp/tut/example/contigs/4e43b5e7-f2cd-4420-b705-1023fcfeb834__v3.contigs.fa.gz	1
+C00013400	/tmp/tut/example/contigs/5a962ff1-c4ee-48c7-850b-3a5c7aede72d__v3.contigs.fa.gz	1
+C00003164	/tmp/tut/example/contigs/8e80650d-5ce5-457a-971c-d18315d29d12__v3.contigs.fa.gz	0
+C00003283	/tmp/tut/example/contigs/6cf65103-f0f7-46fc-b359-dcad00cbbbd0__v3.contigs.fa.gz	0
+C00013192	/tmp/tut/example/contigs/647470af-3112-4fdb-bc29-77f93b4ff02b__v3.contigs.fa.gz	0
