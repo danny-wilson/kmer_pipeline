@@ -142,21 +142,14 @@ for(i in 1:length(kmer_type)){
 	
 	cat(paste0("qsub -t 1:",p," -tc ",p, " -o ", stdouterr, " -e ", stdouterr," ", scriptDir, "rungemma.Rscript ", p, " ", extended_path_prefix, " ", id_file, " ", prefix, " ", analysisDir, " ", kmer_type[i], " ", kmer_length[i], " ", software_file),"\n\n")
 	
-	cat("Step 5A - run contig alignment","\n")
+	cat("Step 5 - run contig alignment","\n")
 	cat("########################################################################\n\n")
 	
 	tc = n; if(tc>200) tc = 200
 	
 	cat(paste0("qsub -t 1:",n," -tc ",tc, " -o ", stdouterr, " -e ", stdouterr," ", scriptDir, "kmercontigalign.Rscript ", n, " ", prefix, " ", analysisDir, " ", id_file, " ", ref_fa, " ", ref_gb, " ", kmer_type[i], " ", kmer_length[i], " ", nucmerident, " ", extended_path_prefix, ".kmermerge.txt.gz ", software_file),"\n\n")
 	
-	if(kmer_type[i]=="nucleotide"){
-		cat("Step 5B - or run bowtie2 mapping","\n")
-		cat("########################################################################\n\n")
-	
-		cat(paste0("qsub -o ", stdouterr, " -e ", stdouterr, " ", scriptDir, "runbowtie.Rscript ", prefix, " ", analysisDir, " ", extended_path_prefix, " ", ref_fa, " ", kmer_type[i], " ", kmer_length[i], " ", software_file, " ", bowtie_parameters, " ", samtools_filter),"\n\n")
-	}
-	
-	cat("Step 6A - plot Manhattan figures using contig alignment positions","\n")
+	cat("Step 6 - plot Manhattan figures using contig alignment positions","\n")
 	cat("########################################################################\n\n")
 	
 	# Get the reference name
@@ -168,6 +161,11 @@ for(i in 1:length(kmer_type)){
 	cat(paste0("qsub -o ", stdouterr, " -e ", stdouterr, " ", scriptDir, "plotManhattan.Rscript ", prefix, " ", analysisDir, " ", extended_path_prefix, " ", ref_gb, " ", ref_fa, " ", analysisDir, kmer_type[i], "kmer", kmer_length[i], "_kmergenealign/", prefix, "_", kmer_type[i], kmer_length[i], "_", ref.name, "_gene_id_name_lookup.txt ", id_file, " ", nucmerident, " ", min_count, " ", kmer_type[i], " ", kmer_length[i], " ", minor_allele_threshold, " ", software_file, " ", blastident),"\n\n")
 	
 	if(kmer_type[i]=="nucleotide"){
+		cat("Step 5B - or run bowtie2 mapping","\n")
+		cat("########################################################################\n\n")
+	
+		cat(paste0("qsub -o ", stdouterr, " -e ", stdouterr, " ", scriptDir, "runbowtie.Rscript ", prefix, " ", analysisDir, " ", extended_path_prefix, " ", ref_fa, " ", kmer_type[i], " ", kmer_length[i], " ", software_file, " ", bowtie_parameters, " ", samtools_filter),"\n\n")
+
 		cat("Step 6B - plot Manhattan figures using bowtie2 mapping positions","\n")
 		cat("########################################################################\n\n")
 	
