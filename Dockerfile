@@ -32,3 +32,7 @@ RUN wget https://github.com/danny-wilson/gemma0.93b/archive/refs/tags/v0.1.tar.g
 # Install R package genoPlotR
 RUN Rscript -e 'install.packages("genoPlotR", repos="https://www.stats.bris.ac.uk/R")'
 
+# Set user, home and working directory
+USER jovyan
+ENV HOME /home/jovyan
+WORKDIR /home/jovyan
