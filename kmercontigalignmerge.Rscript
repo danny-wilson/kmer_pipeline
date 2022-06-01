@@ -1,8 +1,4 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N kmercontigalignmerge -j y
-#$ -pe shmem 2
+#!/usr/bin/env Rscript
 
 
 
@@ -13,7 +9,7 @@ args = commandArgs(trailingOnly=TRUE)
 # Process arguments - SGE added out_prefix to usage
 help = c("kmercontigalignmerge.R merge kmer/gene alignment combinations",
 			"Adapted from Daniel Wilson (2018) kmermerge.Rscript",
-			"Usage: qsub -t 1:n -tc p kmercontigalignmerge.Rscript n p output_prefix analysis_dir input_files kmer_type kmer_length ref_fa nucmerident software_file")
+			"Usage: kmercontigalignmerge.Rscript n p output_prefix analysis_dir input_files kmer_type kmer_length ref_fa nucmerident software_file")
 
 # Get task number - architecture specific
 process = as.integer(Sys.getenv("SGE_TASK_ID"))

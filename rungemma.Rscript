@@ -1,8 +1,4 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N rungemma -j y
-#$ -pe shmem 1
+#!/usr/bin/env Rscript
 
 # Start time
 start.time = proc.time()[3]
@@ -14,9 +10,9 @@ t = as.integer(Sys.getenv("SGE_TASK_ID"))
 # Process arguments
 help = paste(
 "rungemma.Rscript run gemma on a subset of the unique patterns",
-"Daniel Wilson (2018)",
+"Daniel Wilson (2022)",
 "",
-"Usage: qsub -t 1:p -tc p rungemma.Rscript p kmerFilePrefix id_file output_prefix analysis_dir kmertype kmer_length software_file [covariate_file]",
+"Usage: SGE_TASK_ID=1 rungemma.Rscript p kmerFilePrefix id_file output_prefix analysis_dir kmertype kmer_length software_file [covariate_file]",
 sep="\n") # SGE changed pheno to id_file, added out-dir, kmertype, kmerlen, cov-file, software_file
 if(length(args)<8 | length(args)>9) {
 	cat(help,sep="\n")
@@ -63,9 +59,9 @@ keyfile = paste0(prefix,".patternmerge.patternKey.txt.gz")
 keySizefile = paste0(prefix,".patternmerge.patternKeySize.txt")
 kinfile = paste0(prefix,".kinshipmerge.kinship.txt.gz")
 
-if(!file.exists(keyfile)) stop("Error: pattern key file doesn't exist","\n") # SGE added
-if(!file.exists(keySizefile)) stop("Error: pattern key size file doesn't exist","\n") # SGE added
-if(!file.exists(kinfile)) stop("Error: kinship file doesn't exist","\n") # SGE added
+if(!file.exists(keyfile)) stop("Error: pattern key file doesn't exist: ",keyfile," \n") # SGE added
+if(!file.exists(keySizefile)) stop("Error: pattern key size file doesn't exist: ",keySizefile," \n") # SGE added
+if(!file.exists(kinfile)) stop("Error: kinship file doesn't exist: ",kinfile," \n") # SGE added
 
 # Sanity check covariate file
 if(!is.null(covariate_file)){

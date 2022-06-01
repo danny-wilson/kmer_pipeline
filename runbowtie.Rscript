@@ -1,15 +1,11 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N run_bowtie -j y
-#$ -pe shmem 2
+#!/usr/bin/env Rscript
 
 # Start time
 start.time = proc.time()[3]
 args = commandArgs(trailingOnly=TRUE)
 
 help = c("runbowtie.Rscript map kmers to a reference genome using bowtie2",
-			"Usage: qsub runbowtie.Rscript output_prefix analysis_dir kmerfilePrefix ref_fa kmer_type kmer_length software_file [bowtie_parameters samtools_filter]")
+			"Usage: runbowtie.Rscript output_prefix analysis_dir kmerfilePrefix ref_fa kmer_type kmer_length software_file [bowtie_parameters samtools_filter]")
 
 
 if(length(args!=0)){

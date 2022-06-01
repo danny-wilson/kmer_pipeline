@@ -1,12 +1,8 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N kmercontigalign -j y
-#$ -pe shmem 2
+#!/usr/bin/env Rscript
 
 
 help = c("kmercontigalign.Rscript align contigs to the reference genome using nucmer and assign kmers to genes or intergenic regions",
-			"qsub -t 1:n -tc p kmercontigalign.Rscript n output_prefix output_dir id_file ref_fa ref_gb kmer_type kmer_length nucmerident kmerSeqFile software_file [kstart=9 kend=100]")
+			"kmercontigalign.Rscript n output_prefix output_dir id_file ref_fa ref_gb kmer_type kmer_length nucmerident kmerSeqFile software_file [kstart=9 kend=100]")
 
 # Start time
 start.time = proc.time()[3]
@@ -99,10 +95,16 @@ get_contigs = function(index, coords, contigs){
 	}
 }
 
+remove_Ns = function(contig){
+	contigs = unlist(strsplit(contig,"N"))
+	return(contigs[which(contigs!="")])
+}
 
 get_varlength_allks = function(pos, k){
 	return(get_varlength_pos_kmer(pos, k))
 }
+
+
 
 read_reference_files = function(ref_gb = NULL, ref.fa = NULL, ref_length = NULL, process = NULL, output_dir = NULL, prefix = NULL, kmer_type = NULL, kmer_length = NULL){
 	
@@ -192,7 +194,7 @@ write_kmergenecomb_filepaths_to_file = function(ids = NULL, kmer_type = NULL, km
 }
 
 # Allowed characters in the alignments from nucmer - check all alignments against this to make sure no other characters are present
-allowed.chars = c("a","c","g","t",".")
+allowed.chars = c("a","c","g","t",".","n")
 ###################################################################################################
 
 
@@ -216,6 +218,7 @@ if(length(args)>11){
 	kend = 100
 	if(kmer_length==0) cat("Assuming variable kmer lengths between 9-100 bases long","\n")
 }
+
 
 
 # Check file inputs
@@ -357,18 +360,21 @@ for(i in process){
 		if(kmer_type=="protein"){
 			# Translate contig c
 			contig.translate.c = translate_6_frames_fromcontig(contig = contigs[c], oneLetterCodes = oneLetterCodes)
+			# contig.translate.corrected = translate_6_frames_fromcontig(contig = contigs[c], oneLetterCodes = oneLetterCodesCorrected)
 			# Get the kmers for each of the translated contigs
 			kmers.contig.c = sapply(contig.translate.c, function(x, kmer_length) list(count_protein_kmers(x, kmer_length)), kmer_length = kmer_length, USE.NAMES = F)
-			# cat("Translated contig",c,"\n")
+			cat("Translated contig",c,"\n")
 		} else if(kmer_type=="nucleotide"){
 			# Pull out contig c and set to uppercase
 			contigs_c = toupper(contigs[c])
+			# Remove Ns, creating multiple 'contigs' from the contig if Ns present
+			if(any(unlist(strsplit(contigs_c,""))=="N")) contigs_c = remove_Ns(contigs_c)
 			# If there is a fixed kmer length above 0 count kmers
 			if(kmer_length>0){
-				kmers.contig.c = kmerCount(contigs_c, kmer_length)
+				kmers.contig.c = unlist(sapply(contigs_c, function(x, kmer_length) list(kmerCount(x, kmer_length)), kmer_length = kmer_length, USE.NAMES = F))
 			# Else if variable kmer lengths count kmers
 			} else {
-				kmers.contig.c = count_varlength_kmers(contigs_c, c(kstart, kend))
+				kmers.contig.c = unlist(sapply(contigs_c, function(x, kstart, kend) list(count_varlength_kmers(x, c(kstart, kend))), kstart = kstart, kend = kend, USE.NAMES = F))
 			}			
 		}
 		
@@ -457,27 +463,64 @@ for(i in process){
 					pos.frames[[5]] = out[seq(from = (nchar(contigs[c])-2), by = -3, length.out = nchar(contig.translate.c[5]))]
 					pos.frames[[6]] = out[seq(from = (nchar(contigs[c])-3), by = -3, length.out = nchar(contig.translate.c[6]))]
 
+
+		
 					# Get the genes/IRs that each kmer sequence is in
 					kmers.genes.c = list()
 					for(j in 1:length(pos.frames)){
-						contig_index_translated_vector = c(1:nchar(contig.translate.c[j]))
-						s1 = sapply(1:length(kmers.contig.c[[j]]), function(x, kmer_length, contig_vector) list(contig_vector[c(1:kmer_length)+x-1]), kmer_length = kmer_length, contig_vector = contig_index_translated_vector, USE.NAMES = F)
+						# ** update this now the translate function is fixed and no Ns are kept and translated
+						# still works but there are no longer any X's in the translations
+						wh.notX = which(unlist(strsplit(contig.translate.c[j],""))!="X")
+						s1 = sapply(1:length(kmers.contig.c[[j]]), function(x, kmer_length, wh.notX) list(wh.notX[c(1: kmer_length)+x-1]), kmer_length = kmer_length, wh.notX = wh.notX, USE.NAMES = F)
 						kmers.genes.c = c(kmers.genes.c, sapply(s1, function(x, pos.frames.j) list(unique(unlist(pos.frames.j[x]))), pos.frames.j = pos.frames[[j]], USE.NAMES = F))	
 					}
 				
 				} else if(kmer_type=="nucleotide"){
 					
 					kmers.genes.c = list()
+					# Which positions in the contig are not Ns
+					wh.notN = which(unlist(strsplit(contigs[c],""))!="N")
+					# Where are the gaps within these numbers where the Ns were
+					which.break = which(diff(wh.notN)>1)
+					# which.break = which(sapply(1:(length(wh.notN)-1), function(x, notN) (notN[x+1]-notN[x])>1, notN = wh.notN, USE.NAMES = F))
+					# Find the not Ns position split by new contigs (Ns removed)
+					if(length(which.break)>0){
+						wh.notN.breaks = list()
+						for(k in 1:length(which.break)){
+							# If looking at the first break, add the numbers to the list
+							if(k==1){
+								wh.notN.breaks[[k]] = wh.notN[1:which.break[k]]
+								if(length(which.break)==1){
+									wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[1]+1):length(wh.notN)]
+								}
+							# If there are multiple breaks and it is not the last one, fill in for that
+							} else if(k!=length(which.break)){
+								wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k-1)]+1):which.break[k]]
+							# If it is the last break, add the final two
+							} else {
+								wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k-1)]+1):which.break[k]]
+								wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k)]+1):length(wh.notN)]
+								
+								# wh.notN.breaks[[length(wh.notN.breaks)+1]] = wh.notN[c(which.break[c(k-1)]+1):length(wh.notN)]
+							}
+						}
+					} else {
+						wh.notN.breaks = list(wh.notN)
+					}
 					s1 = list()
-					contig_index_vector = c(1:contig_length[c])
 					# If there is a fixed kmer length
 					if(kmer_length>0){
-						s1 = sapply(c(1:(contig_length[c]-kmer_length+1)), function(x, kmer_length, contig_index) list(contig_index_vector[c(1: kmer_length)+x-1]), contig_index = contig_index_vector, kmer_length = kmer_length, USE.NAMES = F)
+						for(j in 1:length(wh.notN.breaks)){
+							# For each subcontig with a contig (if broken up by Ns) get the positions in the contig for each kmer
+							s1 = c(s1, sapply(1:(length(wh.notN.breaks[[j]])-kmer_length+1), function(x, kmer_length, wh.notN.breaks) list(wh.notN.breaks[c(1: kmer_length)+x-1]), wh.notN.breaks = wh.notN.breaks[[j]], kmer_length = kmer_length, USE.NAMES = F))
+						}
 					} else {
 						# If the kmer length is variable, get positions for each variable kmer
-						kstart_j = kstart; 
-						kend_j = kend; kend_j = min(c(kend, contig_length[c]))
-						s1 = unlist(sapply(kstart_j:kend_j, function(x, pos) get_varlength_pos_kmer(pos, x), pos = contig_index_vector, USE.NAMES = F), recursive=FALSE)
+						for(j in 1:length(wh.notN.breaks)){
+							kstart_j = kstart; 
+							kend_j = kend; kend_j = min(c(kend, length(wh.notN.breaks[[j]])))
+							s1 = c(s1, unlist(sapply(kstart_j:kend_j, function(x, pos) get_varlength_pos_kmer(pos, x), pos = wh.notN.breaks[[j]], USE.NAMES = F), recursive=FALSE))
+						}
 					}
 					kmers.genes.c = c(kmers.genes.c, sapply(s1, function(x, out) list(unique(unlist(out[x]))), out = out, USE.NAMES = F))	
 				}
@@ -494,7 +537,7 @@ for(i in process){
 		# Add the kmers and gene pos for the kmers from contig c to the total
 		all_kmers_genome_i = c(all_kmers_genome_i , unlist(kmers.contig.c))
 		all_kmers_gene_index_i = c(all_kmers_gene_index_i, kmers.genes.c)
-		if(c%%10==0) cat("Finished for contig",c,"of", length(contig_id), "\n")
+		cat("Finished for contig",c,"of", length(contig_id),as.character(Sys.time()), "\n")
 	}
 	if(length(all_kmers_genome_i)!=length(all_kmers_gene_index_i)) stop("Length all_kmers_genome_i != length all_kmers_gene_index_i", "\n")
 	# Remove all that do not have a gene
@@ -540,7 +583,8 @@ for(i in process){
 	out = cbind(out, rep(1, length(out)))
 	
 	
-	# Write
+	# Write to /tmp/
+	# outfile = paste0("/tmp/", prefix, "_nucmeralign_kmer_list_gene_IDs_", ids[i], "_t", ident_threshold,"_unsorted.txt")
 	outfile = paste0(contigalign_dir, prefix, "_nucmeralign_kmer_list_gene_IDs_", ids[i], "_t", ident_threshold,"_unsorted.txt")
 	write.table(out, file = outfile, row = F, col = F, sep = "\t", quote = F)
 	# Sort the file
@@ -551,11 +595,12 @@ for(i in process){
 	cat(sortCommand, "\n")
 	cat("\n")
 	system(sortCommand)
-	# Remove the intermediate files
+	# Remove the /tmp/ files
 	# Unsorted file
 	system(paste0("rm ", outfile))
 	system(paste0("rm ", contigalign_dir, ids[i],"_", kmer_type, kmer_length, "_query.delta"))
 	# Contig file
+	# if(substr(contig_file, (nchar(contig_file)-2), nchar(contig_file))==".gz") system(paste0("rm /tmp/", ids[i], "_contigs_temp.fa"))
 	system(paste0("rm ", contigalign_dir, ids[i], "_", kmer_type, kmer_length, "_contigs_temp.fa"))
 	cat("Number of unaligned bases for ID",ids[i],sum(length_contig_no_match), "of",sum(contig_length),(sum(length_contig_no_match)/sum(contig_length))*100,"%", "\n")
 	
@@ -599,8 +644,7 @@ if(process>p) {
 	nattempts = 0
 	while(!all(file.exists(input_files_completed)) | !all(file.exists(input_files))) {
 		nattempts=nattempts+1
-		if(nattempts%%60==0) cat("Waited",nattempts/60,"hour(s) for the creation of",length(input_files), "files,",length(which(!file.exists(input_files))),"remaining", "\n")
-		if(nattempts>180) stop("After three hours could not find files", input_files_completed)
+		if(nattempts>100) stop("Could not find files", input_files_completed)
 		Sys.sleep(60) # SGE changed from 1 to 60
 	}
 	

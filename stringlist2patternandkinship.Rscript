@@ -1,8 +1,4 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N stringlist2patternandkinship -j y
-#$ -pe shmem 2
+#!/usr/bin/env Rscript
 
 # Start time
 start.time = proc.time()[3]
@@ -13,7 +9,7 @@ t = as.integer(Sys.getenv("SGE_TASK_ID"))
 # Process arguments
 help = c("stringlist2patternandkinship.Rscript define presence/absence of a kmer list among kmer count files and build kinship matrix",
 			"Adapted from Daniel Wilson scripts (2018) kmerlist2pattern.Rscript, patternmerge.Rscript, pattern2kinship.Rscript, kinshipmerge.Rscript",
-			"Usage: qsub -t 1:p -tc p stringlist2patternandkinship.Rscript p id_file fullkmerlistfile kmercountslistfile analysis_dir output_prefix kmertype software_file [kmer_length=31 mincount=5]")
+			"Usage: stringlist2patternandkinship.Rscript p id_file fullkmerlistfile kmercountslistfile analysis_dir output_prefix kmertype software_file [kmer_length=31 mincount=5]")
 
 if(length(args!=0)){
 	if(args[1]=="-help" | args[1]=="-h"){
@@ -463,6 +459,12 @@ merge_kinship_matrices = function(t = NULL, n = NULL, b = NULL, p = NULL, imax =
 	}
 
 	if(t==p) {
+		# Define input/output files: bug fix DJW 20220522
+		i = i-1
+		te = as.integer(ceiling(t/(b^(i-1)))*b^(i-1))
+		outfile_prefix = paste0(batches_dir, prefix,"_", kmertype, kmerlen, ".kinshipmerge.j.",i,".",te) # SGE updated
+		outfile_kinship = paste0(outfile_prefix,".kinship.txt.gz")
+		outfile_kinshipWeight = paste0(outfile_prefix,".kinshipWeight.txt")
 		create_final_kinship_file(outfile_kinship = outfile_kinship, outfile_kinshipWeight = outfile_kinshipWeight, t = t, outfile_prefix = outfile_prefix, prefix = prefix, output_dir = output_dir, kmertype = kmertype, kmerlen = kmerlen, files = files, batches_dir = batches_dir)
 	}
 

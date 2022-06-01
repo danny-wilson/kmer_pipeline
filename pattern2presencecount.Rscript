@@ -1,8 +1,4 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N pattern2presencecount -j y
-#$ -pe shmem 2
+#!/usr/bin/env Rscript
 
 
 start.time = proc.time()[3]

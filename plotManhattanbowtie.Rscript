@@ -1,15 +1,11 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N plotmanhattan_bowtie -j y
-#$ -pe shmem 4
+#!/usr/bin/env Rscript
 
 # Start time
 start.time = proc.time()[3]
 args = commandArgs(trailingOnly=TRUE)
 
 help = c("plotManhattanbowtie.Rscript plot QQ and Manhattan plots",
-			"Usage: qsub plotManhattanbowtie.Rscript output_prefix analysis_dir kmerfilePrefix ref_gb ref_fa id_file kmer_type kmer_length minor_allele_threshold samtools_filter software_file blastident [annotateGeneFile override_signif]")
+			"Usage: plotManhattanbowtie.Rscript output_prefix analysis_dir kmerfilePrefix ref_gb ref_fa id_file kmer_type kmer_length minor_allele_threshold samtools_filter software_file blastident [annotateGeneFile override_signif]")
 
 
 if(length(args!=0)){
@@ -124,14 +120,14 @@ ngenes = 20
 # Check file inputs
 if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n")
 if(unlist(strsplit(output_dir,""))[length(unlist(strsplit(output_dir,"")))]!="/") output_dir = paste0(output_dir, "/")
-if(!file.exists(kmerKeySizeFile)) stop("Error: kmer pattern key size file doesn't exist","\n")
-if(!file.exists(kmerIndexFile)) stop("Error: kmer pattern index file doesn't exist","\n")
-if(!file.exists(kmerPresenceCountFile)) stop("Error: kmer presence count file doesn't exist","\n")
-if(!file.exists(mappingFile)) stop("Error: bowtie2 mapping file doesn't exist","\n")
-if(!file.exists(kmerSeqFile)) stop("Error: kmer sequence file doesn't exist","\n")
-if(!file.exists(ref_gb)) stop("Error: reference genbank file doesn't exist","\n")
-if(!file.exists(ref_fa)) stop("Error: reference fasta file doesn't exist","\n")
-if(!file.exists(id_file)) stop("Error: sample ID file doesn't exist","\n")
+if(!file.exists(kmerKeySizeFile)) stop("Error: kmer pattern key size file doesn't exist: ",kmerKeySizeFile," \n")
+if(!file.exists(kmerIndexFile)) stop("Error: kmer pattern index file doesn't exist: ",kmerIndexFile," \n")
+if(!file.exists(kmerPresenceCountFile)) stop("Error: kmer presence count file doesn't exist: ",kmerPresenceCountFile," \n")
+if(!file.exists(mappingFile)) stop("Error: bowtie2 mapping file doesn't exist: ",mappingFile," \n")
+if(!file.exists(kmerSeqFile)) stop("Error: kmer sequence file doesn't exist: ",kmerSeqFile," \n")
+if(!file.exists(ref_gb)) stop("Error: reference genbank file doesn't exist: ",ref_gb," \n")
+if(!file.exists(ref_fa)) stop("Error: reference fasta file doesn't exist: ",ref_fa," \n")
+if(!file.exists(id_file)) stop("Error: sample ID file doesn't exist: ",id_file," \n")
 if(kmer_type!="protein" & kmer_type!="nucleotide") stop("Error: kmer type must be either 'protein' or 'nucleotide'","\n")
 if(is.na(kmer_length)) stop("Error: kmer length must be an integer","\n")
 if(is.na(minor_allele_threshold)) stop("Error: minor allele threshold must be a number","\n")
@@ -334,7 +330,7 @@ if(length(which(!is.na(ypos)))<1e6){
 	s = 1:length(ypos)
 } else {
 	s = union(sample(c(which(!is.na(ypos))),1e6),which(ypos>2))
-	cat("Subsampling kmers below -log10(p)=2 for the genome-wide Manhattan plots for faster plotting, plotting",length(s),"kmers","\n")
+	cat("Subsampling kmers below -log10(p)=2 for faster plotting, plotting",length(s),"kmers","\n")
 }
 
 xpos = final_kmer_pos[s]
@@ -443,12 +439,7 @@ top10genes = as.character(get_genes_to_plot(gene_names = gene_names[which_genes_
 final_kmer_list = scan(gzfile(kmerSeqFile), what = character(0), sep = "\n", quiet = TRUE)
 
 cat("Writing unaligned significant kmers to file","\n")
-
-# Create directory to put kmer files in
-kmerfile_dir = file.path(figures_dir, "kmerfiles/")
-if(!dir.exists(kmerfile_dir)) dir.create(kmerfile_dir)
-
-output_file_prefix = paste0(kmerfile_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref.name, "_", macormaf,"_", minor_allele_threshold,"_bowtie2mapping")
+output_file_prefix = paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref.name, "_", macormaf,"_", minor_allele_threshold,"_bowtie2mapping")
 # Write unaligned significant kmers to file
 wh.i = which(final_kmer_pos>ref_length)
 output_file = paste0(output_file_prefix,"_unaligned_kmersandpvals.txt")

@@ -1,12 +1,8 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N createfullkmerlist -j y
-#$ -pe shmem 2
+#!/usr/bin/env Rscript
 
 
 help = c("createfullkmerlist.Rscript merge kmers into a list of unique kmers present across the dataset",
-			"Usage: qsub -t 1:p -tc p createfullkmerlist.Rscript n p output_prefix analysis_dir id_file kmer_type kmer_length software_file")
+			"Usage: createfullkmerlist.Rscript n p output_prefix analysis_dir id_file kmer_type kmer_length software_file")
 
 # Get task number - architecture specific
 process = as.integer(Sys.getenv("SGE_TASK_ID"))

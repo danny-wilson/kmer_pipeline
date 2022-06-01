@@ -13,6 +13,8 @@ create_figures_dir = function(dir = NULL, kmer_type = NULL, kmer_length = NULL, 
 	return(figures_dir)
 }
 
+
+
 get_genes_to_plot = function(gene_names = NULL, y = NULL, gene_conversion = NULL, ymax = NULL, gene_panel = NULL, ref = NULL, xadjust = NULL, ngenes = 20){
 	if(!is.null(gene_names)){
 		o = order(as.numeric(y), decreasing = T)

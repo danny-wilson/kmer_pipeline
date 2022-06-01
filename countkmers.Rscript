@@ -1,12 +1,8 @@
-#!/apps/well/R/3.4.3/bin/Rscript
-#$ -cwd -V
-#$ -P bag.prjc -q short.qc
-#$ -N countkmers -j y
-#$ -pe shmem 1
+#!/usr/bin/env Rscript
 
 
 help = c("countkmers.Rscript count nucleotide or protein kmers",
-			"Usage: qsub -t 1:n -tc p countkmers.Rscript id_file analysis_dir output_prefix software_file [analyses_list]")
+			"Usage: countkmers.Rscript id_file analysis_dir output_prefix software_file [analyses_list]")
 
 # Get task number - architecture specific
 process = as.integer(Sys.getenv("SGE_TASK_ID"))

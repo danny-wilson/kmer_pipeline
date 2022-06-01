@@ -34,7 +34,7 @@ create_final_file = function(outfile = NULL, output_dir = NULL, output_prefix = 
 	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # Added in as next script takes in a gzipped file # SGE added wait = TRUE
 
 	# Remove all completed files
-	completed_files = dir(pattern=glob2rx(paste0(output_dir, output_prefix,".nucleotide",kmer_length,"*.completed.txt")))
+	completed_files = dir(output_dir,pattern=glob2rx(paste0( output_prefix,".nucleotide",kmer_length,"*.completed.txt")))
 	cmd = paste("rm",paste(completed_files,collapse=" "))
 	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
 

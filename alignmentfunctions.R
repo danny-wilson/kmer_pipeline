@@ -608,13 +608,11 @@ run_alignment_nplots_protein = function(ref_gene_i = NULL, res = NULL, nsamples 
 	out_results_correct_frame = list()
 
 	for(p in prange){
-		
+
+		out_allmaf = plot_alignment_function_protein(genestart = nplots[p,1], geneend = nplots[p,2], minor_allele_threshold = 0, res = res, nsamples = nsamples, maname = "", bonferroni = bonferroni, translation = ref_gene_i$all_translations[j], prefix = prefix, gene_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, p = p, lowfreq = minor_allele_threshold, plot_ref = FALSE, main = "All protein kmers", x.adjust = 333, nplots = nplots, override_signif = override_signif, plot_figures = plot_figures, col_lib = col_lib, macormaf = macormaf, output_dir = output_dir, kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
+
 		out_mafthreshold = plot_alignment_function_protein(genestart = nplots[p,1], geneend = nplots[p,2], minor_allele_threshold = minor_allele_threshold, res = res, nsamples = nsamples, maname = paste0("_", macormaf,minor_allele_threshold), bonferroni = bonferroni, translation = ref_gene_i$all_translations[j], prefix = prefix, gene_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, p = p, plot_ref = FALSE, main = paste0("Protein kmers \u2265 ",macormaf," ", minor_allele_threshold), x.adjust = 333, nplots = nplots, override_signif = override_signif, plot_figures = plot_figures, col_lib = col_lib, macormaf = macormaf, output_dir = output_dir, kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
-		if(!is.null(out_mafthreshold) | override_signif){
-			out_allmaf = plot_alignment_function_protein(genestart = nplots[p,1], geneend = nplots[p,2], minor_allele_threshold = 0, res = res, nsamples = nsamples, maname = "", bonferroni = bonferroni, translation = ref_gene_i$all_translations[j], prefix = prefix, gene_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, p = p, lowfreq = minor_allele_threshold, plot_ref = FALSE, main = "All protein kmers", x.adjust = 333, nplots = nplots, override_signif = override_signif, plot_figures = plot_figures, col_lib = col_lib, macormaf = macormaf, output_dir = output_dir, kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
-			if(!is.null(out_allmaf)) out_results_correct_frame = rbind(out_results_correct_frame, out_allmaf)
-		}
-		
+		if(!is.null(out_allmaf)) out_results_correct_frame = rbind(out_results_correct_frame, out_allmaf)
 
 	}
 	if(j==ref_gene_i$correct_frame) return(out_results_correct_frame)
@@ -654,22 +652,8 @@ run_alignment_nplots_nucleotide = function(ref_gene_i = NULL, res = NULL, nsampl
 			forward.xaxis.start = c(ref_start_i:ref_end_i)[nplots[p,1]]
 		}
 		rev_xaxis = FALSE
-		
-		
-		out_mafthreshold = plot_alignment_function_nucleotide(genestart = nplots[p,1], geneend = nplots[p,2],
-									minor_allele_threshold = minor_allele_threshold, res = res, nsamples = nsamples, maname = paste0("_", macormaf,minor_allele_threshold),
-									bonferroni = bonferroni, ref_fa = ref_gene_i, prefix = prefix,
-									gene_name = gene_name, p = p, plot_ref = FALSE,
-									main = paste0("Nucleotide kmers \u2265 ",macormaf," ", minor_allele_threshold), x.adjust = 999,
-									reverse.xaxis = rev_xaxis, reverse.xaxis.start = reverse.xaxis.start,
-									forward.xaxis.start = forward.xaxis.start, plot_figures = plot_figures,
-									alignment_range = c(ref_start_i, ref_end_i), override_signif = override_signif,
-									col_lib = col_lib, macormaf = macormaf, output_dir = output_dir,
-									kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
-		
-		if(!is.null(out_mafthreshold) | override_signif){
-		
-			out_allmaf = plot_alignment_function_nucleotide(genestart = nplots[p,1], geneend = nplots[p,2],
+
+		out_allmaf = plot_alignment_function_nucleotide(genestart = nplots[p,1], geneend = nplots[p,2],
 									minor_allele_threshold = 0, res = res, nsamples = nsamples, maname = "",
 									bonferroni = bonferroni, ref_fa = ref_gene_i,
 									prefix = prefix, gene_name = gene_name,
@@ -681,8 +665,18 @@ run_alignment_nplots_nucleotide = function(ref_gene_i = NULL, res = NULL, nsampl
 									col_lib = col_lib, macormaf = macormaf, output_dir = output_dir,
 									kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
 
-			if(!is.null(out_allmaf)) allgenes_results_table_out = rbind(allgenes_results_table_out, out_allmaf)
-		}
+		out_mafthreshold = plot_alignment_function_nucleotide(genestart = nplots[p,1], geneend = nplots[p,2],
+									minor_allele_threshold = minor_allele_threshold, res = res, nsamples = nsamples, maname = paste0("_", macormaf,minor_allele_threshold),
+									bonferroni = bonferroni, ref_fa = ref_gene_i, prefix = prefix,
+									gene_name = gene_name, p = p, plot_ref = FALSE,
+									main = paste0("Nucleotide kmers \u2265 ",macormaf," ", minor_allele_threshold), x.adjust = 999,
+									reverse.xaxis = rev_xaxis, reverse.xaxis.start = reverse.xaxis.start,
+									forward.xaxis.start = forward.xaxis.start, plot_figures = plot_figures,
+									alignment_range = c(ref_start_i, ref_end_i), override_signif = override_signif,
+									col_lib = col_lib, macormaf = macormaf, output_dir = output_dir,
+									kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
+
+		if(!is.null(out_allmaf)) allgenes_results_table_out = rbind(allgenes_results_table_out, out_allmaf)
 
 	}
 
@@ -926,10 +920,11 @@ draw_gene_arrows = function(genes = NULL, ref = NULL, height1 = NULL, height2 = 
 	}
 	if(length(plot_names)==1) plot_names = rep(plot_names, length(genes))
 	if(length(text.col)==1) text.col = rep(text.col, length(genes))
+	# Bug fix in indices in loop below DJW 31 May 2022
 	for(i in 1:length(genes)){
-		start = ref$start[which(ref$name==genes[i])]
-		end = ref$end[which(ref$name==genes[i])]
-		rev.compl = ref$strand[which(ref$name==genes[i])]==-1
+		start = ref$start[i]
+		end = ref$end[i]
+		rev.compl = ref$strand[i]==-1
 		if(plot_names[i]) name = genes[i] else name = NA
 		if(!is.null(name_replace)){
 			if(plot_names[i] & !is.na(name_replace[i])) name = name_replace[i] else name = name
@@ -937,8 +932,8 @@ draw_gene_arrows = function(genes = NULL, ref = NULL, height1 = NULL, height2 = 
 		draw_arrow(start = start, end = end, arrow_length = arrow_length, height1 = height1, height2 = height2, arrowdiff = arrowdiff, fillCOL = fillCOL[i], border = "black", name = name, text_adjust = text_adjust[i], rev.compl = rev.compl, text.cex = text.cex, lwd = lwd, text.col = text.col[i])
 	}
 	for(i in 1:(length(genes)-1)){
-		start = ref$end[which(ref$name==genes[i])]
-		end = ref$start[which(ref$name==genes[i+1])]
+		start = ref$end[i]
+		end = ref$start[i+1]
 		if(draw_line) lines(x = c(start, end), y = c(height1-((height1-height2)/2), height1-((height1-height2)/2)), lwd = lwd, xpd = T)
 	}
 
@@ -1712,14 +1707,6 @@ process_blast_nucleotide = function(blastPath = NULL, prefix = NULL, kmer_type =
 
 plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL, ref_fa = NULL, figures_dir = NULL, output_prefix = NULL, ngenes = 20, nsamples = NULL, bonferroni = NULL, gene_lookup = NULL, oneLetterCodes = NULL, kmer_type = NULL, kmer_length = NULL, blastPath = NULL, perident = NULL, col_lib_nuc = NULL, col_lib_pro = NULL, ref.name = NULL, alignmenttype = NULL, genes_all = NULL, override_signif = NULL, correct_only = TRUE){
 	
-	
-	# Create alignment directory
-	###########################
-	
-	alignment_dir = file.path(figures_dir, "alignments/")
-	if(!dir.exists(alignment_dir)) dir.create(alignment_dir)
-
-	
 	# Read in reference files
 	###########################
 	gene_lookup = create_gene_lookup(ref = ref, ref_length = ref_length)$gene_lookup
@@ -1729,9 +1716,15 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 	# Pull out the files containing the top genes
 	###########################
 
+	# genes = get_top_genes(input_dir = figures_dir, prefix = output_prefix, ngenes = ngenes, nsamples = nsamples, bonferroni = bonferroni)
+	# genes_names = as.character(genes$genes_names)
+	# genes_all = as.character(genes$genes_all)
+	# genes = as.character(genes$genes)
 	genes = genes_all$genes
 	genes_names = genes_all$genes_names
 	genes_all = genes_all$genes
+	
+	
 
 	allgenes_results_table_out = list()
 	
@@ -1739,15 +1732,6 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 		
 		# What is gene i
 		genename_i = genes_names[i]
-		# If there is a colon in the name, replace with an underscore for directory name
-		genename_i_dir = genename_i
-		if(any(unlist(strsplit(genename_i_dir,""))==":")){
-			genename_i_dir = paste(unlist(strsplit(genename_i_dir,":")), collapse = "_")
-		}
-		
-		# Create gene subdirectory
-		gene_dir = file.path(alignment_dir, paste0(genename_i_dir,"/"))
-		if(!dir.exists(gene_dir)) dir.create(gene_dir)
 	
 		# Which row in gene_lookup contains genename_i
 		wh_genelookup = which(gene_lookup[,1]==genename_i)
@@ -1762,7 +1746,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 
 		# Read in kmers
 		kmers_gene_i = read_kmer_file(kmerfile = genes[i], i = i, prefix = output_prefix,
-									kmer_type = kmer_type, kmer_length = kmer_length, output_dir = gene_dir)
+									kmer_type = kmer_type, kmer_length = kmer_length, output_dir = figures_dir)
 		
 		if(kmer_type=="protein"){
 			
@@ -1778,7 +1762,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 								all_translations = ref_gene_i$all_translations,
 								kmer_type = kmer_type, kmer_length = kmer_length,
 								perident = perident, nsamples = nsamples,
-								output_dir = gene_dir, ref.name = ref.name)
+								output_dir = figures_dir, ref.name = ref.name)
 
 				res = read_res_table(resfile = blast.search, refseq = ref_gene_i$all_translations[j],
 								i = i, genes_names = genes_names, perident = perident, kmer_type = kmer_type)$res
@@ -1791,7 +1775,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 									nsamples = nsamples, bonferroni = bonferroni, prefix = output_prefix,
 									gene_name = genes_names[i], j = j, col_lib = col_lib_pro,
 									minor_allele_threshold = minor_allele_threshold,
-									macormaf = macormaf, output_dir = gene_dir,
+									macormaf = macormaf, output_dir = figures_dir,
 									kmer_type = kmer_type, kmer_length = kmer_length,
 									ref.name = ref.name, override_signif = override_signif)
 					if(j==ref_gene_i$correct_frame) allgenes_results_table_out = rbind(allgenes_results_table_out, out_results_correct_frame)
@@ -1805,7 +1789,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 												i = i, perident = perident, kmers_gene_i = kmers_gene_i,
 												genes_names = genes_names, ref_gene_i = ref_gene_i$ref_gene_i,
 												genename_i = genename_i, nsamples = nsamples,
-												output_dir = gene_dir, ref.name = ref.name)
+												output_dir = figures_dir, ref.name = ref.name)
 
 			res = read_res_table(resfile = blast.search, refseq = ref_gene_i$ref_gene_i, 
 										i = i, genes_names = genes_names, perident = perident, 
@@ -1818,7 +1802,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 										gene_name = genename_i, gene_lookup = gene_lookup,
 										wh_genelookup = wh_genelookup, col_lib = col_lib_nuc,
 										minor_allele_threshold = minor_allele_threshold,
-										macormaf = macormaf, output_dir = gene_dir,
+										macormaf = macormaf, output_dir = figures_dir,
 										kmer_type = kmer_type, kmer_length = kmer_length,
 										ref.name = ref.name, override_signif = override_signif)
 
@@ -1834,7 +1818,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 								kmers_gene_i = kmers_gene_i, prefix = output_prefix,
 								i = i, genes_names = genes_names,
 								kmer_type = kmer_type, kmer_length = kmer_length,
-								output_dir = gene_dir, ref.name = ref.name)
+								output_dir = figures_dir, ref.name = ref.name)
 		
 		# Plot Manhattans per frame
 		if(kmer_type=="protein"){
@@ -1848,7 +1832,7 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 									ref_gb_full = ref_gb, ref_length = ref_length,
 									nsamples = nsamples, kmer_type = kmer_type,
 									minor_allele_threshold = minor_allele_threshold, macormaf = macormaf,
-									output_dir = gene_dir, ref.name = ref.name)
+									output_dir = figures_dir, ref.name = ref.name)
 				}
 			}
 		
@@ -1858,19 +1842,19 @@ plot_closeup_alignments = function(ref = NULL, ref_length = NULL, ref_gb = NULL,
 								which_kmers_no_result = which_kmers_no_result,
 								bonferroni = bonferroni,
 								minor_allele_threshold = minor_allele_threshold, macormaf = macormaf,
-								output_dir = gene_dir,
+								output_dir = figures_dir,
 								kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name,
 								ref_gb_full = ref_gb)
 		
 		} else {
-			run_manhattan_single_nucleotide(which_kmers_no_result = which_kmers_no_result, res = gene_i_results_list[[1]], ref_gene_i = ref_gene_i, prefix = output_prefix, gene_name = genes_names[i], bonferroni = bonferroni, ref_gb_full = ref_gb, ref_length = ref_length, kmer_type = kmer_type, kmer_length = kmer_length, nsamples = nsamples, minor_allele_threshold = minor_allele_threshold, macormaf = macormaf, output_dir = gene_dir, ref.name = ref.name)
+			run_manhattan_single_nucleotide(which_kmers_no_result = which_kmers_no_result, res = gene_i_results_list[[1]], ref_gene_i = ref_gene_i, prefix = output_prefix, gene_name = genes_names[i], bonferroni = bonferroni, ref_gb_full = ref_gb, ref_length = ref_length, kmer_type = kmer_type, kmer_length = kmer_length, nsamples = nsamples, minor_allele_threshold = minor_allele_threshold, macormaf = macormaf, output_dir = figures_dir, ref.name = ref.name)
 		}
 
 
 
 	}
 	
-	write.table(allgenes_results_table_out, file = paste0(alignment_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref.name, "_", alignmenttype, "_all_top_genes_significant_kmers_per_alignment_plot.txt"), row = F, col = T, sep = "\t", quote = F)
+	write.table(allgenes_results_table_out, file = paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref.name, "_", alignmenttype, "_all_top_genes_significant_kmers_per_alignment_plot.txt"), row = F, col = T, sep = "\t", quote = F)
 
 
 }
