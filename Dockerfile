@@ -14,7 +14,7 @@ RUN apt-get update && apt-get -yqq install ncbi-blast+ mummer bowtie2 \
 	libgsl0-dev libatlas-base-dev make g++ zlib1g-dev
 
 # Install samtools with conda
-RUN conda install -c bioconda/label/cf201901 -y samtools
+RUN conda install -c bioconda -y samtools=1.15.1
 
 # Install dsk from precompiled binary
 RUN wget https://github.com/GATB/dsk/releases/download/v2.3.3/dsk-v2.3.3-bin-Linux.tar.gz \
