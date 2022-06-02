@@ -2,7 +2,7 @@ FROM jupyter/datascience-notebook:2022-05-31
 LABEL app="kmer_pipeline"
 LABEL description="Pipeline for kmer (oligo)-based genome-wide association studies"
 LABEL maintainer="Daniel Wilson"
-LABEL version="2022-06-01"
+LABEL version="2022-06-02"
 
 # Set user and working directory
 USER root
