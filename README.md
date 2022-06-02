@@ -31,24 +31,31 @@ The zstr headers are licensed under the MIT license. The myutils headers are lic
 
 ## Installation
 To build from source
-  docker build github.com/danny-wilson/kmer_pipeline
+
+    docker build github.com/danny-wilson/kmer_pipeline
 
 To download a prebuilt docker image
-  docker pull danny-wilson/kmer_pipeline:latest
+
+    docker pull danny-wilson/kmer_pipeline:latest
 
 To build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) container
-  singularity build kmer.sif docker://dannywilson/kmer_pipeline:latest
+
+    singularity build kmer.sif docker://dannywilson/kmer_pipeline:latest
 
 ## Running
 To launch the Jupyter Data Science Notebook using Docker
-  docker container run --name kmer -p 8888:8888 -v $USERMOUNT:/home/jovyan/ext/ dannywilson/kmer_pipeline:latest
+
+    docker container run --name kmer -p 8888:8888 -v $USERMOUNT:/home/jovyan/ext/ dannywilson/kmer_pipeline:latest
+  
 where $USERMOUNT represents the local directory outside the container you wish to access inside the container from /home/jovyan/ext. Having launched the container, navigate to the user interface in a web browser by following one of the URLs provided at the command line.
 
 To launch a shell within the Docker container
-  docker exec -it kmer bash
+
+    docker exec -it kmer bash
 
 To launch a shell within the Singularity container
-  singularity exec --containall --cleanenv --home $USERMOUNT:/home/jovyan --workdir /tmp kmer.sif /bin/bash
+
+    singularity exec --containall --cleanenv --home $USERMOUNT:/home/jovyan --workdir /tmp kmer.sif /bin/bash
 
 Detailed information on the example data to follow.
 
