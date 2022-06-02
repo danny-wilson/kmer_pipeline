@@ -1,12 +1,12 @@
 name	path
-scriptpath	/home/jovyan/ext/kmer_pipeline
-dsk	/usr/bin/dsk
-dsk2ascii	/usr/bin/dsk2ascii
+scriptpath	/usr/local/bin
+dsk	/usr/local/bin/dsk
+dsk2ascii	/usr/local/bin/dsk2ascii
 R	/opt/conda/bin/R
 genoPlotR	/opt/conda/lib/R/library
 mummer	/usr/bin
 bowtie2	/usr/bin
 samtools	/opt/conda/bin/samtools
-gemma	/usr/bin/gemma
+gemma	/usr/local/bin/gemma
 gemma_libraries	/usr/lib
 blast	/usr/bin
