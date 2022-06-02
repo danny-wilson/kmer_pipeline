@@ -3,7 +3,7 @@ Pipeline for kmer (oligo)-based genome-wide association studies
 
 Implementing methods described in
 
-**Genome-wide association studies of global Mycobacterium tuberculosis resistance to thirteen antimicrobials in 10,228 genomes**
+**Genome-wide association studies of global *Mycobacterium tuberculosis* resistance to thirteen antimicrobials in 10,228 genomes**
 The CRyPTIC Consortium (2021)
 *bioRxiv* doi: 10.1101/2021.09.14.460272 ([preprint](https://www.biorxiv.org/content/10.1101/2021.09.14.460272))
 
@@ -36,7 +36,7 @@ To build from source
 
 To download a prebuilt docker image
 
-    docker pull danny-wilson/kmer_pipeline:latest
+    docker pull dannywilson/kmer_pipeline:latest
 
 To build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) container
 
