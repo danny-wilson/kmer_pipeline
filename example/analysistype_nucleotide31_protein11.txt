@@ -1,3 +1,0 @@
-kmertype	kmerlength
-nucleotide	31
-protein	11

@@ -1,3 +1,0 @@
-fusA
-gyrA
-gyrA:SAS_RS00035

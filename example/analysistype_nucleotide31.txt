@@ -1,2 +1,0 @@
-kmertype	kmerlength
-nucleotide	31

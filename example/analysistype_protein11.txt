@@ -1,2 +1,0 @@
-kmertype	kmerlength
-protein	11

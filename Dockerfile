@@ -2,7 +2,7 @@ FROM jupyter/datascience-notebook:2022-05-31
 LABEL app="kmer_pipeline"
 LABEL description="Pipeline for kmer (oligo)-based genome-wide association studies"
 LABEL maintainer="Daniel Wilson"
-LABEL version="2022-10-21"
+LABEL version="2022-10-25"
 
 # Set user and working directory
 USER root
@@ -44,7 +44,7 @@ RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.
 	&& R -e "remotes::install_version('genoPlotR', version = '0.8.11', upgrade = FALSE, repos='https://cloud.r-project.org')"
 
 # Install kmer_pipeline
-RUN wget -O kmer_pipeline.tgz https://github.com/danny-wilson/kmer_pipeline/archive/refs/tags/2022-06-02.tar.gz \
+RUN wget -O kmer_pipeline.tgz https://github.com/danny-wilson/kmer_pipeline/archive/refs/tags/2022-10-25.tar.gz \
 	&& mkdir kmer_pipeline \
 	&& tar -xvzf kmer_pipeline.tgz --directory kmer_pipeline --strip-components 1 \
 	&& cd kmer_pipeline \
