@@ -2,10 +2,7 @@
 
 
 help = c("countkmers.Rscript count nucleotide or protein kmers",
-			"Usage: countkmers.Rscript id_file analysis_dir output_prefix software_file [analyses_list]")
-
-# Get task number - architecture specific
-process = as.integer(Sys.getenv("SGE_TASK_ID"))
+			"Usage: countkmers.Rscript task_id id_file analysis_dir output_prefix software_file [analyses_list]")
 
 ## Read the command line arguments
 args = commandArgs(trailingOnly = TRUE)
@@ -16,7 +13,7 @@ if(length(args!=0)){
 	}
 }
 
-if(length(args)!=4 & length(args)!=5){
+if(length(args)!=5 & length(args)!=6){
 	cat(help,sep="\n")
 	cat("Received arguments: ", args, "\n")
 	stop("\nIncorrect usage\n")
@@ -54,7 +51,7 @@ count_protein_kmers = function(fastaFile = NULL, writeToFile = FALSE, kmerLen = 
 		out = cbind(names(kmers), as.vector(kmers))
 		final_kmer_file = paste0(kmerDir, id, ".kmer", kmerLen, ".unsorted.txt")
 		write.table(out, file = final_kmer_file, row = F, col = F, sep = "\t", quote = F)
-		system(paste0("gzip ", final_kmer_file))
+		stopifnot(system(paste0("gzip ", final_kmer_file))==0)
 		return(paste0(final_kmer_file, ".gz"))
 	# Or return counted kmer sequences
 	} else {
@@ -75,20 +72,23 @@ nucleotide_kmer_counting = function(output_dir = NULL, kmerlength = NULL, dsk_pa
 		kmer_dir = create_kmercount_dir(dir = output_dir, kmertype = "nucleotide", kmerlength = kmerlength)
 		setwd(kmer_dir)
 		# Run DSK
-		system(paste0(dsk_path, " -file ", contig_path," -kmer-size ", kmerlength," -max-disk 0 -abundance-min 1 -out ", sample_id))
+		dsktmpdir = paste0(sample_id, "-countkmers-tmpdir")
+		dir.create(dsktmpdir)
+		stopifnot(system(paste0(dsk_path, " -file ", contig_path," -kmer-size ", kmerlength," -max-disk 0 -abundance-min 1 -out ", sample_id, " -out-tmp ", dsktmpdir))==0)
+		unlink(dsktmpdir, recursive=TRUE)
 		# Convert DSK format into text file
-		system(paste0(dsk2ascii_path, " -file ", sample_id,".h5 -out ", sample_id,".kmer31_unsorted.txt"))
+		stopifnot(system(paste0(dsk2ascii_path, " -file ", sample_id,".h5 -out ", sample_id,".kmer", kmerlength,"_unsorted.txt"))==0)
 		# Sort the kmers
-		system.time((system(paste0("sort -k 1 ", sample_id, ".kmer31_unsorted.txt > ", sample_id,".kmer31.txt"))))
+		system.time((stopifnot(system(paste0("sort -k 1 ", sample_id, ".kmer", kmerlength,"_unsorted.txt > ", sample_id,".kmer", kmerlength,".txt"))==0)))
 		# Write the number of kmers to file
-		nKmers = as.numeric(unlist(strsplit(system(paste0("wc -l ", sample_id, ".kmer31.txt"), intern = T)," "))[1])
-		cat(paste(c("Total", nKmers), collapse = "\t"), file = paste0(sample_id, ".kmer31.total.txt"), sep = "\n")
+		nKmers = as.numeric(unlist(strsplit(system(paste0("wc -l ", sample_id, ".kmer", kmerlength,".txt"), intern = T)," "))[1])
+		cat(paste(c("Total", nKmers), collapse = "\t"), file = paste0(sample_id, ".kmer", kmerlength,".total.txt"), sep = "\n")
 		# Gzip the sorted kmer file
-		system(paste0("gzip ", sample_id,".kmer31.txt"))
+		stopifnot(system(paste0("gzip ", sample_id,".kmer", kmerlength,".txt"))==0)
 		# Remove intermediate files
-		system(paste0("rm ", sample_id, ".h5"))
-		system(paste0("rm ", sample_id, ".kmer31_unsorted.txt"))
-		kmerfile = paste0(kmer_dir, sample_id, ".kmer31")
+		stopifnot(system(paste0("rm ", sample_id, ".h5"))==0)
+		stopifnot(system(paste0("rm ", sample_id, ".kmer", kmerlength,"_unsorted.txt"))==0)
+		kmerfile = paste0(kmer_dir, sample_id, ".kmer", kmerlength)
 		cat(paste0("Counted nucleotide kmers length ", kmerlength, " for sample ID ", sample_id, ". Output files: ", kmerfile, ".txt.gz ", kmerfile, ".total.txt"), "\n")
 		return(kmer_dir)
 	
@@ -103,8 +103,8 @@ protein_kmer_counting = function(output_dir = NULL, kmerlength = NULL, translate
 		# Sort the kmer file
 		sorted_kmerfile = paste0(kmer_dir, sample_id, ".kmer", kmerlength, ".txt.gz")
 		sortCommand = paste(c(sort_strings, kmerfile_unsorted, "| gzip -c >", sorted_kmerfile), collapse=" ")
-		system(sortCommand, intern = T)
-		system(paste0("rm ", kmerfile_unsorted))
+		stopifnot(system(sortCommand)==0)
+		stopifnot(system(paste0("rm ", kmerfile_unsorted))==0)
 		# Write the number of kmers to file
 		nKmers = as.numeric(unlist(strsplit(system(paste0("zcat ", sorted_kmerfile, " | wc -l"), intern = T)," "))[1])
 		cat(paste(c("Total", nKmers), collapse = "\t"), file = paste0(kmer_dir, sample_id, ".kmer", kmerlength, ".total.txt"), sep = "\n")
@@ -132,11 +132,12 @@ write_kmer_filepaths_to_file = function(process = NULL, id_file = NULL, kmertype
 
 start.time = proc.time()[3]
 
-id_file = as.character(args[1])
-output_dir = as.character(args[2])
-output_prefix = as.character(args[3])
-software_file = as.character(args[4])
-if(length(args)>4) analyses_list = as.character(args[5]) else analyses_list = NULL
+process = as.integer(args[1])
+id_file = as.character(args[2])
+output_dir = as.character(args[3])
+output_prefix = as.character(args[4])
+software_file = as.character(args[5])
+if(length(args)>5) analyses_list = as.character(args[6]) else analyses_list = NULL
 
 
 # Check input arguments
@@ -171,13 +172,11 @@ source(sequence_functions_Rfile, chdir = TRUE)
 
 # Report variables
 cat("#############################################", "\n")
-cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
-cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
-cat("SGE task ID:",Sys.getenv("SGE_TASK_ID"),"\n")
-cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Running on host: ",system("hostname", intern=TRUE),"\n")
 cat("Command line arguments","\n")
 cat(args, "\n\n")
 cat("Parameters:","\n")
+cat("task_id:", process, "\n")
 cat("ID file path:", id_file,"\n")
 cat("Analysis directory:", output_dir,"\n")
 cat("Output prefix:", output_prefix,"\n")
@@ -186,9 +185,7 @@ cat("Script location:", script_location, "\n")
 cat("dsk path:", dsk_path,"\n")
 cat("dsk2ascii path:", dsk2ascii_path,"\n")
 cat("Analyses list file path:", analyses_list,"\n")
-cat("Process:",process, "\n")
 cat("#############################################", "\n\n")
-
 
 # Read in ID file
 id_file = read.table(id_file, h = T, sep = "\t")
@@ -246,6 +243,3 @@ if(any(tolower(kmertype[,1])=="nucleotide")){
 }
 
 cat("Completed in",(proc.time()[3]-start.time)/60,"minutes\n")
-
-
-

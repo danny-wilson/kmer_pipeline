@@ -200,9 +200,9 @@ read_gemma_files = function(input_dir = NULL, prefix = NULL, kmer_type = NULL, k
 plot_QQ = function(kmerIndex = NULL, assoc = NULL, output_dir = NULL, prefix = NULL, minor_allele_threshold = NULL, macormaf = NULL, mapatterns = NULL, kmer_type = NULL, kmer_length = NULL){
 	
 	# Get expected and empirical for LMM p-values
-	if(minor_allele_threshold==0) which_kmers = 1:length(kmerIndex) else which_kmers = which(mapatterns[kmerIndex]>=minor_allele_threshold)
+	if(minor_allele_threshold==0) which_kmers = which(mapatterns[unique(kmerIndex)]>0) else which_kmers = which(mapatterns[unique(kmerIndex)]>=minor_allele_threshold)
 	qqplot.x = -log10((1:length(which_kmers))/length(which_kmers))
-	qqplot.y = as.numeric(assoc[,6])[kmerIndex[which_kmers]]
+	qqplot.y = as.numeric(assoc[,6])[unique(kmerIndex)[which_kmers]]
 	qqplot.y = qqplot.y[order(qqplot.y, decreasing = T)]
 	
 	if(minor_allele_threshold==0) file_suffix = "_QQplot_allkmers.png" else file_suffix = paste0("_QQplot_", macormaf, minor_allele_threshold, ".png")

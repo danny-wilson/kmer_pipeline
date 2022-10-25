@@ -62,27 +62,33 @@ if(!includeNA & any(is.na(pheno))){
 nPatterns = scan(kmerKeySizeFile, quiet = TRUE)
 cat("Number of patterns:",nPatterns,"\n")
 
-s = round(seq(from = 1, to = nPatterns, length.out = 21))
+s = round(seq(from = 1, to = nPatterns, length.out = pmin(nPatterns,21)))
 
 # cat("Reading patterns in",(length(s)-1), "batches","\n")
 
 presencecount = c()
-for(i in 1:(length(s)-1)){
-	beg = s[i]
-	len = s[i+1]-s[i]
-	if(i!=(length(s)-1)){
-		pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), nlines = len, quiet = TRUE)
-	} else {
+if(length(s)>1) {
+	for(i in 1:(length(s)-1)){
 		beg = s[i]
-		pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), quiet = TRUE)
+		len = s[i+1]-s[i]
+		if(i!=(length(s)-1)){
+			pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), nlines = len, quiet = TRUE)
+		} else {
+			beg = s[i]
+			pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), quiet = TRUE)
+		}
+		presencecount = c(presencecount, sapply(pat.i, function(x, notNA) get_pc(x, notNA), notNA = pheno_notNA, USE.NAMES = F))
 	}
-	presencecount = c(presencecount, sapply(pat.i, function(x, notNA) get_pc(x, notNA), notNA = pheno_notNA, USE.NAMES = F))
+} else {
+	beg = s[1]
+	pat.i = scan(gzfile(kmerKey), what = character(0), skip = (beg-1), quiet = TRUE)
+	presencecount = sapply(pat.i, function(x, notNA) get_pc(x, notNA), notNA = pheno_notNA, USE.NAMES = F)
 }
 if(length(presencecount)!=nPatterns) stop("Error: length of presence count vector not equal to total number of patterns","\n")
 
 presencecountfile = paste0(output_dir, kmerfilePrefix_noDir, ".patternmerge.presenceCount.txt")
 cat(presencecount, file = presencecountfile, sep = "\n")
-system(paste0("gzip ", presencecountfile))
+stopifnot(system(paste0("gzip ", presencecountfile))==0)
 cat("Written presence counts to file:",paste0(presencecountfile,".gz"), "\n")
 
 

@@ -1,0 +1,368 @@
+#!/usr/bin/env Rscript
+
+require(genoPlotR)
+help = paste(
+"gen-report.Rscript Generate a kmer GWAS report",
+"Daniel Wilson (2022)",
+"",
+"Usage: Rscript gen-report.Rscript prefix anatype k refname ref_gb maf alignident mincount ngenes srcdir outdir logdir",
+sep="\n")
+
+# Read options from command line
+args = commandArgs(trailingOnly = TRUE)
+if(length(args)!=12) {
+	cat(help,sep="\n")
+	stop("\nIncorrect usage\n")
+}
+
+PREFIX = args[1]
+ANATYPE = args[2]
+K = args[3]
+REFNAME = args[4]
+REF_GB = args[5]
+MAF = args[6]
+ALIGNIDENT = args[7]
+MINCOUNT = args[8]
+NGENES = args[9]
+SRC = args[10]
+PWD = args[11]
+LOGDIR = args[12]
+MACORMAF = ifelse(MAF==0,NULL,ifelse(MAF<1,"maf","mac"))
+
+# Functions
+s3 = function(x) signif(x,3)
+# From https://stackoverflow.com/questions/3245862/format-numbers-to-significant-figures-nicely-in-r
+s3 = function(vec, digits=3) gsub("\\.$", "", formatC(signif(vec,digits=digits), digits=digits, format="fg", flag="#"))
+laststr = function(s) {x=unlist(strsplit(s," ")); x[length(x)]}
+`%+%` = paste0
+`%-%` = function(a, b) paste(a, b, sep=" ")
+`%/%` = function(a, b) paste(a, b, sep="\n")
+newline = "\n"
+grepit = function(filename,regex,gz=FALSE) {
+	cmd = "grep"
+	if(gz) cmd = "zgrep"
+	tryCatch({
+		s = readLines((PIPE=pipe(paste0(cmd," '",regex,"' ",filename))))
+		suppressWarnings(close(PIPE))
+		s = unlist(strsplit(s," "))
+		return(s[length(s)])
+	},error=function(e) NA)
+}
+
+# MAF vs MAC text
+is.maf = ifelse(MAF==0,TRUE,ifelse(MAF<1,TRUE,FALSE))
+is.maf.text = ifelse(is.maf,"minor allele frequency (MAF) threshold of" %-% MAF,"minor allele count (MAC) threshold of" %-% MAF)
+is.maf.text2 = ifelse(is.maf,"minor allele frequency (MAF)","minor allele count (MAC)")
+is.maf.text3 = ifelse(is.maf,"MAF","MAC")
+
+# Copy (overwrite if necessary) the CSS stylesheet and JavaScript code
+file.copy(file.path(SRC,"report.css"),file.path(PWD,"report.css"),overwrite=TRUE)
+file.copy(file.path(SRC,"report.js"),file.path(PWD,"report.js"),overwrite=TRUE)
+
+# To be written to PWD (overwriting if necessary)
+outfile.prefix = paste0(PREFIX,"_",ANATYPE,K,".")
+outfile.html = paste0(outfile.prefix,"report.html")
+
+FIGDIR = paste0(ANATYPE,"kmer",K,"_kmergenealign_figures/")
+
+# Input files
+filename.topgenes = paste0(FIGDIR,PREFIX,"_",ANATYPE,K,"_",REFNAME,"_top20genes_toppvals_",MACORMAF,"_",MAF,"_nucmerAlign_alignIdent_",ALIGNIDENT,"_alignPosMinCount_",MINCOUNT,".txt")
+
+filename.heritability = paste0(ANATYPE,"kmer",K,"_gemma/output/",PREFIX,"_",ANATYPE,K,".1-*.log.txt.gz")
+
+filename.patternKeySize = paste0(PREFIX,"_",ANATYPE,K,".patternmerge.patternKeySize.txt")
+filename.kmermerge = paste0(PREFIX,"_",ANATYPE,K,".kmermerge.txt.gz")
+
+filename.gemmalog = paste0(ANATYPE,"kmer",K,"_gemma/output/",PREFIX,"_",ANATYPE,K,".*.log.txt.gz")
+
+filename.plotManhattan.log = paste0(LOGDIR,"/plotManhattan.log")
+
+filename.Manhattan.maf = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_LMM_kmergenealign_ct",MINCOUNT,"_Manhattan_mafCOL_",MACORMAF,
+MAF,".png")
+filename.Manhattan.beta = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_LMM_kmergenealign_ct",MINCOUNT,"_Manhattan_betaCOL_",MACORMAF,
+MAF,".png")
+filename.Manhattan.align = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_LMM_kmergenealign_ct",MINCOUNT,"_Manhattan_alignCOL_",MACORMAF,
+MAF,".png")
+filename.Manhattan.maf0 = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_LMM_kmergenealign_ct",MINCOUNT,"_Manhattan_mafCOL_",MACORMAF,"0.png")
+
+
+filename.qq.maf = paste0(FIGDIR,PREFIX,"_",ANATYPE,K,"_QQplot_",MACORMAF,MAF,".png")
+filename.qq.maf0 = paste0(FIGDIR,PREFIX,"_",ANATYPE,K,"_QQplot_allkmers.png")
+
+filename.unmapped = paste0(FIGDIR,PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",MACORMAF,"_",MAF,"_alignIdent_",ALIGNIDENT,"_alignPosMinCount_",MINCOUNT,"_unaligned_kmersandpvals.txt")
+
+# Preliminaries
+setwd(PWD)
+
+html.head =
+"<!DOCTYPE html>" %/% 
+"<html>" %/%
+"<head>" %/%
+"  <title>Kmer GWAS report</title>" %/%
+"  <link rel='stylesheet' href='report.css'>" %/%
+newline
+
+html.body = 
+"</head>" %/%
+"<body>" %/%
+"  <h1>Kmer GWAS report</h1>" %/%
+"  <div><p class='timestamp'><code>Prefix:" %-% PREFIX %+% "; KmerType:" %-% ANATYPE %+% "; K:" %/%
+"  " %+% K %+% "; ReferenceGenome:" %-% REFNAME %+% ";" %-% is.maf.text3 %+% ":" %-% MAF %+% "; MinCount:" %/%
+"  " %+% MINCOUNT %+% "; AlignIdent:" %-% ALIGNIDENT %+% "; ReportTimeStamp:" %/%
+"  " %+% date() %+% ".</code></p></div>" %/%
+newline
+
+html.foot =
+"<script src='report.js'></script>" %/%
+"</body>" %/%
+"</html>" %/%
+""
+
+# Genbank file
+gbk = read_dna_seg_from_genbank(REF_GB,tagsToParse=c("CDS"))
+ref_length = scan(REF_GB, what = character(0), sep = "\n", nlines = 1)
+ref_length = as.numeric(unlist(strsplit(ref_length," "))[which(unlist(strsplit(ref_length," "))!="")][3])
+if(is.na(ref_length)) stop("Error retrieving the reference genome length from the genbank file","\n")
+
+# Heritability
+filename.heritability.1 = dir(dirname(filename.heritability),glob2rx(basename(filename.heritability)),full.names=TRUE)[1]
+pve = tryCatch({
+	s = readLines((PIPE=pipe(paste0("zgrep 'pve estimate in the null (linear mixed) model' ",filename.heritability.1))))
+	suppressWarnings(close(PIPE))
+	s = unlist(strsplit(s," "))
+	as.numeric(s[length(s)])
+},error=function(e) NA)
+se.pve = tryCatch({
+	s = readLines((PIPE=pipe(paste0("zgrep 'se(pve) in the null (linear mixed) model' ",filename.heritability.1))))
+	suppressWarnings(close(PIPE))
+	s = unlist(strsplit(s," "))
+	as.numeric(s[length(s)])
+},error=function(e) NA)
+
+html.body = html.body %/%
+"  <h2>Heritability</h2>" %/%
+"  <p>The sample heritability (proportion of variance explained) under the null" %/%
+"  linear mixed model (LMM) was" %-% s3(pve) %-% "with a standard error of" %-% s3(se.pve) %+% "," %/%
+"  which implies a 95% confidence interval of" %/%
+"  (" %+% s3(pmax(0,qnorm(0.025,pve,se.pve))) %+% ", " %+% s3(pmin(1,qnorm(0.975,pve,se.pve))) %+% ")." %/%
+"  </p>" %/%
+newline
+
+if(FALSE) {
+	# Gemma statistics
+	filename.gemmalog.1 = dir(dirname(filename.gemmalog),glob2rx(basename(filename.gemmalog)),full.names=TRUE)
+
+	### This is fine: but maf=0 so doesn't reveal significance threshold!!
+	for(filename.gemmalog.2 in filename.gemmalog.1) {
+		rl = readLines(filename.gemmalog.2)
+		if(filename.gemmalog.2==filename.gemmalog.1[1]) {
+			nsamp.total = as.numeric(laststr(rl[grep("number of total individuals",rl)]))
+			nsamp.ansys = as.numeric(laststr(rl[grep("number of analyzed individuals",rl)]))
+			ncovar = as.numeric(laststr(rl[grep("number of covariates",rl)]))
+			npat.total = as.numeric(laststr(rl[grep("number of total SNPs",rl)]))
+			npat.ansys = as.numeric(laststr(rl[grep("number of analyzed SNPs",rl)]))
+		} else {
+			npat.total = npat.total + as.numeric(laststr(rl[grep("number of total SNPs",rl)]))
+			npat.ansys = npat.ansys + as.numeric(laststr(rl[grep("number of analyzed SNPs",rl)]))
+		}
+	}
+}
+	
+# Obtain the actual p-value threshold used, after filtering samples with
+# no phenotypes and applying the MAF or MAC filter
+thr.signif = as.numeric(grepit(filename.plotManhattan.log,'Bonferroni threshold:'))
+total.impliedtests = round(0.05/(10^-thr.signif))
+thr.p = 0.05/total.impliedtests
+total.npatterns = as.numeric(grepit(filename.plotManhattan.log,'Number of patterns:'))
+total.nkmers = as.numeric(grepit(filename.plotManhattan.log,'Number of kmers:'))
+total.npatterns.untested = as.numeric(grepit(filename.plotManhattan.log,'Number of untested patterns:'))
+max.signif = as.numeric(grepit(filename.plotManhattan.log,'GEMMA range of -log10(pvalues):'))
+maf.thresh = as.numeric(grepit(filename.plotManhattan.log,'minor allele frequency (MAF) threshold of:'))
+mac.thresh = as.numeric(grepit(filename.plotManhattan.log,'minor allele count (MAC) threshold of:'))
+
+html.body = html.body %/%
+"  <h2>Significance threshold</h2>" %/%
+"  <p>A total of" %-% total.nkmers %-% "distinct kmers were observed, of which there" %/%
+"  were" %-% total.npatterns %-% "unique phylopatterns (patterns of presence or absence)" %/%
+"  across the sample." %/%
+"  After filtering any individuals lacking phenotype information, and" %/%
+"  applying a" %-% is.maf.text %+% ", there were" %-% total.impliedtests %-%
+"  unique phylopatterns to be tested. Assuming a" %/%
+"  familywise error rate of 5%, this implied a Bonferroni-corrected" %/%
+"  <i>p</i>-value threshold of" %-% s3(thr.p) %+% ", or 10<sup>-" %+% s3(thr.signif) %+% "</sup>.</p>" %/%
+newline
+
+# Top regions by min p-value
+table.topgenes = read.table(filename.topgenes)
+max.signif = max(table.topgenes[,2],na.rm=TRUE)
+ngenes.signif = sum(table.topgenes[,2]>=thr.signif,na.rm=TRUE)
+
+# Protein products in the genbank file
+propro = sapply(table.topgenes[,1],function(genes) {
+	genes = unlist(strsplit(genes,":"))
+	paste0(gbk$product[match(genes,gbk$name)],collapse=" :<br> ")
+})
+
+html.body = html.body %/%
+"  <h2>Most significant regions</h2>" %/%
+"  <p>The" %-% NGENES %-% "most significant genes or intergenic regions are summarized" %/%
+"  in the Table below. Of those," %-% ngenes.signif %-% "were" %/%
+"  genome-wide significant. The gene or (if an intergenic region)" %/%
+"  flanking genes are named for each region, alongside its significance." %/%
+"  In what follows, <i>significance</i> is defined as the -log<sub>10</sub>" %/%
+"  <i>p</i>-value. The significance of each region was based on the" %/%
+"  smallest <i>p</i>-value in that region.</p>" %/%
+newline %/%
+"  <table>" %/%
+"    <tr>" %/%
+"      <th>Region</th><th>Significance</th><th>Product</th>" %/%
+"    </tr>"
+
+if(nrow(table.topgenes)>0) for(i in 1:nrow(table.topgenes)) {
+  tag = c("<b>","</b>")
+  if(table.topgenes[i,2]<thr.signif) tag = c("","")
+  report.filename = paste0(outfile.prefix,"report_", gsub(":", "_", table.topgenes[i,1]), ".html")
+  html.body = html.body %/%
+  "    <tr>" %/%
+  "      <td><a href='" %+% report.filename %+% "' target='_blank' rel='noopener noreferrer'>" %+% table.topgenes[i,1] %+% "</a></td><td>" %+% tag[1] %+% s3(table.topgenes[i,2]) %+% tag[2] %+% "</td><td>" %+% propro[i] %+% "</td>" %/%
+  "    </tr>"
+}
+
+html.body = html.body %/%
+"  </table>" %/%
+newline
+
+# Unmapped kmers
+table.unmapped = read.delim(filename.unmapped,nrows=1)
+max.signif.unmapped = max(table.unmapped$negLog10)
+
+if(nrow(table.unmapped)>0) {
+	html.body = html.body %/%
+	"  <h2>Unmapped kmers</h2>" %/%
+	"  <p>Not all kmers were aligned to the user-supplied reference genome. The strongest" %/%
+	"  significance among the unmapped kmers was" %-% s3(max.signif.unmapped) %+% ","
+
+	if(max.signif.unmapped>=thr.signif) {
+		html.body = html.body %/%
+		"  which was genome-wide significant.</p>"
+	} else {
+		html.body = html.body %/%
+		"  which was not genome-wide significant.</p>"
+	}
+
+	html.body = html.body %/%
+	"  <p>Follow this link for the <a href='" %+% outfile.prefix %+% "report_unmapped.html' target='_blank' rel='noopener noreferrer'>Report on unmapped kmers</a>.</p>" %/%
+	newline
+}
+
+# Manhattan plot
+
+html.body = html.body %/%
+"  <h2>Manhattan plot</h2>" %/%
+"  <p>The Figure displays the significance of each kmer against the position in the" %/%
+"  reference genome to which it mapped. Kmers that did not map are shown at the far" %/%
+"  right hand side. The Bonferroni-corrected significance threshold is shown as a horizontal black dashed line." %/%
+"  The names of significant regions are plotted above. Points are colour-coded in" %/%
+"  an adjustable manner to display" %-% is.maf.text2 %+% ", <i>&beta;</i> (direction of effect) or uniqueness" %/%
+"  of mapping. The" %-% is.maf.text3 %-% "threshold can also be removed (although the significance" %/%
+"  threshold is not updated since we do not recommend reporting low-" %+% is.maf.text3 %-% " kmers" %/%
+"  as significant).</p>" %/%
+newline
+
+filenames.Manhattan = c(filename.Manhattan.maf,filename.Manhattan.beta,filename.Manhattan.align,filename.Manhattan.maf0)
+descriptions.Manhattan = c(paste0("Kmers colour-coded by minor allele frequency."),"Kmers colour-coded by direction of effect. When <i>&beta;</i>&nbsp;>&nbsp;0, the presence of the kmer is associated with larger values of the phenotype.","Kmers colour-coded by mapping uniqueness.",paste0("Kmers colour-coded by minor allele frequency. No ",is.maf.text3," filter."))
+
+html.body = html.body %/%
+'  <div class="slideshow-container">'
+
+for(i in 1:length(filenames.Manhattan)) {
+  html.body = html.body %/%
+  '    <div class="mySlides fade">' %/%
+  '      <div class="numbertext">' %+% i %-% '/' %-% length(filenames.Manhattan) %+% '</div>' %/%
+  '      <img src="' %+% filenames.Manhattan[i] %+% '" class="center">' %/%
+  '      <div class="text">' %+% descriptions.Manhattan[i] %+% '</div>' %/%
+  '    </div>'
+}
+
+html.body = html.body %/%
+'    <a class="prev" onclick="plusSlides(-1,this)">&#10094;</a>' %/%
+'    <a class="next" onclick="plusSlides(1,this)">&#10095;</a>' %/%
+'    <br>' %/%
+'    <div style="text-align:center">'
+
+for(i in 1:length(filenames.Manhattan)) html.body = html.body %/%
+  '    <span class="dot" onclick="currentSlide(' %+% i %+% ',this)"></span>'
+
+html.body = html.body %/%
+'    </div>' %/%
+'  </div>' %/%
+newline
+
+# QQ plots
+
+filenames.qq = c(filename.qq.maf,filename.qq.maf0)
+descriptions.qq = c(paste0("QQ plot with ",MACORMAF," filter of ",MAF,"."),paste0("QQ plot with no ",MACORMAF," filter."))
+
+html.body = html.body %/%
+"  <h2>QQ plots</h2>" %/%
+"  <p>The QQ plots in the Figure below allow an assessment of whether" %/%
+"  there were any problems with inflation of significance in the analysis." %/%
+"  Inflation is detected by an elevation of the black solid line above" %/%
+"  the red dashed line at relatively small -log<sub>10</sub> <i>p</i>-values." %/%
+"  An elevation of the black solid line above the red dashed line only" %/%
+"  at relatively large values (e.g. above the significance threshold) is evidence of association, rather" %/%
+"  than inflation.</p>" %/%
+"  <p>If the black solid line falls below the red dashed line, that may" %/%
+"  provide evidence of deflation, which occurs when the analysis is" %/%
+"  under-powered. The removal of low" %-% is.maf.text3 %-% "variants is one measure aimed" %/%
+"  at avoiding deflation by avoiding under-powered tests. Note that the QQ plot" %/%
+"  is noisier at larger -log<sub>10</sub> <i>p</i>-values." %/%
+'' %/%
+'  <div class="slideshow-container">'
+
+for(i in 1:length(filenames.qq)) {
+  html.body = html.body %/%
+  '    <div class="mySlides fade">' %/%
+  '      <div class="numbertext">' %+% i %-% '/' %-% length(filenames.qq) %+% '</div>' %/%
+  '      <img src="' %+% filenames.qq[i] %+% '" class="center"  style="width:60%">' %/%
+  '      <div class="text">' %+% descriptions.qq[i] %+% '</div>' %/%
+  '    </div>'
+}
+
+html.body = html.body %/%
+'    <a class="prev" onclick="plusSlides(-1,this)">&#10094;</a>' %/%
+'    <a class="next" onclick="plusSlides(1,this)">&#10095;</a>' %/%
+'    <br>' %/%
+'    <div style="text-align:center">'
+
+for(i in 1:length(filenames.qq)) html.body = html.body %/%
+  '    <span class="dot" onclick="currentSlide(' %+% i %+% ',this)"></span>'
+
+html.body = html.body %/%
+'    </div>' %/%
+'  </div>' %/%
+'' %/%
+
+
+# Final
+cat(html.head,html.body,html.foot,file=outfile.html,append=FALSE)
+
+if(FALSE) {
+	# Run the other ones
+	cat("Generating top hit gene reports:\n")
+	#fp = function(s) paste0('\"',s,'\"')
+	fp = function(s) gsub(' ','\\\\ ',s,perl=FALSE)
+	for(i in 1:NGENES) {
+		CMD = paste("Rscript", fp(file.path(SRC,"gen-gene-report.R")), i, PREFIX, ANATYPE, K, REFNAME, fp(REF_GB), MAF, ALIGNIDENT, MINCOUNT, fp(SRC), fp(PWD))
+		stopifnot(system(CMD)==0)
+		cat("Done",i,"of",NGENES,"\n")
+	}
+	# And for unmapped kmers
+	CMD = paste("Rscript", fp(file.path(SRC,"gen-unmapped-report.R")), PREFIX, ANATYPE, K, REFNAME, fp(REF_GB), MAF, ALIGNIDENT, MINCOUNT, fp(SRC), fp(PWD))
+	stopifnot(system(CMD)==0)
+	cat("Done unmapped kmer report\n")
+}

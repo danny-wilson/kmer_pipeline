@@ -1,0 +1,145 @@
+#!/usr/bin/env Rscript
+
+require(genoPlotR)
+help = paste(
+"gen-unmapped-report.Rscript Generate a kmer GWAS report for unmapped kmers",
+"Daniel Wilson (2022)",
+"",
+"Usage: Rscript gen-unmapped-report.Rscript prefix anatype k refname ref_gb maf alignident mincount srcdir outdir logdir",
+sep="\n")
+
+# Read options from command line
+args = commandArgs(trailingOnly = TRUE)
+if(length(args)!=11) {
+	cat(help,sep="\n")
+	stop("\nIncorrect usage\n")
+}
+
+PREFIX = args[1]
+ANATYPE = args[2]
+K = args[3]
+REFNAME = args[4]
+REF_GB = args[5]
+MAF = args[6]
+ALIGNIDENT = args[7]
+MINCOUNT = args[8]
+SRC = args[9]
+PWD = args[10]
+LOGDIR = args[11]
+FIGDIR = paste0(ANATYPE,"kmer",K,"_kmergenealign_figures/")
+MACORMAF = ifelse(MAF==0,NULL,ifelse(MAF<1,"maf","mac"))
+
+# Functions
+# From https://stackoverflow.com/questions/3245862/format-numbers-to-significant-figures-nicely-in-r
+s3 = function(vec, digits=3) gsub("\\.$", "", formatC(signif(vec,digits=digits), digits=digits, format="fg", flag="#"))
+laststr = function(s) {x=unlist(strsplit(s," ")); x[length(x)]}
+`%+%` = paste0
+`%-%` = function(a, b) paste(a, b, sep=" ")
+`%/%` = function(a, b) paste(a, b, sep="\n")
+newline = "\n"
+grepit = function(filename,regex,gz=FALSE) {
+	cmd = "grep"
+	if(gz) cmd = "zgrep"
+	tryCatch({
+		s = readLines((PIPE=pipe(paste0(cmd," '",regex,"' ",filename))))
+		suppressWarnings(close(PIPE))
+		s = unlist(strsplit(s," "))
+		return(s[length(s)])
+	},error=function(e) NA)
+}
+nth = function(n) paste0(n, ifelse((n %% 100)>10 & (n %% 100)<20, "th", c("th","st","nd","rd",rep("th",96))[1 + (n %% 10)]))
+
+# Preliminaries
+setwd(PWD)
+
+# MAF vs MAC text
+is.maf = ifelse(MAF==0,TRUE,ifelse(MAF<1,TRUE,FALSE))
+is.maf.text = ifelse(is.maf,"minor allele frequency (MAF) threshold of" %-% MAF,"minor allele count (MAC) threshold of" %-% MAF)
+is.maf.text2 = ifelse(is.maf,"minor allele frequency (MAF)","minor allele count (MAC)")
+is.maf.text3 = ifelse(is.maf,"MAF","MAC")
+
+html.head =
+"<!DOCTYPE html>" %/%
+"<html>" %/%
+"<head>" %/%
+"  <title>Kmer GWAS report: unmapped kmers</title>" %/%
+"  <link rel='stylesheet' href='report.css'>" %/%
+newline
+
+html.body =
+"</head>" %/%
+"<body>" %/%
+"  <h1>Kmer GWAS report: unmapped kmers</h1>" %/%
+"  <div><p class='timestamp'><code>Prefix:" %-% PREFIX %+% "; KmerType:" %-% ANATYPE %+% "; K:" %/%
+"  " %+% K %+% "; ReferenceGenome:" %-% REFNAME %+% ";" %-% is.maf.text3 %+% ":" %-% MAF %+% "; MinCount:" %/%
+"  " %+% MINCOUNT %+% "; AlignIdent:" %-% ALIGNIDENT %+% "; ReportTimeStamp:" %/%
+"  " %+% date() %+% ".</code></p></div>" %/%
+newline
+
+html.foot =
+"<script src='report.js'></script>" %/%
+"</body>" %/%
+"</html>" %/%
+""
+
+# Gene-specific input/output files
+# To be written to PWD (overwriting if necessary)
+outfile.prefix = paste0(PREFIX,"_",ANATYPE,K,".")
+outfile.html = paste0(outfile.prefix,"report_unmapped.html")
+
+filename.unmapped = paste0(FIGDIR,PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",MACORMAF,"_",MAF,"_alignIdent_",ALIGNIDENT,"_alignPosMinCount_",MINCOUNT,"_unaligned_kmersandpvals.txt")
+
+filename.plotManhattan.log = paste0(LOGDIR,"/plotManhattan.log")
+
+# Unmapped kmers
+table.unmapped = read.delim(filename.unmapped)
+max.signif.unmapped = max(table.unmapped$negLog10)
+thr.signif = as.numeric(grepit(filename.plotManhattan.log,'Bonferroni threshold:'))
+
+html.body = html.body %/%
+"  <p>Not all kmers were aligned to the user-supplied reference genome. The strongest" %/%
+"  significance among the unmapped kmers was" %-% s3(max.signif.unmapped) %+% ","
+
+if(max.signif.unmapped>=thr.signif) {
+	html.body = html.body %/%
+	"  which was genome-wide significant.</p>" %/%
+	"" %/%
+	newline
+	
+	# Filter the significant unmapped kmers
+	gd = table.unmapped$negLog10>=thr.signif
+	tb = data.frame('kmer'=table.unmapped$kmer[gd], 'Signif'=s3(table.unmapped$negLog10[gd]), 'beta'=s3(table.unmapped$beta[gd]), 'MAC'=table.unmapped$mac[gd])
+
+	html.body = html.body %/%
+	"  <h2>Significant unmapped kmers</h2>" %/%
+	"  <div class='divkmertab'>" %/%
+	"  <table class='kmertab center'>" %/%
+	"    <tr>" %/%
+	paste0("      <th>", paste0(colnames(tb), collapse="</th><th>"), "</th>") %/%
+	"    </tr>"
+		
+	for(j in 1:nrow(tb)) {
+		html.body = html.body %/%
+		"    <tr>" %/%
+		paste0("      <td>", paste0(tb[j,], collapse="</td><td>"), "</tr>") %/%
+		"    </tr>"
+	}
+	
+	html.body = html.body %/%
+	"  </table>" %/%
+	"  </div>" %/%
+	newline
+
+} else {
+	html.body = html.body %/%
+	"  which was not genome-wide significant.</p>" %/%
+	newline
+}
+
+html.body = html.body %/%
+"  <p>For a summary of the associations at all unmapped kmers," %/%
+"  follow the link to <a href=" %+% filename.unmapped %+% " target='_blank' rel='noopener noreferrer'>this file</a>.</p>" %/%
+newline
+
+# Final
+cat(html.head,html.body,html.foot,file=outfile.html,append=FALSE)

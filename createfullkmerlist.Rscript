@@ -2,10 +2,7 @@
 
 
 help = c("createfullkmerlist.Rscript merge kmers into a list of unique kmers present across the dataset",
-			"Usage: createfullkmerlist.Rscript n p output_prefix analysis_dir id_file kmer_type kmer_length software_file")
-
-# Get task number - architecture specific
-process = as.integer(Sys.getenv("SGE_TASK_ID"))
+			"Usage: createfullkmerlist.Rscript task_id n p output_prefix analysis_dir id_file kmer_type kmer_length software_file")
 
 ## Read the command line arguments
 args = commandArgs(trailingOnly = TRUE)
@@ -15,7 +12,7 @@ if(length(args!=0)){
 		q("no")
 	}
 }
-if(length(args)!=8) {
+if(length(args)!=9) {
 	cat(help,sep="\n")
 	cat("Received arguments: ",args,"\n")
 	stop("\nIncorrect usage\n")
@@ -31,14 +28,15 @@ if(length(args)!=8) {
 start.time = proc.time()[3]
 
 # Initialize variables
-n = as.integer(args[1])
-p = as.integer(args[2])
-output_prefix = as.character(args[3]) # SGE added
-output_dir = as.character(args[4]) # SGE added
-id_file = as.character(args[5]) # SGE added
-kmer_type = tolower(as.character(args[6]))
-kmer_length = as.integer(args[7]) # SGE added
-software_file = as.character(args[8]) # SGE added
+process = as.integer(args[1])
+n = as.integer(args[2])
+p = as.integer(args[3])
+output_prefix = as.character(args[4]) # SGE added
+output_dir = as.character(args[5]) # SGE added
+id_file = as.character(args[6]) # SGE added
+kmer_type = tolower(as.character(args[7]))
+kmer_length = as.integer(args[8]) # SGE added
+software_file = as.character(args[9]) # SGE added
 
 # Check input arguments
 if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n") # SGE added
@@ -68,13 +66,11 @@ if(!file.exists(nucleotidekmermergescript)) stop("Error: nucleotidekmermerge.R p
 
 # Report variables
 cat("#############################################", "\n")
-cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
-cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
-cat("SGE task ID:",Sys.getenv("SGE_TASK_ID"),"\n")
-cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Running on host: ",system("hostname", intern=TRUE),"\n")
 cat("Command line arguments","\n")
 cat(args, "\n\n")
 cat("Parameters:","\n")
+cat("task_id:", process, "\n")
 cat("n:", n,"\n")
 cat("p:", p,"\n")
 cat("Output prefix:", output_prefix,"\n")
@@ -91,13 +87,13 @@ cat("#############################################", "\n\n")
 
 if(kmer_type =="protein"){
 	
-	system(paste0(Rscriptpath, " ", proteinkmermergescript, " ", n, " ", p, " ", output_prefix, " ", input_dir, " ", output_dir, " ", id_file, " ", kmer_length, " ", software_file, " ", process))
+	stopifnot(system(paste0(Rscriptpath, " ", proteinkmermergescript, " ", n, " ", p, " ", output_prefix, " ", input_dir, " ", output_dir, " ", id_file, " ", kmer_length, " ", software_file, " ", process))==0)
 	
 }
 
 if(kmer_type =="nucleotide"){
 	
-	system(paste0(Rscriptpath, " ", nucleotidekmermergescript, " ", n, " ", p, " ", output_prefix, " ", input_dir, " ", output_dir, " ", id_file, " ", kmer_length, " ", process))
+	stopifnot(system(paste0(Rscriptpath, " ", nucleotidekmermergescript, " ", n, " ", p, " ", output_prefix, " ", input_dir, " ", output_dir, " ", id_file, " ", kmer_length, " ", process))==0)
 	
 }
 

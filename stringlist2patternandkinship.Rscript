@@ -3,13 +3,11 @@
 # Start time
 start.time = proc.time()[3]
 args = commandArgs(trailingOnly=TRUE)
-# Get task number - architecture specific
-t = as.integer(Sys.getenv("SGE_TASK_ID"))
 
 # Process arguments
 help = c("stringlist2patternandkinship.Rscript define presence/absence of a kmer list among kmer count files and build kinship matrix",
 			"Adapted from Daniel Wilson scripts (2018) kmerlist2pattern.Rscript, patternmerge.Rscript, pattern2kinship.Rscript, kinshipmerge.Rscript",
-			"Usage: stringlist2patternandkinship.Rscript p id_file fullkmerlistfile kmercountslistfile analysis_dir output_prefix kmertype software_file [kmer_length=31 mincount=5]")
+			"Usage: stringlist2patternandkinship.Rscript task_id p id_file fullkmerlistfile kmercountslistfile analysis_dir output_prefix kmertype software_file [kmer_length=31 mincount=5]")
 
 if(length(args!=0)){
 	if(args[1]=="-help" | args[1]=="-h"){
@@ -18,7 +16,7 @@ if(length(args!=0)){
 	}
 }
 
-if(length(args)!=8 & length(args)!=10) {
+if(length(args)!=9 & length(args)!=11) {
 	cat(help,sep="\n")
 	cat("Received arguments: ",args,"\n")
 	stop("\nIncorrect usage\n")
@@ -51,24 +49,24 @@ create_pattern_batch = function(fullkmerlistfile = NULL, p = NULL, t = NULL, str
 	kmersublistfile = paste0(batches_dir, output_prefix_batch,".",t,".temp_kmerlist.txt.gz")
 	cat("Creating temp file:",kmersublistfile,"\n")
 	cmd = paste0("zcat ", fullkmerlistfile," | head -n ",end," | tail -n ",end-beg+1," | gzip -c > ",kmersublistfile)
-	system(cmd)
+	stopifnot(system(cmd)==0)
 	softwarepath = ifelse(kmertype=="protein", stringlist2patternpath, kmerlist2patternpath)
 	cmd = paste(softwarepath, kmersublistfile, kmercountslistfile, paste0(batches_dir, output_prefix_batch), kmerlen, mincount)
-	system(cmd)
+	stopifnot(system(cmd)==0)
 
 	cmd = paste("rm",kmersublistfile)
-	system(cmd)
+	stopifnot(system(cmd)==0)
 
 	# Check that files have been created and are not empty
 	outfiles = paste0(batches_dir, output_prefix_batch,c(".patternKey.txt.gz",".patternIndex.txt.gz"))
 	outfiles_size = sapply(outfiles, function(x) as.numeric(system(paste0("ls -l ",x," | cut -d ' ' -f5"), intern = T)), USE.NAMES = F) # SGE added this - could set higher than zero
-	if(any(outfiles_size==0)) stop("One or more SGE_TASK_ID ",t, " ", output_prefix_batch, " patternKey, patternKeySize or patternIndex files are empty")
+	if(any(outfiles_size==0)) stop("One or more task_id ",t, " ", output_prefix_batch, " patternKey, patternKeySize or patternIndex files are empty")
 	
 	
 	# Write output file prefix to output files
 	cat(paste0("Output file prefix: ", output_prefix_batch),"\n")
 	outfile_completed = paste0(batches_dir, output_prefix_batch,".patternbatch.completed.txt")
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
 	
 	return(list("nkmersbatch" = nkmersbatch, "output_prefix_batch" = output_prefix_batch, "batches_dir" = batches_dir))
 
@@ -110,12 +108,16 @@ merge_pattern_batches_parameters = function(nkmersbatch = NULL, p = NULL, t = NU
 	
 	# Determine remaining parameters
 	b = as.integer(ceiling(n/p))
-	if(b==1) stop("Pattern merging - cannot have batchsize = 1. Try p < n/2")
-	if(p != as.integer(ceiling(n/b))) {
-		cat("Warning: pattern merging - adjusting number of processes to equal ceiling(n/b)\n")
-		p = as.integer(ceiling(n/b))
+	if(n==1) {
+		imax = as.integer(1)
+	} else {
+		if(b==1) stop("Pattern merging - cannot have batchsize = 1. Try p < n/2")
+		if(p != as.integer(ceiling(n/b))) {
+			cat("Warning: pattern merging - adjusting number of processes to equal ceiling(n/b)\n")
+			p = as.integer(ceiling(n/b))
+		}
+		imax = as.integer(ceiling(log(n)/log(b)))
 	}
-	imax = as.integer(ceiling(log(n)/log(b)))
 
 	return(list("n" = n, "b" = b, "imax" = imax, "infiles" = infiles))
 	
@@ -128,7 +130,7 @@ merge_patterns = function(t = NULL, n = NULL, b = NULL, p = NULL, imax = NULL, p
 	i = 0
 	while(TRUE) {
     	i=i+1
-	    if(!((t %% b^(i-1))==0 | (t==p & i<=imax))) break()
+	    if((n==1 & i>1) | !((t %% b^(i-1))==0 | (t==p & i<=imax))) break()
     	cat("t =",t,"i =",i,"\n")
 	    if(i==1) {
 	        # First round: merge source files
@@ -154,22 +156,22 @@ merge_patterns = function(t = NULL, n = NULL, b = NULL, p = NULL, imax = NULL, p
 			if(any(infiles_size==0)) stop("One or more file size is zero ",infiles,"\n") # SGE added - could make higher than zero
         	# Create patternKeySize files
         	for(j in 1:length(infiles)) {
-            	system(paste0("zcat ",infiles[j]," | wc -l > ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[j],fixed=TRUE)))
+				stopifnot(system(paste0("zcat ",infiles[j]," | wc -l > ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[j],fixed=TRUE)))==0)
             	cat("Created ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[j],fixed=TRUE),"\n")
 	        }
 
     	    # Merge the patternKey files and redefine the patternKeySize and patternIndex files
         	if(length(infiles)==1) {
-            	system(paste0("cp ",infiles[1]," ",outfile_patternKey))
-	            system(paste0("cp ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[1],fixed=TRUE)," ",outfile_patternKeySize))
-            	system(paste0("cp ",gsub(".patternKey.txt.gz",".patternIndex.txt.gz",infiles[1],fixed=TRUE)," ",outfile_patternIndex))
-				system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))
+				stopifnot(system(paste0("cp ",infiles[1]," ",outfile_patternKey))==0)
+				stopifnot(system(paste0("cp ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[1],fixed=TRUE)," ",outfile_patternKeySize))==0)
+				stopifnot(system(paste0("cp ",gsub(".patternKey.txt.gz",".patternIndex.txt.gz",infiles[1],fixed=TRUE)," ",outfile_patternIndex))==0)
+				stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))==0)
 
         	} else if(length(infiles)==2) {
             	prefixA = gsub(".patternKey.txt.gz","",infiles[1],fixed=TRUE)
             	prefixB = gsub(".patternKey.txt.gz","",infiles[2],fixed=TRUE)
-            	system(paste0(patternmergepath, " ", prefixA, " ", prefixB, " ", batches_dir,outfile_prefix))
-				system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))
+				stopifnot(system(paste0(patternmergepath, " ", prefixA, " ", prefixB, " ", batches_dir,outfile_prefix))==0)
+				stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))==0)
 
         	} else {
             	# Create temporary storage filenames
@@ -184,24 +186,24 @@ merge_patterns = function(t = NULL, n = NULL, b = NULL, p = NULL, imax = NULL, p
                 	if(j==2) {
                     	prefixA = gsub(".patternKey.txt.gz","",infiles[1],fixed=TRUE)
                     	prefixB = gsub(".patternKey.txt.gz","",infiles[2],fixed=TRUE)
-                    	system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+(j%%2)]))
+						stopifnot(system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+(j%%2)]))==0)
                 	} else {
                     	prefixA = tmpfile_prefix[1+((j-1)%%2)]
                     	prefixB = gsub(".patternKey.txt.gz","",infiles[j],fixed=TRUE)
-                    	system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+(j%%2)]))
+						stopifnot(system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+(j%%2)]))==0)
                 	}
             	}
             	# Finally move the tmpfiles into place
             	# Behaviour: j equals the last value in the list
-            	system(paste0("mv ",tmpfile_patternKey[1+(j%%2)]," ",outfile_patternKey))
-            	system(paste0("mv ",tmpfile_patternKeySize[1+(j%%2)]," ",outfile_patternKeySize))
-            	system(paste0("mv ",tmpfile_patternIndex[1+(j%%2)]," ",outfile_patternIndex))
+				stopifnot(system(paste0("mv ",tmpfile_patternKey[1+(j%%2)]," ",outfile_patternKey))==0)
+				stopifnot(system(paste0("mv ",tmpfile_patternKeySize[1+(j%%2)]," ",outfile_patternKeySize))==0)
+				stopifnot(system(paste0("mv ",tmpfile_patternIndex[1+(j%%2)]," ",outfile_patternIndex))==0)
             	# Delete the other tmpfiles
             	unlink(tmpfile_patternKey[1+((j-1)%%2)])
             	unlink(tmpfile_patternKeySize[1+((j-1)%%2)])
             	unlink(tmpfile_patternIndex[1+((j-1)%%2)])
 				# Create file stating that the round is completed
-				system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))
+				stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))==0)
         	}
     		
     	} else {
@@ -231,15 +233,15 @@ merge_patterns = function(t = NULL, n = NULL, b = NULL, p = NULL, imax = NULL, p
 			if(any(infiles_size==0)) stop("One or more file size is zero ",paste(infiles, collapse = " "),"\n") # SGE added - could make higher than zero
         	# Merge the patternKey files and redefine the patternKeySize and patternIndex files
         	if(length(infiles)==1) {
-            	system(paste0("cp ",infiles[1]," ",outfile_patternKey))
-            	system(paste0("cp ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[1],fixed=TRUE)," ",outfile_patternKeySize))
-            	system(paste0("cp ",gsub(".patternKey.txt.gz",".patternIndex.txt.gz",infiles[1],fixed=TRUE)," ",outfile_patternIndex))
-				system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))
+				stopifnot(system(paste0("cp ",infiles[1]," ",outfile_patternKey))==0)
+				stopifnot(system(paste0("cp ",gsub(".patternKey.txt.gz",".patternKeySize.txt",infiles[1],fixed=TRUE)," ",outfile_patternKeySize))==0)
+				stopifnot(system(paste0("cp ",gsub(".patternKey.txt.gz",".patternIndex.txt.gz",infiles[1],fixed=TRUE)," ",outfile_patternIndex))==0)
+				stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))==0)
         	} else if(length(infiles)==2) {
             	prefixA = gsub(".patternKey.txt.gz","",infiles[1],fixed=TRUE)
             	prefixB = gsub(".patternKey.txt.gz","",infiles[2],fixed=TRUE)
-            	system(paste0(patternmergepath, " ",prefixA," ",prefixB," ", batches_dir, outfile_prefix))
-				system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))
+				stopifnot(system(paste0(patternmergepath, " ",prefixA," ",prefixB," ", batches_dir, outfile_prefix))==0)
+				stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))==0)
         	} else {
             	# Create temporary storage filenames
             	ntmp = 2
@@ -253,11 +255,11 @@ merge_patterns = function(t = NULL, n = NULL, b = NULL, p = NULL, imax = NULL, p
                 	if(j==2) {
                     	prefixA = gsub(".patternKey.txt.gz","",infiles[1],fixed=TRUE)
                     	prefixB = gsub(".patternKey.txt.gz","",infiles[2],fixed=TRUE)
-                    	system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+((j-1)%%ntmp)]))
+						stopifnot(system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+((j-1)%%ntmp)]))==0)
                 	} else {
                     	prefixA = tmpfile_prefix[1+((j-2)%%ntmp)]
                     	prefixB = gsub(".patternKey.txt.gz","",infiles[j],fixed=TRUE)
-                    	system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+((j-1)%%ntmp)]))
+						stopifnot(system(paste0(patternmergepath, " ",prefixA," ",prefixB," ",tmpfile_prefix[1+((j-1)%%ntmp)]))==0)
                     	# Delete the previous tmpfile
                     	unlink(tmpfile_patternKey[1+((j-2)%%ntmp)])
                     	unlink(tmpfile_patternKeySize[1+((j-2)%%ntmp)])
@@ -266,10 +268,10 @@ merge_patterns = function(t = NULL, n = NULL, b = NULL, p = NULL, imax = NULL, p
             	}
             	# Finally move the tmpfiles into place
             	# Behaviour: j equals the last value in the list
-            	system(paste0("mv ",tmpfile_patternKey[1+((j-1)%%ntmp)]," ",outfile_patternKey))
-            	system(paste0("mv ",tmpfile_patternKeySize[1+((j-1)%%ntmp)]," ",outfile_patternKeySize))
-            	system(paste0("mv ",tmpfile_patternIndex[1+((j-1)%%ntmp)]," ",outfile_patternIndex))
-				system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'")) # SGE added
+				stopifnot(system(paste0("mv ",tmpfile_patternKey[1+((j-1)%%ntmp)]," ",outfile_patternKey))==0)
+				stopifnot(system(paste0("mv ",tmpfile_patternKeySize[1+((j-1)%%ntmp)]," ",outfile_patternKeySize))==0)
+				stopifnot(system(paste0("mv ",tmpfile_patternIndex[1+((j-1)%%ntmp)]," ",outfile_patternIndex))==0)
+				stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"))==0)
         	}
     	}
 	}
@@ -284,11 +286,11 @@ create_final_merged_pattern_files = function(outfile_patternKey = NULL, outfile_
 	
 	# Check final files aren't empty # SGE added
 	outfiles_size = sapply(c(outfile_patternKey, outfile_patternKeySize, outfile_patternIndex), function(x) as.numeric(system(paste0("ls -l ",x," | cut -d ' ' -f5"), intern = T)), USE.NAMES = F) # SGE added - could set higher than zero
-	if(any(outfiles_size==0)) stop("One or more SGE_TASK_ID ",t, " final ",outfile_prefix, " patternKey, patternKeySize or patternIndex files are empty")
+	if(any(outfiles_size==0)) stop("One or more task_id ",t, " final ",outfile_prefix, " patternKey, patternKeySize or patternIndex files are empty")
 	final_file_prefix = paste0(output_dir, prefix, "_", kmertype, kmerlen)
-    system(paste0("mv ",outfile_patternKey," ", final_file_prefix, ".patternmerge.patternKey.txt.gz"))
-    system(paste0("mv ",outfile_patternKeySize," ", final_file_prefix, ".patternmerge.patternKeySize.txt"))
-    system(paste0("mv ",outfile_patternIndex," ", final_file_prefix, ".patternmerge.patternIndex.txt.gz"))
+	stopifnot(system(paste0("mv ",outfile_patternKey," ", final_file_prefix, ".patternmerge.patternKey.txt.gz"))==0)
+	stopifnot(system(paste0("mv ",outfile_patternKeySize," ", final_file_prefix, ".patternmerge.patternKeySize.txt"))==0)
+	stopifnot(system(paste0("mv ",outfile_patternIndex," ", final_file_prefix, ".patternmerge.patternIndex.txt.gz"))==0)
 	
 	cat(paste0("Final pattern files: ", final_file_prefix, ".patternmerge.patternKey.txt.gz ", final_file_prefix, ".patternmerge.patternKeySize.txt ", final_file_prefix, ".patternmerge.patternIndex.txt.gz "),"\n")
 	
@@ -299,7 +301,7 @@ create_final_merged_pattern_files = function(outfile_patternKey = NULL, outfile_
 	cat("Removing intermediate files","\n")
 	# cat("Length completed files:", length(completed_files), "\n")
 	cmd = paste("rm",paste(completed_files,collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	
 	# pattern_files = dir(pattern=glob2rx(paste0(batches_dir, prefix,"_",kmertype,kmerlen,".patternmerge.j*.patternKey.txt.gz")))
 	# pattern_files = c(pattern_files, dir(pattern=glob2rx(paste0(batches_dir, prefix,"_",kmertype,kmerlen,".patternmerge.j*.patternKeySize.txt"))))
@@ -313,7 +315,7 @@ create_final_merged_pattern_files = function(outfile_patternKey = NULL, outfile_
 	pattern_files = c(pattern_files, gsub(".patternKey.txt.gz",".patternKeySize.txt",files,fixed=TRUE)) # SGE replaced above
 	# cat("Length pattern files:", length(pattern_files), "\n")
 	cmd = paste("rm",paste(pattern_files,collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 
 	
 }
@@ -324,11 +326,11 @@ create_kinship_batch = function(batch_prefix = NULL, batches_dir = NULL, nkmersb
 	# Calculate patternCounts
 	# file_prefix = gsub(".patternKey.txt.gz","",files[od][t],fixed=TRUE)
 	cmd = paste0(patterncountspath, " ", batches_dir, batch_prefix) # SGE changed file_prefix to batches_dir, batch_prefix
-	system(cmd)
+	stopifnot(system(cmd)==0)
 
 	# Compute kinship matrix
 	cmd = paste0(pattern2kinshippath, " ", batches_dir, batch_prefix) # SGE changed file_prefix to batches_dir, batch_prefix
-	system(cmd)
+	stopifnot(system(cmd)==0)
 	
 	# Check kinship file not empty # SGE added
 	if(as.numeric(system(paste0("ls -l ", batches_dir, batch_prefix, ".kinship.txt.gz | cut -d ' ' -f5"), intern = T))==0) 	stop(paste0(batches_dir,batch_prefix, " kinship matrix file empty"),"\n")
@@ -342,7 +344,7 @@ create_kinship_batch = function(batch_prefix = NULL, batches_dir = NULL, nkmersb
 	cat("Created kinship matrix batch:",paste0(batches_dir, batch_prefix, ".kinship.txt.gz"),"\n")
 	# Write output file prefix to output files
 	outfile_completed = paste0(batches_dir, batch_prefix, ".kinship.completed.txt")
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
 	
 }
 
@@ -357,7 +359,7 @@ merge_kinship_matrices = function(t = NULL, n = NULL, b = NULL, p = NULL, imax =
 	nsamp = 0
 	while(TRUE) {
     	i=i+1
-	if(!((t %% b^(i-1))==0 | (t==p & i<=imax))) break()
+	if((n==1 & i>1) | !((t %% b^(i-1))==0 | (t==p & i<=imax))) break()
     	cat("t=",t,"i=",i,"\n")
     	if(i==1) {
         	# First round: merge initial kinship matrices
@@ -405,7 +407,7 @@ merge_kinship_matrices = function(t = NULL, n = NULL, b = NULL, p = NULL, imax =
         	kinship = kinship / as.double(kinship.weight)
         	write(sprintf("%.17g",kinship),gzfile(paste0(outfile_prefix,".kinship.txt.gz")),ncol=nsamp)
         	write(sprintf("%d",kinship.weight),paste0(outfile_prefix,".kinshipWeight.txt"))
-			system2("/bin/bash",paste0("-c 'touch ",outfile_prefix,".kinship.completed.txt'"), wait = TRUE) # SGE added
+			stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_prefix,".kinship.completed.txt'"), wait = TRUE)==0)
     	} else {
         	# Subsequent rounds: merge merged kinship matrices
         	kinship = matrix(as.double(0),nsamp,nsamp)
@@ -454,7 +456,7 @@ merge_kinship_matrices = function(t = NULL, n = NULL, b = NULL, p = NULL, imax =
 			kinship = kinship / as.double(kinship.weight)
 			write(sprintf("%.17g",kinship),gzfile(outfile_kinship),ncol=nsamp)
 			write(sprintf("%d",kinship.weight),outfile_kinshipWeight)
-			system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added
+			stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
 		}
 	}
 
@@ -474,10 +476,10 @@ merge_kinship_matrices = function(t = NULL, n = NULL, b = NULL, p = NULL, imax =
 create_final_kinship_file = function(outfile_kinship = NULL, outfile_kinshipWeight = NULL, t = NULL, outfile_prefix = NULL, output_dir = NULL, prefix = NULL, kmertype = NULL, kmerlen = NULL, files = NULL, batches_dir = NULL){
 	
 	outfiles_size = sapply(c(outfile_kinship, outfile_kinshipWeight), function(x) as.numeric(system(paste0("ls -l ",x," | cut -d ' ' -f5"), intern = T)), USE.NAMES = F) # SGE added
-	if(any(outfiles_size==0)) stop("One or more SGE_TASK_ID ",t, " ", outfile_prefix, " kinship or kinship weight files are empty") # SGE corrected out_prefix to outfile_prefix
+	if(any(outfiles_size==0)) stop("One or more task_id ",t, " ", outfile_prefix, " kinship or kinship weight files are empty") # SGE corrected out_prefix to outfile_prefix
 	final_file_prefix = paste0(output_dir, prefix, "_", kmertype, kmerlen)
-    system(paste0("mv ",outfile_kinship," ", final_file_prefix, ".kinshipmerge.kinship.txt.gz"))
-    system(paste0("mv ",outfile_kinshipWeight," ", final_file_prefix, ".kinshipmerge.kinshipWeight.txt"))
+	stopifnot(system(paste0("mv ",outfile_kinship," ", final_file_prefix, ".kinshipmerge.kinship.txt.gz"))==0)
+	stopifnot(system(paste0("mv ",outfile_kinshipWeight," ", final_file_prefix, ".kinshipmerge.kinshipWeight.txt"))==0)
 	
 	cat(paste0("Final kinship files: ", final_file_prefix, ".kinshipmerge.kinship.txt.gz ", final_file_prefix, ".kinshipmerge.kinshipWeight.txt"),"\n")
 
@@ -486,7 +488,7 @@ create_final_kinship_file = function(outfile_kinship = NULL, outfile_kinshipWeig
 	# completed_files = dir(pattern=glob2rx(paste0(batches_dir, prefix,"_",kmertype,kmerlen,"*.kinship.completed.txt")))
 	completed_files = system(paste0("ls ", paste0(batches_dir, prefix,"_",kmertype,kmerlen,"*.kinship.completed.txt")), intern = T)
 	cmd = paste("rm",paste(completed_files,collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 
 	# Remove all intermediate kinship files - SGE added
 	# Remove those in pwd
@@ -503,7 +505,7 @@ create_final_kinship_file = function(outfile_kinship = NULL, outfile_kinshipWeig
 	# kinship_files = c(kinship_files, dir(pattern=glob2rx(paste0(prefix,"_",kmertype,kmerlen,".*-*.patternCounts.txt.gz"))))
 	# kinship_files = c(kinship_files, dir(pattern=glob2rx(paste0(prefix,"_",kmertype,kmerlen,".*-*.kinship.txt.gz"))))
 	cmd = paste("rm",paste(kinship_files,collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	
 }
 
@@ -512,17 +514,18 @@ create_final_kinship_file = function(outfile_kinship = NULL, outfile_kinshipWeig
 
 
 # Initialize variables
-p = as.integer(args[1])
-id_file = as.character(args[2])
-fullkmerlistfile = as.character(args[3])
-kmercountslistfile = as.character(args[4])
-output_dir = as.character(args[5])
-output_prefix = as.character(args[6])
-kmertype = tolower(as.character(args[7]))
-software_file = as.character(args[8])
-if(length(args)>8) {
-    kmerlen = as.integer(args[9])
-    mincount = as.integer(args[10])
+t = as.integer(args[1])
+p = as.integer(args[2])
+id_file = as.character(args[3])
+fullkmerlistfile = as.character(args[4])
+kmercountslistfile = as.character(args[5])
+output_dir = as.character(args[6])
+output_prefix = as.character(args[7])
+kmertype = tolower(as.character(args[8]))
+software_file = as.character(args[9])
+if(length(args)>9) {
+    kmerlen = as.integer(args[10])
+    mincount = as.integer(args[11])
 } else {
     kmerlen = as.integer(31)
     mincount = as.integer(5)
@@ -579,13 +582,11 @@ if(!file.exists(pattern2kinshippath)) stop("Error: pattern2presencecount.Rscript
 # Report variables
 cat("#############################################", "\n")
 # Report variables
-cat("SGE job name: ",Sys.getenv("JOB_NAME"),"\n")
-cat("SGE job ID: ",Sys.getenv("JOB_ID"),"\n")
-cat("SGE task ID: ",Sys.getenv("SGE_TASK_ID"),"\n")
-cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Running on host: ",system("hostname", intern=TRUE),"\n")
 cat("Command line arguments","\n")
 cat(args, "\n\n")
 cat("Parameters:","\n")
+cat("task_id:", t, "\n")
 cat("p:", p,"\n")
 cat("ID file path:", id_file,"\n")
 cat("Full kmer list file:", fullkmerlistfile,"\n")
@@ -598,7 +599,6 @@ cat("Script location:", script_location, "\n")
 cat("Rscript path:", Rscriptpath, "\n")
 cat("Kmer length:", kmerlen,"\n")
 cat("Min count:", mincount,"\n")
-cat("Process:",t, "\n")
 cat("#############################################", "\n\n")
 
 
@@ -656,17 +656,9 @@ if(t>p) {
 if(t==p){
 	
 	cat("Calculating number of genomes each pattern is present in (of the genomes with a non NA phenotype)","\n")
-	system(paste0(Rscriptpath, " ", pattern2presencecountRscript, " ", output_dir, output_prefix, "_", kmertype, kmerlen, " ", output_dir, " ", id_file, " FALSE"))
+	stopifnot(system(paste0(Rscriptpath, " ", pattern2presencecountRscript, " ", output_dir, output_prefix, "_", kmertype, kmerlen, " ", output_dir, " ", id_file, " FALSE"))==0)
 	cat("\n")
 	
 }
 
 cat("Finished in",(proc.time()[3]-start.time)/3600,"hours\n")
-
-
-
-
-
-
-
-

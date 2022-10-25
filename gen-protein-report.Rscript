@@ -1,0 +1,522 @@
+#!/usr/bin/env Rscript
+
+require(genoPlotR)
+help = paste(
+"gen-protein-report.Rscript Generate a kmer GWAS report for a specific protein",
+"Daniel Wilson (2022)",
+"",
+"Usage: Rscript gen-protein-report.Rscript hit_num prefix anatype k refname ref_gb maf alignident mincount srcdir outdir logdir",
+sep="\n")
+
+# Read options from command line
+args = commandArgs(trailingOnly = TRUE)
+if(length(args)!=12) {
+	cat(help,sep="\n")
+	stop("\nIncorrect usage\n")
+}
+
+HIT_NUM = as.integer(args[1])
+PREFIX = args[2]
+ANATYPE = args[3]
+K = args[4]
+REFNAME = args[5]
+REF_GB = args[6]
+MAF = args[7]
+ALIGNIDENT = args[8]
+MINCOUNT = args[9]
+SRC = args[10]
+PWD = args[11]
+LOGDIR = args[12]
+MACORMAF = ifelse(MAF==0,NULL,ifelse(MAF<1,"maf","mac"))
+
+# Implied arguments
+FIGDIR = paste0(ANATYPE,"kmer",K,"_kmergenealign_figures/")
+
+# Functions
+# From https://stackoverflow.com/questions/3245862/format-numbers-to-significant-figures-nicely-in-r
+s3 = function(vec, digits=3) gsub("\\.$", "", formatC(signif(vec,digits=digits), digits=digits, format="fg", flag="#"))
+laststr = function(s) {x=unlist(strsplit(s," ")); x[length(x)]}
+`%+%` = paste0
+`%-%` = function(a, b) paste(a, b, sep=" ")
+`%/%` = function(a, b) paste(a, b, sep="\n")
+newline = "\n"
+grepit = function(filename,regex,gz=FALSE) {
+	cmd = "grep"
+	if(gz) cmd = "zgrep"
+	tryCatch({
+		s = readLines((PIPE=pipe(paste0(cmd," '",regex,"' ",filename))))
+		suppressWarnings(close(PIPE))
+		s = unlist(strsplit(s," "))
+		return(s[length(s)])
+	},error=function(e) NA)
+}
+nth = function(n) paste0(n, ifelse((n %% 100)>10 & (n %% 100)<20, "th", c("th","st","nd","rd",rep("th",96))[1 + (n %% 10)]))
+
+# MAF vs MAC text
+is.maf = ifelse(MAF==0,TRUE,ifelse(MAF<1,TRUE,FALSE))
+is.maf.text = ifelse(is.maf,"minor allele frequency (MAF) threshold of" %-% MAF,"minor allele count (MAC) threshold of" %-% MAF)
+is.maf.text2 = ifelse(is.maf,"minor allele frequency (MAF)","minor allele count (MAC)")
+is.maf.text3 = ifelse(is.maf,"MAF","MAC")
+
+# Input files
+filename.topgenes = paste0(FIGDIR,PREFIX,"_",ANATYPE,K,"_",REFNAME,"_top20genes_toppvals_",MACORMAF,"_",MAF,"_nucmerAlign_alignIdent_",ALIGNIDENT,"_alignPosMinCount_",MINCOUNT,".txt")
+
+filename.plotManhattan.log = paste0(LOGDIR,"/plotManhattan.log")
+
+# Top regions by min p-value
+setwd(PWD)
+table.topgenes = read.table(filename.topgenes)
+max.signif = max(table.topgenes[,2],na.rm=TRUE)
+
+gene = table.topgenes[HIT_NUM,1]
+gene.html = paste0("<i>",gene,"</i>")
+gene.filename = gsub(":","_",gene)
+gene.max.signif = table.topgenes[HIT_NUM,2]
+is.intergenic = grepl(":",gene)
+genes = gene
+genes.html = gene.html
+if(is.intergenic) {
+	genes = unlist(strsplit(gene,":"))
+	genes.html = paste0("<i>",genes,"</i>")
+}
+
+# Preliminaries
+setwd(PWD)
+
+html.head =
+"<!DOCTYPE html>" %/%
+"<html>" %/%
+"<head>" %/%
+"  <title>Kmer GWAS report: " %-% gene %-% "</title>" %/%
+"  <link rel='stylesheet' href='report.css'>" %/%
+newline
+
+html.body =
+"</head>" %/%
+"<body>" %/%
+"  <h1>Kmer GWAS report:" %-% gene.html %-% "</h1>" %/%
+"  <div><p class='timestamp'><code>Prefix:" %-% PREFIX %+% "; KmerType:" %-% ANATYPE %+% "; K:" %/%
+"  " %+% K %+% "; ReferenceGenome:" %-% REFNAME %+% ";" %-% is.maf.text3 %+% ":" %-% MAF %+% "; MinCount:" %/%
+"  " %+% MINCOUNT %+% "; AlignIdent:" %-% ALIGNIDENT %+% "; ReportTimeStamp:" %/%
+"  " %+% date() %+% ".</code></p></div>" %/%
+newline
+
+html.foot =
+"<script src='report.js'></script>" %/%
+"</body>" %/%
+"</html>" %/%
+""
+
+gbk = read_dna_seg_from_genbank(REF_GB,tagsToParse=c("CDS"))
+ref_length = scan(REF_GB, what = character(0), sep = "\n", nlines = 1)
+ref_length = as.numeric(unlist(strsplit(ref_length," "))[which(unlist(strsplit(ref_length," "))!="")][3])
+if(is.na(ref_length)) stop("Error retrieving the reference genome length from the genbank file","\n")
+
+thr.signif = as.numeric(grepit(filename.plotManhattan.log,'Bonferroni threshold:'))
+
+if(FALSE) {
+	gbk.coord = data.frame('refx'=1:max(gbk$start,gbk$end), 'gene'=NA,'genex'=NA,'strand'=NA)
+	for(i in 1:nrow(gbk)) {
+		from.to = gbk$start[i]:gbk$end[i]
+		gbk.coord$gene[from.to] = gbk$name[i]
+		if(gbk$strand[i]==1) {
+			gbk.coord$genex[from.to] = 1:length(from.to)
+		} else {
+			gbk.coord$genex[from.to] = length(from.to):1
+		}
+		gbk.coord$strand[from.to] = gbk$strand[i]
+	}
+	# Treat intergenic regions as if they were positive strand
+	# This omits the last intergenic region because the full reference length
+	# has not been loaded. Could cause a problem.
+	name = paste0(gbk$name[nrow(gbk)],":",gbk$name[1])
+	from.to = 1:(min(gbk$start[1],gbk$end[1])-1)
+	gbk.coord$gene[from.to] = name
+	gbk.coord$genex[from.to] = 1:length(from.to)
+	for(i in 2:nrow(gbk)) {
+		name = paste0(gbk$name[i-1],":",gbk$name[i])
+		from.to = (max(gbk$start[i-1],gbk$end[i-1])+1):(min(gbk$start[i],gbk$end[i])-1)
+		gbk.coord$gene[from.to] = name
+		gbk.coord$genex[from.to] = 1:length(from.to)
+		gbk.coord$strand[from.to] = 1
+	}
+}
+
+# Gene-specific input/output files
+# To be written to PWD (overwriting if necessary)
+outfile.prefix = paste0(PREFIX,"_",ANATYPE,K,".")
+outfile.html = paste0(outfile.prefix,"report_",gene.filename,".html")
+
+filename.Manhattan.maf.correct_frame = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_correct_frame_*_Manhattan_",MACORMAF,
+MAF,".png")
+filename.Manhattan.maf.correct_frame = dir(dirname(filename.Manhattan.maf.correct_frame),glob2rx(basename(filename.Manhattan.maf.correct_frame)),full.names=TRUE)[1]
+filename.Manhattan.maf0.correct_frame = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_correct_frame_*_Manhattan_allkmers.png")
+filename.Manhattan.maf0.correct_frame = dir(dirname(filename.Manhattan.maf0.correct_frame),glob2rx(basename(filename.Manhattan.maf0.correct_frame)),full.names=TRUE)[1]
+filename.Manhattan.maf.any_frame = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_allframes_Manhattan_",MACORMAF,
+MAF,".png")
+filename.Manhattan.maf0.any_frame = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_allframes_Manhattan_allkmers.png")
+
+filename.kmer.maf = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_correct_frame_*_plot_*_aminoacids_*_to_*_",MACORMAF,MAF,"_alignment.png")
+filename.kmer.maf0 = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_correct_frame_*_plot_*_aminoacids_*_to_*_alignment.png")
+
+filename.mapped.any_frame = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_top_gene_*_",gene,"_*_frame_blast_results.txt")
+filename.unmapped = paste0(FIGDIR,
+PREFIX,"_",ANATYPE,K,"_",REFNAME,"_top_gene_*_",gene,"_no_blast_result_or_poor_alignment.txt")
+
+
+# Gene-level information
+ggbk = gbk[match(genes,gbk$name),,drop=FALSE]
+html.body = html.body %/%
+"  <p>" %+% gene.html %-% "was the" %-% nth(HIT_NUM) %-% "most significant" %/%
+"  region, with a minimum <i>p</i>-value of 10<sup>-" %+% s3(gene.max.signif) %+% "</sup>.</p>"
+
+syn.msg = ifelse(ggbk$synonym==ggbk$name,"",paste0(" (",ggbk$synonym,")"))
+if(is.intergenic) {
+  html.body = html.body %/%
+  "  <p>This is an intergenic region." %/%
+  "  The user-provided Genbank file lists" %-% genes.html[1] %+% syn.msg[1] %/%
+  "  as" %-% ggbk$length[1] %-% "nucleotides long and" %-% genes.html[2] %+% syn.msg[2] %/%
+  "  as" %-% ggbk$length[2] %-% "nucleotides long." %/%
+  "  They encode the" %-% ggbk$product[1] %-% "(protein ID" %-% ggbk$proteinid[1] %+% ")" %/%
+  "  and the" %-% ggbk$product[2] %-% "(protein ID" %-% ggbk$proteinid[2] %+% ").</p>" %/%
+  newline
+} else {
+  html.body = html.body %/%
+  "  <p>The user-provided Genbank file lists" %-% genes.html[1] %+% syn.msg[1] %/%
+  "  as" %-% ggbk$length[1] %-% "nucleotides long." %/%
+  "  It encodes the" %-% ggbk$product[1] %-% "(protein ID" %-% ggbk$proteinid[1] %+% ").</p>" %/%
+  newline
+}
+
+# Gene-level Manhattan plots
+html.body = html.body %/%
+"  <h2>Manhattan plot for" %-% gene.html %-% "</h2>" %/%
+"  <p>The Figure displays the significance of each kmer against the position in the" %/%
+"  reference genome to which it mapped, with a focus on" %-% gene.html %-% "." %/%
+"  The Bonferroni-corrected significance threshold is shown as a horizontal black dashed line." %/%
+"  Annotated features are plotted below. Points are shaded by direction of association" %/%
+"  (in-frame kmers only) or by frame."
+"" %/%
+"  When displaying only kmers in the correct reading frame, points are shaded light (<i>&beta;</i>&nbsp;<&nbsp;0)" %/%
+"  or dark (<i>&beta;</i>&nbsp;>&nbsp;0) to indicate direction of association, and colour-coded" %/%
+"  grey (unique) or orange (non-unique) to indicate the quality of mapping." %/%
+"  When <i>&beta;</i>&nbsp;>&nbsp;0, the presence of the kmer is associated with larger values of the phenotype." %/%
+"" %/%
+"  When displaying kmers in any frame, points are colour-coded by the six reading frames." %/%
+"  Frames 1, 2 and 3 are defined on the positive strand of the reference genome, starting at the" %/%
+"  first, second or third nucleotide respectively. Frames 4, 5 and 6 are defined on the negative" %/%
+"  strand of the reference genome, complementary to frames 1, 3 and 2 respectively." %/%
+"" %/%
+"  The figure can be displayed with or without filtering of kmers below" %/%
+"  the" %-% is.maf.text3 %-% "threshold (although the significance" %/%
+"  threshold is not updated since we do not recommend reporting low-" %+% is.maf.text3 %-% "kmers" %/%
+"  as significant).</p>" %/%
+newline
+
+filenames.Manhattan = c(filename.Manhattan.maf.correct_frame, filename.Manhattan.maf0.correct_frame, filename.Manhattan.maf.any_frame, filename.Manhattan.maf0.any_frame)
+descriptions.Manhattan = c(paste0("Kmers mapping to the region, in the correct frame, filtered by ",is.maf.text3,"."), paste0("Kmers mapping to the region, in the correct frame. No ",is.maf.text3," filter."), paste0("Kmers mapping to the region, in any frame, filtered by ",is.maf.text3,"."), paste0("Kmers mapping to the region, in any frame. No ",is.maf.text3," filter."))
+
+html.body = html.body %/%
+'  <div class="slideshow-container">'
+
+for(i in 1:length(filenames.Manhattan)) {
+  html.body = html.body %/%
+  '    <div class="mySlides fade">' %/%
+  '      <div class="numbertext">' %+% i %-% '/' %-% length(filenames.Manhattan) %+% '</div>' %/%
+  '      <img src="' %+% filenames.Manhattan[i] %+% '" class="center">' %/%
+  '      <div class="text">' %+% descriptions.Manhattan[i] %+% '</div>' %/%
+  '    </div>'
+}
+
+html.body = html.body %/%
+'    <a class="prev" onclick="plusSlides(-1,this)">&#10094;</a>' %/%
+'    <a class="next" onclick="plusSlides(1,this)">&#10095;</a>' %/%
+'    <br>' %/%
+'    <div style="text-align:center">'
+
+for(i in 1:length(filenames.Manhattan)) html.body = html.body %/%
+  '    <span class="dot" onclick="currentSlide(' %+% i %+% ',this)"></span>'
+
+html.body = html.body %/%
+'    </div>' %/%
+'  </div>' %/%
+newline
+
+# Crunch blast results
+filenames.mapped.any_frame = dir(dirname(filename.mapped.any_frame),glob2rx(basename(filename.mapped.any_frame)),full.names=TRUE)
+filenames.mapped.any_frame.frame = sapply(filenames.mapped.any_frame,function(s) {
+	s2 = unlist(strsplit(s,"_"))
+	paste0(s2[length(s2)-4:3],collapse=" ")
+})
+filenames.unmapped = dir(dirname(filename.unmapped),glob2rx(basename(filename.unmapped)),full.names=TRUE)
+blast.nul.exists = length(filenames.unmapped)>0
+
+blast.map = cbind(read.delim(filenames.mapped.any_frame[1],stringsAsFactors=FALSE), "frame"=filenames.mapped.any_frame.frame[1], row.names=NULL)
+if(length(filenames.mapped.any_frame)>1) {
+	for(fni in 2:length(filenames.mapped.any_frame)) {
+		blast.map = rbind(blast.map, cbind(read.delim(filenames.mapped.any_frame[fni],stringsAsFactors=FALSE), "frame"=filenames.mapped.any_frame.frame[fni], row.names=NULL))
+	}
+}
+if(blast.nul.exists) {
+	blast.nul = read.delim(filenames.unmapped[1],stringsAsFactors=FALSE)
+	if(length(filenames.unmapped)>1) {
+		for(fni in 2:length(filenames.unmapped)) {
+			blast.nul = rbind(blast.nul, read.delim(filenames.unmapped[fni],stringsAsFactors=FALSE))
+		}
+	}
+	blast.nul.gd = is.na(match(blast.nul$kmer,blast.map$kmer)) & blast.nul$negLog10>=thr.signif
+}
+
+# Close-up kmer plots
+filenames.kmer.maf = dir(dirname(filename.kmer.maf),glob2rx(basename(filename.kmer.maf)),full.names=TRUE)
+
+filenames.kmer.maf0 = setdiff(dir(dirname(filename.kmer.maf0),glob2rx(basename(filename.kmer.maf0)),full.names=TRUE),filenames.kmer.maf)
+
+filenames.kmer.maf.exist = length(filenames.kmer.maf)>0
+
+if(filenames.kmer.maf.exist) {
+	# Crunch the kmer plot windows
+	f = function(s) {
+		res = gsub(paste0(FIGDIR,
+		PREFIX,"_",ANATYPE,K,"_",REFNAME,"_",gene,"_correct_frame_"),"",s)
+		res = suppressWarnings(as.numeric(unlist(strsplit(res,"_"))))
+		c('win'=res[3],'beg'=res[5],'end'=res[7])
+	}
+	win.maf = sapply(filenames.kmer.maf,f)
+	win.maf0 = sapply(filenames.kmer.maf0,f)
+	# With and without MAF filters, the windows should be the same
+	stopifnot(all(unname(win.maf)==unname(win.maf0)))
+
+	if(is.intergenic) {
+		# For intergenic region blast coords in ref
+		gene.coords.in.ref = rep(NA,ref_length)
+		gene.lo.in.ref = pmax(1,min(gbk$end[match(genes,gbk$name)])+1-999)
+		gene.hi.in.ref = pmin(ref_length,max(gbk$start[match(genes,gbk$name)])-1+999)
+		# Treat as if on the plus strand
+		gene.coords.in.ref[gene.lo.in.ref:gene.hi.in.ref] = 1:(gene.hi.in.ref-gene.lo.in.ref+1)
+		blast.map$sstart.ref = match(blast.map$sstart,gene.coords.in.ref)
+		blast.map$send.ref = match(blast.map$send,gene.coords.in.ref)
+	} else {
+		# For coding sequence blast coords in ref: one system for each frame
+		# See alignmentfunctions.R::plot_allframes_manhattan(): #1069
+		gene.coords.in.ref = matrix(NA,ref_length,6)
+		stopifnot(all(gbk$start<=gbk$end)) # Assertions
+		stopifnot(all(blast.map$sstart<=blast.map$send))
+		blast.map$fm = as.integer(sapply(blast.map$frame,function(s) {
+			unlist(strsplit(s," "))[1]
+		}))
+		blast.map$sstart.ref = NA
+		blast.map$send.ref = NA
+		for(fm in 1:3) {
+			gene.lo.in.ref = pmax(1,gbk$start[match(gene,gbk$name)]-999+(fm-1))
+			gene.hi.in.ref = pmin(ref_length,gbk$end[match(gene,gbk$name)]+999+(fm-1))
+			gene.coords.in.ref[seq(gene.lo.in.ref,gene.hi.in.ref,by=3),fm] = 1:((gene.hi.in.ref-gene.lo.in.ref+1)/3)
+			gd = blast.map$fm==fm
+			blast.map$sstart.ref[gd] = match(blast.map$sstart[gd],gene.coords.in.ref[,fm])
+			blast.map$send.ref[gd] = match(blast.map$send[gd],gene.coords.in.ref[,fm])+2
+		}
+		for(fm in 4:6) {
+			gene.lo.in.ref = pmax(1,gbk$start[match(gene,gbk$name)]-999-(fm-4))
+			gene.hi.in.ref = pmin(ref_length,gbk$end[match(gene,gbk$name)]+999-(fm-4))
+			gene.coords.in.ref[seq(gene.hi.in.ref,gene.lo.in.ref,by=-3),fm] = 1:((gene.hi.in.ref-gene.lo.in.ref+1)/3)
+			gd = blast.map$fm==fm
+			blast.map$sstart.ref[gd] = match(blast.map$sstart[gd],gene.coords.in.ref[,fm])-2
+			blast.map$send.ref[gd] = match(blast.map$send[gd],gene.coords.in.ref[,fm])
+		}
+	}
+
+	# Convert window units
+	win.beg = NA; win.end = NA
+	if(is.intergenic) {
+#		Adding 333: See alignmentfunctions.R #1553
+		win.beg = unname(win.maf[2,]) + 333
+		win.end = unname(win.maf[3,]) + 333
+	} else {
+#		Adding 333: See alignmentfunctions.R #1553
+		win.beg.local = unname(win.maf[2,]) + 333
+		win.end.local = unname(win.maf[3,]) + 333
+		stopifnot(win.beg.local<win.end.local) # Assertion
+		win.fm = blast.map$fm[grep("correct",blast.map$frame)[1]]
+		if(win.fm<=3) {
+			win.beg = match(win.beg.local,gene.coords.in.ref[,win.fm])
+			win.end = match(win.end.local,gene.coords.in.ref[,win.fm])+2
+		} else {
+			win.beg = match(win.beg.local,gene.coords.in.ref[,win.fm])-2
+			win.end = match(win.end.local,gene.coords.in.ref[,win.fm])
+		}
+	}
+	
+	# Identify whether each blast hit is in each window
+	blast.map$slo = pmin(blast.map$sstart.ref,blast.map$send.ref)
+	blast.map$shi = pmax(blast.map$sstart.ref,blast.map$send.ref)
+	win.lo = pmin(win.beg,win.end)
+	win.hi = pmax(win.beg,win.end)
+	blast.map.in.win = matrix(FALSE,nrow(blast.map),length(win.beg))
+	for(i in 1:length(win.beg)) {
+		blast.map.in.win[,i] = blast.map$slo<=win.hi[i] & blast.map$shi>=win.lo[i]
+	}
+
+	# Define the tables
+	blast.tb = list()
+	blast.tb.inframe = list()
+	for(i in 1:length(win.beg)) {
+		blast.tb[[i]] = data.frame('kmer'=blast.map$kmer, 'Signif'=s3(blast.map$negLog10), 'beta'=s3(blast.map$beta), 'MAC'=blast.map$mac, 'qstart'=blast.map$qstart, 'qend'=blast.map$qend, 'sstart'=blast.map$sstart.ref, 'send'=blast.map$send.ref, 'frame'=blast.map$frame,  'pident'=s3(blast.map$pident), 'length'=blast.map$length, 'mism'=blast.map$mismatch, 'gapo'=blast.map$gapopen, 'eval'=round(-log10(blast.map$evalue)))[blast.map.in.win[,i],]
+		blast.tb.inframe[[i]] = blast.tb[[i]][grep("correct",blast.tb[[i]]$frame),]
+	}
+	blast.html = list()
+	for(i in 1:length(blast.tb)) {
+		blast.html[[i]] =
+		"  <div class='divkmertab'>" %/%
+		"  <table class='kmertab'>" %/%
+		"    <tr>" %/%
+		paste0("      <th>", paste0(colnames(blast.tb[[i]]), collapse="</th><th>"), "</th>") %/%
+		"    </tr>"
+		
+		for(j in 1:nrow(blast.tb[[i]])) {
+			if(as.numeric(blast.tb[[i]]$Signif[j])>=thr.signif) {
+				blast.html[[i]] = blast.html[[i]] %/%
+				"    <tr>" %/%
+				paste0("      <td><b>", paste0(blast.tb[[i]][j,], collapse="</b></td><td><b>"), "</b></tr>") %/%
+				"    </tr>"
+			} else {
+				blast.html[[i]] = blast.html[[i]] %/%
+				"    <tr>" %/%
+				paste0("      <td>", paste0(blast.tb[[i]][j,], collapse="</td><td>"), "</tr>") %/%
+				"    </tr>"
+			}
+		}
+		
+		blast.html[[i]] = blast.html[[i]] %/%
+		"  </table>" %/%
+		"  </div>" %/%
+		newline
+	}
+
+	# 'Earle' plots
+	html.body = html.body %/%
+	"  <h2>High-resolution Earle plots for" %-% gene.html %-% "</h2>" %/%
+	"  <p>The series of Figures below are used to identify the underlying" %/%
+	"  variants tagged by significant kmers. Resembling Manhattan plots," %/%
+	"  these are high-resolution figures plotting individual kmers" %/%
+	"  against the position to which they mapped in the reference genome," %/%
+	"  in the region of" %-% gene.html %-% "." %/%
+	"  The kmers are sorted vertically in order of significance, with" %/%
+	"  the most significant kmers at the top. The horizontal black" %/%
+	"  dashed line demarcates kmers above and below the Bonferroni-corrected" %/%
+	"  significance threshold. Only kmers in the correct reading frame are plotted.</p>" %/%
+	"" %/%
+	"  <p>The kmers are shaded light (<i>&beta;</i>&nbsp;<&nbsp;0)" %/%
+	"  or dark (<i>&beta;</i>&nbsp;>&nbsp;0) to indicate direction of association." %/%
+	"  Where there is sequence variation relative to the reference genome," %/%
+	"  individual sites are colour-coded by allele according to the key." %/%
+	"  The reference allele is indicated at the bottom. Only invariant sites" %/%
+	"  are coloured grey." %/%
+	"" %/%
+	"  Use the arrows to scroll through and jump between windows of" %/%
+	"  significance within the region. By default, low-" %+% is.maf.text3 %-% "kmers are filtered" %/%
+	"  out. Use the checkbox to remove this filter, which can sometimes assist" %/%
+	"  in interpretation of the signal of association. For instance, in the case" %/%
+	"  of antimicrobial resistance, there are often multiple very low-" %+% is.maf.text3 %/%
+	"  mutants associated with increased resistance (darker kmers) which can fall below" %/%
+	"  the" %-% is.maf.text3 %-% "threshold. These mutants might have evolved independently, and" %/%
+	"  show lower significance than wild types associated with reduced" %/%
+	"  resistance (lighter kmers) because their low frequency reduces statistical" %/%
+	"  power.</p>" %/%
+	"" %/%
+	newline
+
+	descriptions.kmer.maf = rep("",length(filenames.kmer.maf))
+	descriptions.kmer.maf0 = rep("",length(filenames.kmer.maf))
+
+	html.body = html.body %/%
+	'  <div class="slideshow-container">' %/%
+	'      <div class="toggler"><label>Filter by' %-% is.maf.text3 %-% '<input type="checkbox" id="toggler" value="yes" onclick="showToggled()" checked></label></div>'
+
+	for(i in 1:length(filenames.kmer.maf)) {
+	  html.body = html.body %/%
+	  '    <div class="mySlides fade">' %/%
+	  '      <div class="numbertext">' %+% i %-% '/' %-% length(filenames.kmer.maf) %+% '</div>' %/%
+	  '      <img src="' %+% filenames.kmer.maf[i] %+% '" class="center toggled" style="width:80%">' %/%
+	  '      <img src="' %+% filenames.kmer.maf0[i] %+% '" class="center untoggled" style="width:80%">' %/%
+	  blast.html[[i]] %/%
+	  '      <div class="text toggled">' %+% descriptions.kmer.maf[i] %+% '</div>' %/%
+	  '      <div class="text untoggled">' %+% descriptions.kmer.maf0[i] %+% '</div>' %/%
+	  '    </div>'
+	}
+
+	html.body = html.body %/%
+	'    <a class="prev" onclick="plusSlides(-1,this)">&#10094;</a>' %/%
+	'    <a class="next" onclick="plusSlides(1,this)">&#10095;</a>' %/%
+	'    <br>' %/%
+	'    <div style="text-align:center">'
+
+	for(i in 1:length(filenames.kmer.maf)) html.body = html.body %/%
+	  '    <span class="dot" onclick="currentSlide(' %+% i %+% ',this)"></span>'
+
+	html.body = html.body %/%
+	'    </div>' %/%
+	'  </div>' %/%
+	newline
+
+	html.body = html.body %/%
+	'    <p>The Table above provides detailed information on the' %/%
+	'    kmers plotted in the Figure, ordered from most significant (top)' %/%
+	'    to least significant (bottom). All kmers are shown, irrespective of' %/%
+    '    reading frame. In the table, <code>beta</code>' %/%
+	'    provides the direction and magnitude of the association between the' %/%
+	'    phenotype and the presence of the kmer, and <code>MAC</code> provides the' %/%
+	'    minor allele count (no filter was applied to the Table).' %/%
+	'    The remaining columns were produced by BLAST: <code>qstart</code>, ' %/%
+	'    <code>qend</code>, <code>sstart</code> and <code>send</code> provide' %/%
+	'    the start and end coordinates of the BLAST match for the query (kmer)' %/%
+	'    and subject (reference genome). The match is further summarized by' %/%
+	'    the <code>pident</code> (percent identity), <code>length</code>,' %/%
+	'    number of <code>mism[atches]</code>, <code>gapo[pen]</code> events,' %/%
+	'    and the log<sub>10</sub> of the <code>eval[ue]</code>.</p>' %/%
+	newline
+}
+
+if(blast.nul.exists) {
+	if(sum(blast.nul.gd)>0) {
+		html.body = html.body %/%
+		'    <h2>Poorly mapped kmers' %/%
+		'    <p>In some cases, kmers were localized to' %-% gene.html %-% 'by' %/%
+		'    the genome aligner (nucmer or bowtie2), but could not be mapped' %/%
+		'    with accuracy by BLAST. This discrepancy arises because the former' %/%
+		'    used the flanking sequence for context, but the BLAST mapping did' %/%
+		'    not. Significant kmers localized to' %-% gene.html %-% 'but not mapped by' %/%
+		'    BLAST are listed in the Table below.</p>' %/%
+		newline
+
+		blast.tb.nul = data.frame('kmer'=blast.nul$kmer, 'Signif'=s3(blast.nul$negLog10), 'beta'=s3(blast.nul$beta), 'MAC'=blast.nul$mac)[blast.nul.gd,]
+
+		html.body = html.body %/%
+		"  <div class='divkmertab'>" %/%
+		"  <table class='kmertab'>" %/%
+		"    <tr>" %/%
+		paste0("      <th>", paste0(colnames(blast.tb.nul), collapse="</th><th>"), "</th>") %/%
+		"    </tr>"
+		
+		for(j in 1:nrow(blast.tb.nul)) {
+			html.body = html.body %/%
+			"    <tr>" %/%
+			paste0("      <td><b>", paste0(blast.tb.nul[j,], collapse="</b></td><td><b>"), "</b></tr>") %/%
+			"    </tr>"
+		}
+		
+		html.body = html.body %/%
+		"  </table>" %/%
+		"  </div>" %/%
+		newline
+	}
+}
+
+# Final
+cat(html.head,html.body,html.foot,file=outfile.html,append=FALSE)

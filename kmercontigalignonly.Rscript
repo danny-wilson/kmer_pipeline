@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 
 
-help = c("kmercontigalign.Rscript align contigs to the reference genome using nucmer and assign kmers to genes or intergenic regions",
-			"kmercontigalign.Rscript task_id n output_prefix output_dir id_file ref_fa ref_gb kmer_type kmer_length nucmerident kmerSeqFile software_file [kstart=9 kend=100]")
+help = c("kmercontigalignonly.Rscript align contigs to the reference genome using nucmer and assign kmers to genes or intergenic regions",
+			"kmercontigalignonly.Rscript task_id n output_prefix output_dir id_file ref_fa ref_gb kmer_type kmer_length nucmerident kmerSeqFile software_file [kstart=9 kend=100]")
 
 # Start time
 start.time = proc.time()[3]
@@ -611,41 +611,4 @@ for(i in process){
 	cat("Finished aligning contigs to the reference genome for process",i,"\n")	
 }
 
-
-# For a subset of the processes, use to merge the batches created by the other processes
-# SGE incorporated from kmeralignmerge.Rscript
-
-# Which processes to keep
-p = floor(n/5); p = ifelse(p==0, 1, p)
-
-if(process>p) {
-	
-	cat("Task",process,"not required for kmer contig align merging","\n")
-	cat("Finished in",(proc.time()[3]-start.time)/3600,"hours\n")
-	quit("no")
-	
-} else {
-	
-	cat("Running kmer contig align merge","\n\n")
-	
-	input_files_filepath = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length, "_",ref.name,"_kmergenecombination_filepaths.txt")
-	
-	final_file_prefix = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name, "_t",ident_threshold, "_")
-	input_files = paste0(final_file_prefix, ids, "_nucmeralign_kmer_list_gene_IDs.txt.gz")
-	input_files_completed = paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length,"_",ids,".kmercontigalign.completed.txt")
-	
-	nattempts = 0
-	while(!all(file.exists(input_files_completed)) | !all(file.exists(input_files))) {
-		nattempts=nattempts+1
-		if(nattempts>100) stop("Could not find files", input_files_completed)
-		Sys.sleep(60) # SGE changed from 1 to 60
-	}
-	
-	stopifnot(system(paste0(Rscriptpath, " ", kmercontigalignmergepath," ", process, " ", n, " ", p, " ", prefix, " ", output_dir," ", input_files_filepath, " ", kmer_type, " ", kmer_length," ", ref.fa," ", ident_threshold, " ", software_file))==0)
-	
-}
-
-
-
 cat("Finished in",(proc.time()[3]-start.time)/60,"minutes\n")
-

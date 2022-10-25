@@ -4,17 +4,14 @@
 start.time = proc.time()[3]
 args = commandArgs(trailingOnly=TRUE)
 
-# Get task number - architecture specific
-t = as.integer(Sys.getenv("SGE_TASK_ID"))
-
 # Process arguments
 help = paste(
 "rungemma.Rscript run gemma on a subset of the unique patterns",
 "Daniel Wilson (2022)",
 "",
-"Usage: SGE_TASK_ID=1 rungemma.Rscript p kmerFilePrefix id_file output_prefix analysis_dir kmertype kmer_length software_file [covariate_file]",
+"Usage: rungemma.Rscript task_id p kmerFilePrefix id_file output_prefix analysis_dir kmertype kmer_length software_file [covariate_file]",
 sep="\n") # SGE changed pheno to id_file, added out-dir, kmertype, kmerlen, cov-file, software_file
-if(length(args)<8 | length(args)>9) {
+if(length(args)<9 | length(args)>10) {
 	cat(help,sep="\n")
 	cat("Received arguments: ",args,"\n")
 	stop("\nIncorrect usage\n")
@@ -27,15 +24,16 @@ if(length(args)<8 | length(args)>9) {
 ###################################################################################################
 
 # Initialize variables
-p = as.integer(args[1])
-prefix = as.character(args[2])
-id_file = as.character(args[3])
-output_prefix = as.character(args[4])
-output_dir = as.character(args[5])
-kmertype = tolower(as.character(args[6]))
-kmerlen = as.integer(args[7])
-software_file = as.character(args[8])
-if(length(args)>8) covariate_file = as.character(args[9]) else covariate_file = NULL
+t = as.integer(args[1])
+p = as.integer(args[2])
+prefix = as.character(args[3])
+id_file = as.character(args[4])
+output_prefix = as.character(args[5])
+output_dir = as.character(args[6])
+kmertype = tolower(as.character(args[7]))
+kmerlen = as.integer(args[8])
+software_file = as.character(args[9])
+if(length(args)>9) covariate_file = as.character(args[10]) else covariate_file = NULL
 
 # p = 10
 # prefix = "/well/bag/earle/Saureus/ares992/analysis/saur_fusacid_test12_protein11"
@@ -89,13 +87,11 @@ if(any(tolower(as.character(software_paths$name))=="gemma_libraries")){
 
 # Report variables # SGE updated
 cat("#############################################", "\n")
-cat("SGE job name: ",Sys.getenv("JOB_NAME"),"\n")
-cat("SGE job ID: ",Sys.getenv("JOB_ID"),"\n")
-cat("SGE task ID: ",Sys.getenv("SGE_TASK_ID"),"\n")
-cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Running on host: ",system("hostname", intern=TRUE),"\n")
 cat("Command line arguments","\n")
 cat(args, "\n\n")
 cat("Parameters:","\n")
+cat("task_id:", t, "\n")
 cat("p:", p,"\n")
 cat("Kmer file prefix:", prefix,"\n")
 cat("ID file path:", id_file,"\n")
@@ -154,7 +150,7 @@ genofile = paste0(gemma_dir, output_prefix,"_",kmertype,kmerlen,".",beg,"-",end,
 # No directory for output file as gemma will always put files in subdirectory 'output'
 outfile.prefix = paste0(output_prefix,"_",kmertype,kmerlen,".",beg,"-",end,"")
 write(t(cbind(beg:end,1,0)),genofile.prefix,ncol=3,sep="\t")
-system(paste0("zcat ",keyfile," | head -n ",end," | tail -n ",end-beg+1," | sed 's/./&\t/g' | paste ",genofile.prefix," /dev/stdin > ",genofile))
+stopifnot(system(paste0("zcat ",keyfile," | head -n ",end," | tail -n ",end-beg+1," | sed 's/./&\t/g' | paste ",genofile.prefix," /dev/stdin > ",genofile))==0)
 
 # If it does not exist, create output directory with correct permissions
 if(!dir.exists(file.path(gemma_dir,"output"))) dir.create(file.path(gemma_dir,"output"))
@@ -164,11 +160,11 @@ setwd(gemma_dir)
 # Run gemma
 #kinfile.txt = gsub(".txt.gz",paste0(".",beg,"-",end,".txt"),kinfile,fixed=TRUE) # SGE replaced with below
 kinfile.txt = paste0(gemma_dir, output_prefix,"_",kmertype,kmerlen,".kinship.",beg,"-",end,".txt") # SGE added
-if(kinfile.txt!=kinfile) system(paste0("zcat ",kinfile," > ",kinfile.txt))
+if(kinfile.txt!=kinfile) stopifnot(system(paste0("zcat ",kinfile," > ",kinfile.txt))==0)
 if(is.null(covariate_file)){
-	system(paste0(gemmapath, " -g ",genofile," -p ",phenofile," -k ",kinfile.txt," -lmm 4 -maf 0 -o ",outfile.prefix))
+	stopifnot(system(paste0(gemmapath, " -g ",genofile," -p ",phenofile," -k ",kinfile.txt," -lmm 4 -maf 0 -o ",outfile.prefix))==0)
 } else {
-	system(paste0(gemmapath, " -g ",genofile," -p ",phenofile," -k ",kinfile.txt," -c ",covariate_file," -lmm 4 -maf 0 -o ",outfile.prefix))
+	stopifnot(system(paste0(gemmapath, " -g ",genofile," -p ",phenofile," -k ",kinfile.txt," -c ",covariate_file," -lmm 4 -maf 0 -o ",outfile.prefix))==0)
 }
 
 # Delete temporary files
@@ -182,9 +178,9 @@ unlink(phenofile)
 assoc.file = paste0(gemma_dir,"output/",outfile.prefix,".assoc.txt")
 log.file = paste0(gemma_dir,"output/",outfile.prefix,".log.txt")
 pval.file = paste0(gemma_dir,"output/",outfile.prefix,".pval.txt.gz")
-system(paste0("cut -f10 ",assoc.file," | tail -n +2 | gzip -c > ",pval.file))
-system(paste0("gzip ",assoc.file))
-system(paste0("gzip ",log.file))
+stopifnot(system(paste0("cut -f10 ",assoc.file," | tail -n +2 | gzip -c > ",pval.file))==0)
+stopifnot(system(paste0("gzip ",assoc.file))==0)
+stopifnot(system(paste0("gzip ",log.file))==0)
 
 
 cat("Finished in",(proc.time()[3]-start.time)/60,"minutes\n")

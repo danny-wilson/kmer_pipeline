@@ -1,0 +1,23 @@
+#!/usr/bin/env Rscript
+help = paste(
+"get_ref_name.Rscript Read the name of the supplied reference genome",
+"Daniel Wilson (2022)",
+"",
+"Usage: Rscript get_ref_name.Rscript fasta_file",
+sep="\n")
+
+# Read options from command line
+args = commandArgs(trailingOnly = TRUE)
+if(length(args)!=1) {
+	cat(help,file=stderr(),sep="\n")
+	stop("\nIncorrect usage\n")
+}
+REF_FA = args[1]
+
+ref.name = scan(REF_FA, what=character(0), sep='\n', nlines=1, quiet=TRUE)
+ref.name = unlist(strsplit(ref.name, ' '))[1]
+if(substr(ref.name,1,1)!='>') {
+	stop('Error: reference fasta file does not begin with a name starting with >','\n')
+}
+ref.name = substr(ref.name,2,1e6)
+cat(ref.name,file=stdout())

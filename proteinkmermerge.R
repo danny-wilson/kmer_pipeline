@@ -7,7 +7,7 @@ help = paste(
 "proteinkmermerge.Rscript merge protein kmer files names 1.txt.gz 2.txt.gz etc",
 "Daniel Wilson (2018) kmermerge.Rscript modified to proteinkmermerge.Rscript by Sarah Earle (2019)",
 "",
-"Usage: qsub -t 1:p proteinkmermerge.Rscript n p output_prefix input_dir output_dir id_file kmer_length software_file process",
+"Usage: proteinkmermerge.R n p output_prefix input_dir output_dir id_file kmer_length software_file process",
 sep="\n")
 if(length(args)!=9) { # SGE changed to 9 as added output_prefix, input_dir, output_dir, id_file, kmer_length, software_file, process
 	cat(help,sep="\n")
@@ -32,18 +32,15 @@ sort_final_file = function(output_dir = NULL, output_prefix = NULL, sort_strings
 	kmer_output_file = paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.wdummycount.txt")
 	write.table(kmers, file = kmer_output_file, row = F, col = F, sep = "\t", quote = F)
 	# Gzip file
-	system(paste0("gzip ", kmer_output_file))
+	stopifnot(system(paste0("gzip ", kmer_output_file))==0)
 	# Run sort strings
 	kmer_output_file_gz = paste0(kmer_output_file, ".gz")
 	final.kmer.txt.gz = paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.sorted.wdummycount.txt.gz")
 	sortCommand = paste(c(sort_strings, kmer_output_file_gz, "| gzip -c >", final.kmer.txt.gz), collapse=" ")
-	system(sortCommand)
+	stopifnot(system(sortCommand)==0)
 	# Remove column of dummy counts
 	final.kmer.txt.gz.sorted = paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.txt.gz")
-	system(paste0("zcat ", final.kmer.txt.gz, " | cut -f1 | gzip -c > ", final.kmer.txt.gz.sorted))
-	# Remove temp dummy count files
-	system(paste0("rm ", kmer_output_file_gz))
-	system(paste0("rm ", final.kmer.txt.gz))
+	stopifnot(system(paste0("zcat ", final.kmer.txt.gz, " | cut -f1 | gzip -c > ", final.kmer.txt.gz.sorted))==0)
 	# Tests
 	kmers_new = system(paste0("zcat ", final.kmer.txt.gz.sorted), intern = T)
 	# cat("Length of input kmer file:", nrow(kmers), "\n")
@@ -53,10 +50,11 @@ sort_final_file = function(output_dir = NULL, output_prefix = NULL, sort_strings
 	if(nrow(kmers)!=length(kmers_new)) stop("Error: issue when sorting the final kmer file, number of kmers does not match","\n")
 	if(!all(!is.na(match(kmers[,1], kmers_new)))) stop("Error: issue when sorting the final kmer file, the kmers do not match","\n")
 	if(!all(kmers[,1]==kmers_new)) stop("Error: issue when sorting the final kmer file, the kmers are not in the same order","\n")
+	# Remove temp dummy count files
+	stopifnot(system(paste0("rm ", kmer_output_file_gz))==0)
+	stopifnot(system(paste0("rm ", final.kmer.txt.gz))==0)
 	# Remove the unsorted file
-	system(paste0("rm ", output_dir, output_prefix,"_protein", kmer_length , ".kmermerge.unsorted.txt.gz"))
-	
-	
+	stopifnot(system(paste0("rm ", output_dir, output_prefix,"_protein", kmer_length , ".kmermerge.unsorted.txt.gz"))==0)
 }
 
 create_final_file = function(outfile = NULL, output_dir = NULL, output_prefix = NULL, kmer_length = NULL){
@@ -65,15 +63,15 @@ create_final_file = function(outfile = NULL, output_dir = NULL, output_prefix = 
 	outfile_size = system(paste0("ls -l ",outfile," | cut -d ' ' -f5"), intern = T) # SGE adde
 	if(outfile_size==0) stop(outfile, " file is empty","\n") # SGE adde
 	cmd = paste0("mv ",outfile," ", output_dir, output_prefix,"_protein", kmer_length, ".kmermerge.unsorted.txt") # SGE added output_dir output_prefix and _ before kmermerge.txt
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	cmd=paste0("gzip ", output_dir, output_prefix,"_protein", kmer_length, ".kmermerge.unsorted.txt") # Added in as next script takes in a gzipped file
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # Added in as next script takes in a gzipped file # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0) # Added in as next script takes in a gzipped file
 
 	# Remove all completed files
 	# completed_files = dir(pattern=glob2rx(paste0(output_dir, output_prefix,".protein",kmer_length,"*.completed.txt")))
 	completed_files = system(paste0("ls ", paste0(output_dir, output_prefix,".protein",kmer_length,"*.completed.txt")), intern = T)
 	cmd = paste("rm",paste(completed_files,collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 
 }
 
@@ -166,7 +164,7 @@ while(TRUE) {
 	} else {
 	    infiles = paste0(input_dir,sample_id[beg:end],".kmer", kmer_length, ".txt") # SGE changed from beg:end to sample_id[beg:end] and removed .gz from file name and added kmer_length and kmers before .txt
 	}
-	infiles_size = sapply(infiles, function(x) as.numeric(system(paste0("ls -l ",x," | cut -d ' ' -f5"), intern = T)), USE.NAMES = F) # SGE added - could make check greater than zero
+	infiles_size = sapply(infiles, function(x) as.numeric(system(paste0("zcat ",x," | wc -c"), intern = T)), USE.NAMES = F)
 	# nattempts = 0
 	# while(!all(file.exists(infiles)) & !all(infiles_size>0)) { # SGE added check for non zero file size
 		# nattempts=nattempts+1
@@ -183,28 +181,28 @@ while(TRUE) {
 	    }
     } else if(length(infiles)==2) {
     		if(gz){
-	    		cmd = paste0("sort -um <(zcat ",infiles[1]," | cut -f1) <(zcat ",infiles[2]," | cut -f1) > ",outfile) # SGE changed from zcat to cat
+	    		cmd = paste0("LC_ALL=C sort -um <(zcat ",infiles[1]," | cut -f1) <(zcat ",infiles[2]," | cut -f1) > ",outfile) # SGE changed from zcat to cat
 	    } else {
-	    		cmd = paste0("sort -um <(cat ",infiles[1]," | cut -f1) <(cat ",infiles[2]," | cut -f1) > ",outfile) # SGE changed from zcat to cat
+	    		cmd = paste0("LC_ALL=C sort -um <(cat ",infiles[1]," | cut -f1) <(cat ",infiles[2]," | cut -f1) > ",outfile) # SGE changed from zcat to cat
 	    }
     } else {
     		if(gz){
-      		cmd = paste0("sort -um <(zcat ",infiles[1]," | cut -f1) <(zcat ",infiles[2]," | cut -f1)",
-        		paste0(" | sort -um - <(zcat ",infiles[3:length(infiles)]," | cut -f1)",collapse=""),
+      		cmd = paste0("LC_ALL=C sort -um <(zcat ",infiles[1]," | cut -f1) <(zcat ",infiles[2]," | cut -f1)",
+        		paste0(" | LC_ALL=C sort -um - <(zcat ",infiles[3:length(infiles)]," | cut -f1)",collapse=""),
         		" > ",outfile) # SGE changed from zcat to cat
         	} else {
-        		cmd = paste0("sort -um <(cat ",infiles[1]," | cut -f1) <(cat ",infiles[2]," | cut -f1)",
-        	paste0(" | sort -um - <(cat ",infiles[3:length(infiles)]," | cut -f1)",collapse=""),
+        		cmd = paste0("LC_ALL=C sort -um <(cat ",infiles[1]," | cut -f1) <(cat ",infiles[2]," | cut -f1)",
+        	paste0(" | LC_ALL=C sort -um - <(cat ",infiles[3:length(infiles)]," | cut -f1)",collapse=""),
         	" > ",outfile) # SGE changed from zcat to cat
         	}
     }
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	if(length(infiles)>1){
 		kmers.i = scan(outfile, what = character(0), sep = "\n", quiet = TRUE) # SGE added as bash sort ignores *s so is keeping duplicate kmers
 		kmers.i = unique(kmers.i) # SGE added
 		cat(kmers.i, file = outfile, sep = "\n") # SGE added
 	}
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
   } else {
     # Subsequent rounds: merge merged files
     te = as.integer(ceiling(t/(b^(i-1)))*b^(i-1))
@@ -231,13 +229,13 @@ while(TRUE) {
     if(length(infiles)==1) {
       cmd = paste0("mv ",infiles[1]," ",outfile)
     } else if(length(infiles)==2) {
-      cmd = paste0("sort -um ",infiles[1]," ",infiles[2]," > ",outfile)
+      cmd = paste0("LC_ALL=C sort -um ",infiles[1]," ",infiles[2]," > ",outfile)
     } else {
-      cmd = paste0("sort -um ",infiles[1]," ",infiles[2],
-        paste0(" | sort -um - ",infiles[3:length(infiles)],collapse=""),
+      cmd = paste0("LC_ALL=C sort -um ",infiles[1]," ",infiles[2],
+        paste0(" | LC_ALL=C sort -um - ",infiles[3:length(infiles)],collapse=""),
         " > ",outfile)
     }
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	if(length(infiles)>1){
 		kmers.i = scan(outfile, what = character(0), sep = "\n", quiet = TRUE) # SGE added as bash sort ignores *s so is keeping duplicate kmers
 		kmers.i = unique(kmers.i) # SGE added
@@ -249,9 +247,9 @@ while(TRUE) {
 		# cat("Running remove command:",cmd,"\n")
 		# cat("Infiles:",paste(infiles, collapse = " "), "\n")
 		# cat("Infiles exist:",paste(file.exists(infiles), collapse = " "), "\n")
-		system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+		stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	}
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
   }
 }
 if(t==p) {

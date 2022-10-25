@@ -181,7 +181,7 @@ translate_6_frames = function(contig_path = NULL, id = NULL, outDir = NULL, oneL
 	
 	# gzip final file
 	final_file = get_output_file(outDir, id)
-	system(paste0("gzip ", final_file))
+	stopifnot(system(paste0("gzip ", final_file))==0)
 	return(paste0(final_file,".gz"))
 	
 }

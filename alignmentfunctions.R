@@ -502,14 +502,14 @@ run_manhattan_single_protein = function(which_kmers_no_result = NULL, res = NULL
 	
 	# First with no limit on y-axis
 	plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos, ypos = ypos, all_translations = ref_gene_i$all_translations, beta_col = beta_col, bonferroni = bonferroni, ylim_max = NULL, x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
-	plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos[whichMAthreshold,], ypos = ypos[whichMAthreshold], all_translations = ref_gene_i$all_translations, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = NULL, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
+	plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos[whichMAthreshold,,drop=FALSE], ypos = ypos[whichMAthreshold], all_translations = ref_gene_i$all_translations, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = NULL, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
 
 	# Then limit to ylim = 50 for those with ylim > 100
 	if(max(as.numeric(ypos))>100){
 		plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos, ypos = ypos, all_translations = ref_gene_i$all_translations, beta_col = beta_col, bonferroni = bonferroni, ylim_max = 50, x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
 	}
 	if(max(as.numeric(ypos)[whichMAthreshold])>100){
-		plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos[whichMAthreshold,], ypos = ypos[whichMAthreshold], all_translations = ref_gene_i$all_translations, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = 50, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
+		plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos[whichMAthreshold,,drop=FALSE], ypos = ypos[whichMAthreshold], all_translations = ref_gene_i$all_translations, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = 50, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
 	}
 
 }
@@ -1118,7 +1118,7 @@ plot_allframes_manhattan = function(gene_i_results_list = NULL, prefix = NULL, g
 
 	for(f in 1:6){
 
-		if(is.null(malim)) which_to_plot = 1:length(ypos_list[[f]]) else which_to_plot = which(c(as.numeric(gene_i_results_list[[f]][[macormaf]]))>=(malim))
+		if(is.null(malim)) which_to_plot = seq(1,by=1,len=length(ypos_list[[f]])) else which_to_plot = which(c(as.numeric(gene_i_results_list[[f]][[macormaf]]))>=(malim))
 
 		for(k in which_to_plot){
 			lines(x = c(as.numeric(xpos_list[[f]][k,1]), as.numeric(xpos_list[[f]][k,2])), y = rep(as.numeric(ypos_list[[f]][k]), 2), col = frame_cols[f])
@@ -1168,12 +1168,16 @@ plot_singleframe_manhattan_protein = function(prefix = NULL, genes_name = NULL, 
 	which_aligned = which(beta_col=="#d3d3d3" | beta_col=="#838383")
 	which_unaligned = which(beta_col!="#d3d3d3" & beta_col!="#838383")
 	xpos_1_new_aligned = sapply(xpos[which_aligned,1], function(x, s) s[x], s = seq_pos1, USE.NAMES = F)
+	if(length(which_aligned)==0) xpos_1_new_aligned = c()
 	xpos_2_new_aligned = sapply(xpos[which_aligned,2], function(x, s) s[x], s = seq_pos2, USE.NAMES = F)
+	if(length(which_aligned)==0) xpos_2_new_aligned = c()
 	xpos_1_new_unaligned = sample(seq(from = end+50, to = end+100, length.out = length(which_unaligned)), length(which_unaligned), replace = F)
+	if(length(which_unaligned)==0) xpos_1_new_unaligned = c()
 	xpos_2_new_unaligned = xpos_1_new_unaligned+((kmer_length*3)-1)
+	if(length(which_unaligned)==0) xpos_2_new_unaligned = c()
 
-	xpos_1_new = rep(0, nrow(xpos)); xpos_1_new[which_aligned] = xpos_1_new_aligned; xpos_1_new[which_unaligned] = xpos_1_new_unaligned
-	xpos_2_new = rep(0, nrow(xpos)); xpos_2_new[which_aligned] = xpos_2_new_aligned; xpos_2_new[which_unaligned] = xpos_2_new_unaligned
+	xpos_1_new = rep(0, nrow(xpos)); if(length(which_aligned)>0) xpos_1_new[which_aligned] = xpos_1_new_aligned; if(length(which_unaligned)>0) xpos_1_new[which_unaligned] = xpos_1_new_unaligned
+	xpos_2_new = rep(0, nrow(xpos)); if(length(which_aligned)>0) xpos_2_new[which_aligned] = xpos_2_new_aligned; if(length(which_unaligned)>0) xpos_2_new[which_unaligned] = xpos_2_new_unaligned
 
 	xpos[,1] = xpos_1_new
 	xpos[,2] = xpos_2_new
@@ -1188,17 +1192,19 @@ plot_singleframe_manhattan_protein = function(prefix = NULL, genes_name = NULL, 
 
 	png(paste0(prefix, "_", genes_name, "_", correct_or_wrong, "_", j, plotname), width = 20, height = 15, units = "cm", res = 600)
 	par(mar = c(5.1, 4.1, 2, 6))
-	plot(range(as.numeric(as.vector(xpos))), c(0, max(as.numeric(ypos))), type = "n", xlab = "Amino acid position in reference", ylab = expression(paste("Significance (-log"[10],italic(' p'),") LMM",collapse="")), main = paste0(genes_name, " (Protein kmers)"), axes = F, ylim = ylim)
-	# plot_axes(all_translations[j])
-	for(k in 1:nrow(xpos)){
-		lines(x = c(as.numeric(xpos[k,1]), as.numeric(xpos[k,2])), y = rep(as.numeric(ypos[k]), 2), col = beta_col[k])
+	if(length(xpos)>0) {
+		plot(range(as.numeric(as.vector(xpos))), c(0, max(as.numeric(ypos))), type = "n", xlab = "Amino acid position in reference", ylab = expression(paste("Significance (-log"[10],italic(' p'),") LMM",collapse="")), main = paste0(genes_name, " (Protein kmers)"), axes = F, ylim = ylim)
+		# plot_axes(all_translations[j])
+		for(k in 1:nrow(xpos)){
+			lines(x = c(as.numeric(xpos[k,1]), as.numeric(xpos[k,2])), y = rep(as.numeric(ypos[k]), 2), col = beta_col[k])
+		}
+		abline(h = bonferroni, col = "black", lty = 2)
+
+		plot_gene_arrows_manhattan(ref_gb_full = ref_gb_full, start = start, end = end, xpos = xpos)
+
+
+		plot_beta_and_feature_legend()
 	}
-	abline(h = bonferroni, col = "black", lty = 2)
-
-	plot_gene_arrows_manhattan(ref_gb_full = ref_gb_full, start = start, end = end, xpos = xpos)
-
-
-	plot_beta_and_feature_legend()
 	dev.off()
 
 }
@@ -1642,7 +1648,7 @@ process_blast_protein = function(prefix = NULL, i = NULL, kmers_gene_i = NULL, g
 	
 	kmer_sequence_file = paste0(output_dir, prefix,"_", kmer_type, kmer_length, "_gene_", i, "_tmp_kmer_file.txt")
 	blast_output_file = paste0(output_dir, prefix,"_", kmer_type, kmer_length, "_blast_out_",i,".txt")
-	system(paste0(blastPath," -query ", kmer_sequence_file, " -subject ", ref_trans_file," -max_hsps 1 -outfmt '6 qseqid sseqid sacc pident length mismatch gapopen qstart qend evalue sstart send sseq qseq' -evalue 200000 -word_size 2 -gapopen 9 -gapextend 1 -matrix PAM30 -out ", blast_output_file))
+	stopifnot(system(paste0(blastPath," -query ", kmer_sequence_file, " -subject ", ref_trans_file," -max_hsps 1 -outfmt '6 qseqid sseqid sacc pident length mismatch gapopen qstart qend evalue sstart send sseq qseq' -evalue 200000 -word_size 2 -gapopen 9 -gapextend 1 -matrix PAM30 -out ", blast_output_file))==0)
 
 
 	# Read in blast results
@@ -1651,16 +1657,16 @@ process_blast_protein = function(prefix = NULL, i = NULL, kmers_gene_i = NULL, g
 	if(length(blast.search)!=0){
 		# Create a matrix of the blast results
 		blast.search = matrix(blast.search,ncol=14,byrow=TRUE)
-		blast.search = blast.search[which(as.numeric(blast.search[,4])>=perident),]
+		blast.search = blast.search[which(as.numeric(blast.search[,4])>=perident),,drop=FALSE]
 		kmer.index = as.numeric(substr(as.character(blast.search[,1]), 5, 100000000))
 		blast.search = cbind(kmers_gene_i[kmer.index,], blast.search)
 		colnames(blast.search) = c("kmer","negLog10","beta","mac","qseqid","sseqid", "sacc", "pident", "length", "mismatch", "gapopen", "qstart", "qend" ,"evalue", "sstart","send","sseq","qseq")
 		blast.search$maf = as.numeric(blast.search$mac)/nsamples
 		blast_output_file_processed = paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name, "_top_gene_",i,"_", genes_names[i],"_", j, "_", correct_or_wrong, "_blast_results.txt")
 		write.table(blast.search, file = blast_output_file_processed, row = F, col = T, sep = "\t", quote = F)
-		system(paste0("rm ", ref_trans_file))
-		if(j==6) system(paste0("rm ", kmer_sequence_file))
-		system(paste0("rm ", blast_output_file))
+		stopifnot(system(paste0("rm ", ref_trans_file))==0)
+		if(j==6) stopifnot(system(paste0("rm ", kmer_sequence_file))==0)
+		stopifnot(system(paste0("rm ", blast_output_file))==0)
 
 
 	}
@@ -1680,7 +1686,7 @@ process_blast_nucleotide = function(blastPath = NULL, prefix = NULL, kmer_type =
 
 	
 	# Run blast
-	system(paste0(blastPath," -query ", kmer_sequence_file, " -subject ", ref_file," -max_hsps 1 -outfmt '6 qseqid sseqid sacc pident length mismatch gapopen qstart qend evalue sstart send sseq qseq sstrand' -evalue 0.05 -gapopen 5 -gapextend 2 -penalty -3 -reward 2 -word_size 4 -out ", blast_output_file))
+	stopifnot(system(paste0(blastPath," -query ", kmer_sequence_file, " -subject ", ref_file," -max_hsps 1 -outfmt '6 qseqid sseqid sacc pident length mismatch gapopen qstart qend evalue sstart send sseq qseq sstrand' -evalue 0.05 -gapopen 5 -gapextend 2 -penalty -3 -reward 2 -word_size 4 -out ", blast_output_file))==0)
 
 	# Read in blast results
 	blast.search=scan(blast_output_file,what=character(0),quiet = TRUE)
@@ -1695,9 +1701,9 @@ process_blast_nucleotide = function(blastPath = NULL, prefix = NULL, kmer_type =
 		blast.search$maf = as.numeric(blast.search$mac)/nsamples
 		blast_output_file_processed = paste0(output_dir, prefix, "_",kmer_type, kmer_length,  "_", ref.name, "_top_gene_",i,"_", genes_names[i],"_blast_results.txt")
 		write.table(blast.search, file = blast_output_file_processed, row = F, col = T, sep = "\t", quote = F)
-		system(paste0("rm ", ref_file))
-		system(paste0("rm ", kmer_sequence_file))
-		system(paste0("rm ", blast_output_file))
+		stopifnot(system(paste0("rm ", ref_file))==0)
+		stopifnot(system(paste0("rm ", kmer_sequence_file))==0)
+		stopifnot(system(paste0("rm ", blast_output_file))==0)
 	}
 	return(blast_output_file_processed)
 	

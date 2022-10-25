@@ -9,10 +9,7 @@ args = commandArgs(trailingOnly=TRUE)
 # Process arguments - SGE added out_prefix to usage
 help = c("kmercontigalignmerge.R merge kmer/gene alignment combinations",
 			"Adapted from Daniel Wilson (2018) kmermerge.Rscript",
-			"Usage: kmercontigalignmerge.Rscript n p output_prefix analysis_dir input_files kmer_type kmer_length ref_fa nucmerident software_file")
-
-# Get task number - architecture specific
-process = as.integer(Sys.getenv("SGE_TASK_ID"))
+			"Usage: kmercontigalignmerge.Rscript task_id n p output_prefix analysis_dir input_files kmer_type kmer_length ref_fa nucmerident software_file")
 
 if(length(args!=0)){
 	if(args[1]=="-help" | args[1]=="-h"){
@@ -21,7 +18,7 @@ if(length(args!=0)){
 	}
 }
 
-if(length(args)!=10) { # SGE changed to 6 as added out_prefix, output_dir and input files
+if(length(args)!=11) {
 	cat(help,sep="\n")
 	cat("Received arguments: ",args,"\n")
 	stop("\nIncorrect usage\n")
@@ -43,16 +40,17 @@ get_count_batch_parameters = function(p = NULL, b = NULL, n = NULL){
 
 
 # Initialize variables
-n = as.integer(args[1])
-p = as.integer(args[2])
-out_prefix = as.character(args[3]) # SGE added
-output_dir = as.character(args[4]) # SGE added
-input_files = as.character(args[5]) # SGE added
-kmer_type = tolower(as.character(args[6])) # SGE added
-kmer_length = as.integer(args[7]) # SGE added
-ref.fa = as.character(args[8]) # SGE added
-ident_threshold = as.numeric(args[9]) # SGE added
-software_file = as.character(args[10]) # SGE added
+process = as.integer(args[1])
+n = as.integer(args[2])
+p = as.integer(args[3])
+out_prefix = as.character(args[4]) # SGE added
+output_dir = as.character(args[5]) # SGE added
+input_files = as.character(args[6]) # SGE added
+kmer_type = tolower(as.character(args[7])) # SGE added
+kmer_length = as.integer(args[8]) # SGE added
+ref.fa = as.character(args[9]) # SGE added
+ident_threshold = as.numeric(args[10]) # SGE added
+software_file = as.character(args[11]) # SGE added
 
 if(is.na(n)) stop("Error: n must be an integer","\n")
 if(is.na(p)) stop("Error: p must be an integer","\n")
@@ -90,13 +88,11 @@ if(!file.exists(stringlist2countpath)) stop("Error: stringlist2count path doesn'
 
 # Report variables
 cat("#############################################", "\n")
-cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
-cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
-cat("SGE task ID:",Sys.getenv("SGE_TASK_ID"),"\n")
-cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Running on host: ",system("hostname", intern=TRUE),"\n")
 cat("Command line arguments","\n")
 cat(args, "\n\n")
 cat("Parameters:","\n")
+cat("task_id:", process, "\n")
 cat("n:", n,"\n")
 cat("p:", p,"\n")
 cat("Output prefix:", out_prefix,"\n")
@@ -108,7 +104,6 @@ cat("Reference fasta file:", ref.fa,"\n")
 cat("Nucmer alignment minimum % identity:", ident_threshold,"\n")
 cat("Software file:", software_file, "\n")
 cat("Script location:", script_location, "\n")
-cat("Process:",process, "\n")
 cat("#############################################", "\n\n")
 
 
@@ -132,7 +127,7 @@ cat("Reference name:",ref.name,"\n")
 b = as.integer(ceiling(n/p))
 if(b==1) stop("Cannot have batchsize = 1. Try p < n/2")
 p = as.integer(ceiling(n/b))
-t = as.integer(Sys.getenv("SGE_TASK_ID"))
+t = process
 imax = as.integer(ceiling(log(n)/log(b)))
 
 cat("Parameters [n batchsize processes taskid imax]: ",n,b,p,t,imax,"\n")
@@ -172,9 +167,9 @@ while(TRUE) {
         paste0(" | sort -u - <(zcat ",infiles[3:length(infiles)]," | cut -f1)",collapse=""),
         " > ",outfile) # SGE changed from zcat to cat
     }
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
   } else {
     # Subsequent rounds: merge merged files
     te = as.integer(ceiling(t/(b^(i-1)))*b^(i-1))
@@ -190,7 +185,7 @@ while(TRUE) {
 	nattempts = 0
 	while(!all(file.exists(infiles_completed)) | !all(file.exists(infiles))) {
 		nattempts=nattempts+1
-		if(nattempts>100) stop("Could not find files",infiles_completed)
+		if(nattempts>100) stop("Could not find files ",paste(infiles_completed,collapse=" "))
 		Sys.sleep(60) # SGE changed from 1 to 60
 	}
 
@@ -206,13 +201,13 @@ while(TRUE) {
         paste0(" | sort -u - ",infiles[3:length(infiles)],collapse=""),
         " > ",outfile)
     }
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	# If length of infiles is one, it has been moved and doesn't exist. If more than one, delete the temp files. # SGE added
 	if(length(infiles)>1){
 		cmd = paste("rm",paste(infiles,collapse=" "))
-		system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+		stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	}
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
   }
 }
 if(t==p) {
@@ -231,14 +226,11 @@ if(t==p) {
 	cat("outfile:", outfile, "\n")
 	cat("dummycountfile:", dummycountfile, "\n")
 	cat("outfile_count:", outfile_count, "\n")
-	system(paste0("paste ", outfile, " ", dummycountfile, " > ", outfile_count))
+	stopifnot(system(paste0("paste ", outfile, " ", dummycountfile, " > ", outfile_count))==0)
 	sortCommand = paste(c(sortstringspath, outfile_count, "| cut -f1 | gzip -c >", final.kmer.txt.gz), collapse=" ")
 	cat("Sort command:","\n")
-	system(sortCommand)
+	stopifnot(system(sortCommand)==0)
 	cat(sortCommand, "\n")
-
-	# cmd=paste0("gzip ",output_dir, out_prefix,"_kmeralignmerge.txt") # Added in as next script takes in a gzipped file
-	# system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # Added in as next script takes in a gzipped file # SGE added wait = TRUE
 
 	# Remove all completed files
 	# completed_files = dir(pattern=glob2rx(paste0(contigalign_dir, out_prefix,"_", kmer_type, kmer_length,"*.j*.completed.txt"))) # SGE added .j
@@ -246,14 +238,13 @@ if(t==p) {
 	completed_files = system(paste0("ls ", paste0(contigalign_dir, out_prefix,"_", kmer_type, kmer_length,"*.j*.completed.txt")), intern = T) # SGE changed to
 	completed_files = c(completed_files, system(paste0("ls ", paste0(contigalign_dir, out_prefix,"_", kmer_type, kmer_length,"*.kmercontigalign.completed.txt")), intern = T))
 	cmd = paste("rm",paste(completed_files,collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
-	# system(paste0("rm ", output_dir, out_prefix,"_kmeralignmerge.txt"))
-	system(paste0("rm ", outfile))
-	system(paste0("rm ", contigalign_dir, out_prefix,"_", kmer_type, kmer_length, "_dummycount.txt"))
-	system(paste0("rm ", contigalign_dir, out_prefix,"_", kmer_type, kmer_length,"_kmeralignmerge_dummycount.txt"))
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
+	stopifnot(system(paste0("rm ", outfile))==0)
+	stopifnot(system(paste0("rm ", contigalign_dir, out_prefix,"_", kmer_type, kmer_length, "_dummycount.txt"))==0)
+	stopifnot(system(paste0("rm ", contigalign_dir, out_prefix,"_", kmer_type, kmer_length,"_kmeralignmerge_dummycount.txt"))==0)
 	# Write file for final file being completed
 	outfile_completed = paste0(contigalign_dir, out_prefix,"_", kmer_type, kmer_length,".",ref.name,"_t",ident_threshold, ".final.kmeralignmerge.completed.txt") # SGE added out_prefix and . before j
-	system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
 }
 
 cat("Process finished for kmeralignmerge","\n")
@@ -266,7 +257,7 @@ infile = paste0(output_dir, out_prefix,"_", kmer_type, kmer_length,".", ref.name
 nattempts = 0
 while(!all(file.exists(infile_completed)) | !all(file.exists(infile))) {
 	nattempts=nattempts+1
-		if(nattempts>100) stop("Could not find file", infile_completed)
+		if(nattempts>100) stop("Could not find file ", infile_completed)
 		Sys.sleep(60) # SGE changed from 1 to 60
 }
 
@@ -287,13 +278,13 @@ out_prefix_counts = paste0(contigalign_dir, out_prefix,"_", kmer_type, kmer_leng
 
 kmersublistfile = paste0(out_prefix_counts,".",t,".temp_kmerlist.txt.gz")
 cmd = paste0("zcat ", infile," | head -n ",end," | tail -n ",end-beg+1," | gzip -c > ",kmersublistfile)
-system(cmd)
+stopifnot(system(cmd)==0)
 
 cmd = paste(stringlist2countpath,kmersublistfile, input_files_path, out_prefix_counts,0,1)
-system(cmd)
+stopifnot(system(cmd)==0)
 
 cmd = paste("rm",kmersublistfile)
-system(cmd)
+stopifnot(system(cmd)==0)
 
 # Check that files have been created and are not empty
 outfiles = paste0(out_prefix_counts,c(".count.txt.gz"))
@@ -301,7 +292,7 @@ outfiles_size = sapply(outfiles, function(x) as.numeric(system(paste0("ls -l ",x
 if(any(outfiles_size==0)) stop("One or more JOB_INDEX ",t, " ", out_prefix_counts, " kmer align count files are empty")
 # Write file for final file being completed
 outfile_completed = paste0(out_prefix_counts,".count.completed.txt") # SGE added out_prefix and . before j
-system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE) # SGE added wait = TRUE
+stopifnot(system2("/bin/bash",paste0("-c 'touch ",outfile_completed,"'"), wait = TRUE)==0)
 
 
 # Merge files and remove intermediate files
@@ -313,7 +304,7 @@ if(t==p){
 	nattempts = 0
 	while(!all(file.exists(alignCountCompletedFiles)) | !all(file.exists(alignCountFiles))) {
 		nattempts=nattempts+1
-			if(nattempts>100) stop("Could not find file", alignCountCompletedFiles)
+			if(nattempts>100) stop("Could not find file ", alignCountCompletedFiles)
 			Sys.sleep(60) # SGE changed from 1 to 60
 	}
 
@@ -324,11 +315,11 @@ if(t==p){
 	count = as.numeric(count)
 	final_count_file = paste0(output_dir, out_prefix,"_", kmer_type, kmer_length,".", ref.name,"_t",ident_threshold, ".kmeralignmerge.count.txt")
 	cat(count, file = final_count_file, sep = "\n")
-	system(paste0("gzip ", final_count_file))
+	stopifnot(system(paste0("gzip ", final_count_file))==0)
 	# Delete intermediate count files
 	cat("Deleting intermediate files","\n")
 	cmd = paste("rm",paste(c(alignCountFiles, alignCountCompletedFiles, infile_completed),collapse=" "))
-	system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE) # SGE added wait = TRUE
+	stopifnot(system2("/bin/bash",paste0("-c '",cmd,"'"), wait = TRUE)==0)
 	
 }
 

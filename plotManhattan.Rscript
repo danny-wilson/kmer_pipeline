@@ -5,7 +5,7 @@ start.time = proc.time()[3]
 args = commandArgs(trailingOnly=TRUE)
 
 help = c("plotManhattan.Rscript plot QQ and Manhattan plots",
-			"Usage: plotManhattan.Rscript output_prefix analysis_dir kmerfilePrefix ref_gb ref_fa gene_lookup_file id_file nucmerident min_count kmer_type kmer_length minor_allele_threshold software_file blastident [annotateGeneFile override_signif]")
+			"Usage: plotManhattan.Rscript output_prefix analysis_dir kmerfilePrefix ref_gb ref_fa gene_lookup_file id_file nucmerident min_count kmer_type kmer_length minor_allele_threshold software_file blastident ngenes [annotateGeneFile override_signif]")
 
 
 if(length(args!=0)){
@@ -15,7 +15,7 @@ if(length(args!=0)){
 	}
 }
 
-if(length(args)!=14 & length(args)!=16){
+if(length(args)!=15 & length(args)!=17){
 	cat(help,sep="\n")
 	cat("Received arguments: ", args, "\n")
 	stop("\nIncorrect usage\n")
@@ -120,52 +120,14 @@ kmer_length = as.integer(args[11])
 minor_allele_threshold = as.numeric(args[12])
 software_file = as.character(args[13])
 blastident = as.integer(args[14])
-if(length(args)>14){
-	annotateGeneFile = as.character(args[15])
-	override_signif = as.logical(args[16])
+ngenes = as.integer(args[15])
+if(length(args)>15){
+	annotateGeneFile = as.character(args[16])
+	override_signif = as.logical(args[17])
 } else {
 	annotateGeneFile = NULL
 	override_signif = FALSE
 }
-
-# # # # # Initialize variables
-# output_prefix = "saur_fusacid_160_ccmatch"
-# output_dir = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch/"
-# kmerfilePrefix = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch/saur_fusacid_160_ccmatch_nucleotide31"
-# ref_gb = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.gb"
-# ref_fa = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.fasta"
-# gene_lookup_file = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch/nucleotidekmer31_kmergenealign/saur_fusacid_160_ccmatch_nucleotide31_NC_002953.3_gene_id_name_lookup.txt"
-# id_file = "/well/bag/earle/Saureus/ares992/saur_fusacid_80cases_80controls_ccmatch_comid_paths_pheno.txt"
-# nucmerident = 90
-# min_count = 1
-# kmer_type = "nucleotide"
-# kmer_length = 31
-# minor_allele_threshold = 0.01
-# software_file = "/well/bag/earle/Saureus/ares992/test_pipeline_software_location_file.txt"
-# blastident = 70
-# annotateGeneFile = NULL
-
-# # # # # Initialize variables
-# output_prefix = "saur_fusacid_160_ccmatch"
-# output_dir = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch_2/"
-# kmerfilePrefix = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch_2/saur_fusacid_160_ccmatch_protein11"
-# ref_gb = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.gb"
-# ref_fa = "/well/bag/earle/Saureus/ares992/ref/MSSA476_NC_002953.3.fasta"
-# gene_lookup_file = "/gpfs2/well/bag/earle/Saureus/ares992/analysis160ccmatch_2/proteinkmer11_kmergenealign/saur_fusacid_160_ccmatch_protein11_NC_002953.3_gene_id_name_lookup.txt"
-# id_file = "/well/bag/earle/Saureus/ares992/saur_fusacid_80cases_80controls_ccmatch_comid_paths_pheno.txt"
-# nucmerident = 90
-# min_count = 1
-# kmer_type = "protein"
-# kmer_length = 11
-# minor_allele_threshold = 0.01
-# software_file = "/well/bag/earle/Saureus/ares992/pipeline_software_location.txt"
-# blastident = 70
-# annotateGeneFile = NULL
-# override_signif = FALSE
-
-# Currently hard coded to look at the top 20 genes
-ngenes = 20
-
 
 # Check file inputs
 if(!file.exists(output_dir)) stop("Error: output directory doesn't exist","\n")
@@ -241,9 +203,7 @@ if(!file.exists(blastPath)) stop("Error: blast path",blastPath,"doesn't exist","
 
 # Report variables
 cat("#############################################", "\n")
-cat("SGE job name:",Sys.getenv("JOB_NAME"),"\n")
-cat("SGE job ID:",Sys.getenv("JOB_ID"),"\n")
-cat("Running on host: ",Sys.getenv("HOST"),"\n")
+cat("Running on host: ",system("hostname", intern=TRUE),"\n")
 cat("Command line arguments","\n")
 cat(args, "\n\n")
 cat("Parameters:","\n")
@@ -267,6 +227,7 @@ cat("Kmer type:", kmer_type, "\n")
 cat("Kmer length:", kmer_length,"\n")
 cat("Minor allele threshold:", minor_allele_threshold,"\n")
 cat("BLAST alignment minimum % identity:", blastident,"\n")
+cat("Number of top genes to output:", ngenes, "\n")
 
 cat("Software file:", software_file, "\n")
 cat("Script location:", script_location, "\n")
@@ -368,7 +329,7 @@ cat("Bonferroni threshold:",bonferroni,"\n")
 ## Plot QQ plots
 ###########################
 
-plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = 0, kmer_type = kmer_type, kmer_length = kmer_length)
+plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = 0, macormaf = macormaf, mapatterns = mapatterns, kmer_type = kmer_type, kmer_length = kmer_length)
 plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = minor_allele_threshold, macormaf = macormaf, mapatterns = mapatterns, kmer_type = kmer_type, kmer_length = kmer_length)
 
 
@@ -424,10 +385,10 @@ gene_names = final_kmer_genes[s]
 pch_standard = pch_standard[s]
 alignPosPCH = alignPosPCH[s]
 
-### Top 20 genes
+### Top ngenes genes
 ###########################
 
-# Find the top 20 genes by p-value and store the gene name plus the most significant p-value per gene
+# Find the top ngenes genes by p-value and store the gene name plus the most significant p-value per gene
 
 gene_conversion = gene_names
 names(gene_conversion) = gene_names
@@ -508,12 +469,12 @@ for(i in which_to_plot){
 	
 }
 
-# Get kmers for top 10 genes
+# Get kmers for top ngenes
 
 
 
 which_genes_to_annotate.i = which(!is.na(gene_names) & ma>=(minor_allele_threshold))
-top10genes = as.character(get_genes_to_plot(gene_names = gene_names[which_genes_to_annotate.i], y = ypos[which_genes_to_annotate.i], gene_conversion = gene_conversion[which_genes_to_annotate.i], ymax = 10, gene_panel = c(), ref = ref, ngenes = ngenes)[,1])
+topngenes = as.character(get_genes_to_plot(gene_names = gene_names[which_genes_to_annotate.i], y = ypos[which_genes_to_annotate.i], gene_conversion = gene_conversion[which_genes_to_annotate.i], ymax = 10, gene_panel = c(), ref = ref, ngenes = ngenes)[,1])
 
 final_kmer_list = scan(gzfile(kmerSeqFile), what = character(0), sep = "\n", quiet = TRUE)
 
@@ -529,7 +490,7 @@ write_top_gene_kmers_to_file(wh.i = wh.i, final_kmer_list = final_kmer_list, fin
 # If the annotate gene file has been provided, read in the gene names to annotate
 # and annotate them on the Manhattan plot, and create files containing all kmers
 # assigned to those genes/IRs
-# Otherwise, do this for the 20 most significant genes/IRs
+# Otherwise, do this for the ngenes most significant genes/IRs
 # Feed them into the alignment figures
 if(!is.null(annotateGeneFile)){
 	# Write provided gene names to file
@@ -547,16 +508,16 @@ if(!is.null(annotateGeneFile)){
 	
 } else {
 	# Write top genes to file
-	cat("Writing kmers for top 20 genes to file","\n")
-	topgenes_outputfiles = paste0(output_file_prefix,"_topgene_",1:length(top10genes),"_", top10genes,"_kmersandpvals.txt")
-	for(i in 1:length(top10genes)){
+	cat(paste("Writing kmers for top",ngenes,"genes to file"),"\n")
+	topgenes_outputfiles = paste0(output_file_prefix,"_topgene_",1:length(topngenes),"_", topngenes,"_kmersandpvals.txt")
+	for(i in 1:length(topngenes)){
 		# Which kmers are within gene i
-		wh.i = which(final_kmer_genes==top10genes[i])
+		wh.i = which(final_kmer_genes==topngenes[i])
 		output_file = topgenes_outputfiles[i]
 		write_top_gene_kmers_to_file(wh.i = wh.i, final_kmer_list = final_kmer_list, final_kmer_pos_index = final_kmer_pos_index, assoc = assoc, kmerIndex = kmerIndex, mac = mac, output_file = output_file)
 	}
 	# Define the gene names to be fed into alignment function
-	genes_all = list("genes" = topgenes_outputfiles, "genes_names" = top10genes)
+	genes_all = list("genes" = topgenes_outputfiles, "genes_names" = topngenes)
 }
 
 
