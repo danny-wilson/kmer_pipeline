@@ -43,6 +43,11 @@ def deployment() {
 	if(!Files.exists(Paths.get(params.ref_fa))) throw new Exception("ref_fa ${params.ref_fa} does not exist")
 	if(!Files.exists(Paths.get(params.ref_gb))) throw new Exception("ref_gb ${params.ref_gb} does not exist")
 
+	// Create analysis, work and log directories if they do not already exist
+	Files.createDirectories(Paths.get(params.analysis_dir))
+	Files.createDirectories(Paths.get(params.workdir))
+	Files.createDirectories(Paths.get(params.logdir))
+
 	// Read main input file
 	id_list = read_id_file()
 
@@ -61,9 +66,10 @@ def deployment() {
 	// Convert paths in id_list from user file system to container file system
 	id_list["containerpaths"] = id_list["paths"].collect( { user_dir -> user2containerPath(base_dir, user_dir, params.container_mount) })
 
-	// Write container id file
-	params.container_id_file = params.container_analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".container_id_file.txt"
-	write_container_id_file(id_list, params.container_id_file)
+	// Write the new id_list
+	userfs_container_id_file = params.analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".container_id_file.txt"
+	params.container_id_file = user2containerPath(base_dir, userfs_container_id_file, params.container_mount)
+	write_container_id_file(id_list, userfs_container_id_file)
 
 	// Convert user-specified software_file from user file system to container file system
 	assert !binding.hasVariable('params.default_software_file')  // Do not allow override !
@@ -136,45 +142,6 @@ def get_n() {
 	return scn.nextInt()-1
 }
 
-// Processes
-process check_params {
-output:
-	val true, emit: done
-shell:
-	'''
-	echo "Prelim: Checking parameters ..."
-	echo "Not yet implemented"
-	'''
-}
-
-process create_analysis_dir {
-input:
-	val ready
-output:
-	val true, emit: done
-shell:
-	'''
-	echo "Prelim: Creating analysis directories ..."
-	echo "!{params.container_analysis_dir}"
-	mkdir -p !{params.analysis_dir}
-	mkdir -p !{params.workdir}
-	mkdir -p !{params.logdir}
-	'''
-}
-
-process create_analysis_file {
-input:
-	val ready
-output:
-	val true, emit: done
-shell:
-	'''
-	echo "Prelim: Defining analysis file ..."
-	echo "kmertype\tkmerlength" > !{params.analysis_file}
-	echo "!{params.kmer_type}\t!{params.kmer_length}" >> !{params.analysis_file}
-	'''
-}
-
 // Read main input file
 def read_id_file() {
 	def id_file = new File(params.id_file)
@@ -202,6 +169,13 @@ def write_container_id_file(id_list, filename) {
 	}
 }
 
+def create_analysis_file {
+	file = new PrintWriter(new FileWriter(params.analysis_file))
+	file.printf("%s\t%s\n", "kmertype", "kmerlength")
+	file.printf("%s\t%s\n", params.kmer_type, params.kmer_length)
+	file.close()
+}
+
 process filecheck_prelim {
 input:
 	val ready
@@ -223,7 +197,6 @@ shell:
 // min(n,p)-fold parallelization
 process countkmers {
 input:
-	val ready
 	val sampid
 output:
 	val true, emit: done
@@ -991,6 +964,7 @@ println 'Implied parameters'
 params.container_script_dir = read_container_script_dir()
 println 'container_script_dir:    ' + params.container_script_dir
 params.analysis_file = params.analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".analysis_file.txt"
+create_analysis_file()
 println 'analysis_file:           ' + params.analysis_file
 params.container_analysis_file = params.container_analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".analysis_file.txt"
 println 'container_analysis_file: ' + params.container_analysis_file
@@ -1023,19 +997,10 @@ params.p5 = (int)Math.max(1, Math.min(Math.ceil(params.n/5), params.maxp))
 println 'p5:                      ' + params.p5
 
 workflow {
-	// Prelim: Checking parameters
-	check_params()
-	
-	// Prelim: Creating analysis directories
-	create_analysis_dir(check_params.out.done)
-	
-	// Prelim: Defining analysis file
-	create_analysis_file(create_analysis_dir.out.done)
-
 	if(params.kmer_type.toString().toLowerCase()=="nucleotide") {
 		// Step 1: Counting kmers
 		// n-fold parallelization
-		countkmers(create_analysis_file.out.done, Channel.of(1..params.n))
+		countkmers(Channel.of(1..params.n))
 
 		// Step 2: Creating unique kmer list
 		// Parallel pyramid (p-fold)
@@ -1086,7 +1051,7 @@ workflow {
 	} else if(params.kmer_type.toString().toLowerCase()=="protein") {
 		// Step 1: Counting kmers
 		// n-fold parallelization
-		countkmers(create_analysis_file.out.done, Channel.of(1..params.n))
+		countkmers(Channel.of(1..params.n))
 
 		// Step 2: Creating unique kmer list
 		// Parallel pyramid (p-fold)
