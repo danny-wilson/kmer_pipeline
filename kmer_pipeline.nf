@@ -3,6 +3,9 @@
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 
 def user2containerPath(base_dir, user_path, container_base_dir) {
 	// Throws an error if user_path is not in the subdirectory tree of base_dir
@@ -40,10 +43,12 @@ def deployment() {
 	if(!Files.exists(Paths.get(params.ref_fa))) throw new Exception("ref_fa ${params.ref_fa} does not exist")
 	if(!Files.exists(Paths.get(params.ref_gb))) throw new Exception("ref_gb ${params.ref_gb} does not exist")
 
+	// Read main input file
+	id_list = read_id_file()
+
 	// Convert io files from user file system to container file system
 	base_dir = Paths.get(params.base_dir)
 	params.container_analysis_dir = user2containerPath(base_dir, params.analysis_dir, params.container_mount)
-	params.container_id_file = user2containerPath(base_dir, params.id_file, params.container_mount)
 	if(params.covariate_file=="") {
 		params.container_covariate_file = ""
 	} else {
@@ -52,6 +57,13 @@ def deployment() {
 	}
 	params.container_ref_fa = user2containerPath(base_dir, params.ref_fa, params.container_mount)
 	params.container_ref_gb = user2containerPath(base_dir, params.ref_gb, params.container_mount)
+
+	// Convert paths in id_list from user file system to container file system
+	id_list["containerpaths"] = id_list["paths"].collect( { user_dir -> user2containerPath(base_dir, user_dir, params.container_mount) })
+
+	// Write container id file
+	params.container_id_file = params.container_analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".container_id_file.txt"
+	write_container_id_file(id_list, params.container_id_file)
 
 	// Convert user-specified software_file from user file system to container file system
 	assert !binding.hasVariable('params.default_software_file')  // Do not allow override !
@@ -90,6 +102,7 @@ def deployment() {
 // Read the software location file
 // *** Assume the software_file itself is in the user file system ***
 // *** BUT all paths in software_file are in the container file system ***
+// *** EXCEPT for the default value which is interpreted as in the container file system ***
 def read_container_script_dir() {
 	// By default the software file is stored within the container - next line avoids reading it from outside the container
 	if(params.software_file.toString().toLowerCase()==params.default_software_file) return params.default_script_dir
@@ -162,7 +175,7 @@ shell:
 	'''
 }
 
-// Define required input files
+// Read main input file
 def read_id_file() {
 	def id_file = new File(params.id_file)
 	assert id_file.readLines().head().split('\t')*.toLowerCase() == ['id','paths','pheno']
@@ -171,6 +184,22 @@ def read_id_file() {
 	paths = rows.collect( { row -> row[1] })
 	pheno = rows.collect( { row -> row[2] })
 	ret = [id: id, paths: paths, pheno: pheno]
+}
+
+// Write a copy of the main input file with paths relative to the container file system
+def write_container_id_file(id_list, filename) {
+	nlines = id_list['id'].size()
+	assert id_list['paths'].size()==nlines
+	assert id_list['pheno'].size()==nlines
+	assert id_list['containerpaths'].size()==nlines
+	if(nlines>0) {
+		def id_file = new PrintWriter(new FileWriter(filename))
+		id_file.printf("%s\t%s\t%s\n", "id", "paths", "pheno")
+		for(int i=0; i<nlines; i++) {
+			id_file.printf("%s\t%s\t%s\n", id_list["id"][i], id_list["containerpaths"][i], id_list["pheno"][i])
+		}
+		id_file.close()
+	}
 }
 
 process filecheck_prelim {
@@ -1002,9 +1031,6 @@ workflow {
 	
 	// Prelim: Defining analysis file
 	create_analysis_file(create_analysis_dir.out.done)
-
-	// Read main input file
-	id_list = read_id_file()
 
 	if(params.kmer_type.toString().toLowerCase()=="nucleotide") {
 		// Step 1: Counting kmers
