@@ -169,7 +169,7 @@ def write_container_id_file(id_list, filename) {
 	}
 }
 
-def create_analysis_file {
+def create_analysis_file() {
 	file = new PrintWriter(new FileWriter(params.analysis_file))
 	file.printf("%s\t%s\n", "kmertype", "kmerlength")
 	file.printf("%s\t%s\n", params.kmer_type, params.kmer_length)
