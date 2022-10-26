@@ -1,4 +1,10 @@
 #!/usr/bin/env Rscript
+options(error = quote({
+	dump.frames(to.file=TRUE, dumpto="Rcoredump")
+	load("Rcoredump.rda")
+	print(Rcoredump)
+	q()
+}))
 help = paste(
 "get_ref_name.Rscript Read the name of the supplied reference genome",
 "Daniel Wilson (2022)",

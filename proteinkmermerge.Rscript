@@ -1,3 +1,10 @@
+#!/usr/bin/env Rscript
+options(error = quote({
+	dump.frames(to.file=TRUE, dumpto="Rcoredump")
+	load("Rcoredump.rda")
+	print(Rcoredump)
+	q()
+}))
 # Start time
 start.time = proc.time()[3]
 args = commandArgs(trailingOnly=TRUE)
@@ -7,7 +14,7 @@ help = paste(
 "proteinkmermerge.Rscript merge protein kmer files names 1.txt.gz 2.txt.gz etc",
 "Daniel Wilson (2018) kmermerge.Rscript modified to proteinkmermerge.Rscript by Sarah Earle (2019)",
 "",
-"Usage: proteinkmermerge.R n p output_prefix input_dir output_dir id_file kmer_length software_file process",
+"Usage: proteinkmermerge.Rscript n p output_prefix input_dir output_dir id_file kmer_length software_file process",
 sep="\n")
 if(length(args)!=9) { # SGE changed to 9 as added output_prefix, input_dir, output_dir, id_file, kmer_length, software_file, process
 	cat(help,sep="\n")

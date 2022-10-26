@@ -1,4 +1,10 @@
 #!/usr/bin/env Rscript
+options(error = quote({
+	dump.frames(to.file=TRUE, dumpto="Rcoredump")
+	load("Rcoredump.rda")
+	print(Rcoredump)
+	q()
+}))
 
 
 help = c("countkmers.Rscript count nucleotide or protein kmers",

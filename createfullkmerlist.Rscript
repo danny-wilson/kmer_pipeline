@@ -1,4 +1,10 @@
 #!/usr/bin/env Rscript
+options(error = quote({
+	dump.frames(to.file=TRUE, dumpto="Rcoredump")
+	load("Rcoredump.rda")
+	print(Rcoredump)
+	q()
+}))
 
 
 help = c("createfullkmerlist.Rscript merge kmers into a list of unique kmers present across the dataset",
@@ -58,9 +64,9 @@ Rscriptpath = paste0(Rpath, "script")
 if(!file.exists(Rscriptpath)) stop("Error: Rscript path",Rscriptpath,"doesn't exist","\n") # SGE added
 script_location = as.character(software_paths$path)[which(tolower(as.character(software_paths$name))=="scriptpath")]
 if(!dir.exists(script_location)) stop("Error: script location directory specified in the software paths file doesn't exist","\n")
-proteinkmermergescript = file.path(script_location, "proteinkmermerge.R")
+proteinkmermergescript = file.path(script_location, "proteinkmermerge.Rscript")
 if(!file.exists(proteinkmermergescript)) stop("Error: proteinkmermerge.R path doesn't exist - check pipeline script location in the software file","\n")
-nucleotidekmermergescript = file.path(script_location, "nucleotidekmermerge.R")
+nucleotidekmermergescript = file.path(script_location, "nucleotidekmermerge.Rscript")
 if(!file.exists(nucleotidekmermergescript)) stop("Error: nucleotidekmermerge.R path doesn't exist - check pipeline script location in the software file","\n")
 
 
@@ -96,8 +102,3 @@ if(kmer_type =="nucleotide"){
 	stopifnot(system(paste0(Rscriptpath, " ", nucleotidekmermergescript, " ", n, " ", p, " ", output_prefix, " ", input_dir, " ", output_dir, " ", id_file, " ", kmer_length, " ", process))==0)
 	
 }
-
-	
-
-
-

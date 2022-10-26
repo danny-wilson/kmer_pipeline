@@ -1,3 +1,10 @@
+#!/usr/bin/env Rscript
+options(error = quote({
+	dump.frames(to.file=TRUE, dumpto="Rcoredump")
+	load("Rcoredump.rda")
+	print(Rcoredump)
+	q()
+}))
 
 # Start time
 start.time = proc.time()[3]
@@ -5,10 +12,10 @@ args = commandArgs(trailingOnly=TRUE)
 
 # Process arguments - SGE added output_prefix kmerpath_file output_dir to usage
 help = paste(
-"kmermerge.Rscript merge kmer files",
+"nucleotidekmermerge.Rscript merge kmer files",
 "Daniel Wilson (2018)",
 "",
-"Usage: nucleotidekmermerge.R n p output_prefix input_dir output_dir id_file kmer_length process",
+"Usage: nucleotidekmermerge.Rscript n p output_prefix input_dir output_dir id_file kmer_length process",
 sep="\n")
 if(length(args)!=8) { # SGE changed to 8 as added output_prefix, input_dir, output_dir, id_file, kmer_length, process
 	cat(help,sep="\n")
