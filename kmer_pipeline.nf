@@ -44,6 +44,8 @@ def deployment() {
 	if(!Files.exists(Paths.get(params.ref_gb))) throw new Exception("ref_gb ${params.ref_gb} does not exist")
 
 	// Create analysis, work and log directories if they do not already exist
+	params.workdir = params.analysis_dir + "/work." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
+	params.logdir = params.analysis_dir + "/log." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
 	Files.createDirectories(Paths.get(params.analysis_dir))
 	Files.createDirectories(Paths.get(params.workdir))
 	Files.createDirectories(Paths.get(params.logdir))
@@ -976,7 +978,6 @@ params.gene_lookup_file = params.container_analysis_dir + "/" + params.kmer_type
 println 'gene_lookup_file:        ' + params.gene_lookup_file
 params.kmergenecombination = params.container_analysis_dir + "/" + params.kmer_type + "kmer" + params.kmer_length + "_kmergenealign/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + "_" + params.ref_name + "_kmergenecombination_filepaths.txt"
 println 'kmergenecombination:     ' + params.kmergenecombination
-params.logdir = params.analysis_dir + "/log." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
 println 'logdir:                  ' + params.logdir
 params.container_logdir = params.container_analysis_dir + "/log." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
 println 'container_software_file: ' + params.container_software_file
@@ -986,7 +987,6 @@ println 'container_covariate_file:' + params.container_covariate_file
 println 'container_ref_fa:        ' + params.container_ref_fa
 println 'container_ref_gb:        ' + params.container_ref_gb
 println 'container_logdir:        ' + params.container_logdir
-params.workdir = params.analysis_dir + "/work." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
 println 'workdir:                 ' + params.workdir
 assert !binding.hasVariable('params.n')  // Do not allow override !
 params.n = get_n()
