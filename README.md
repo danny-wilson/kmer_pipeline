@@ -39,7 +39,7 @@ To build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) con
     singularity pull -F docker://dannywilson/kmer_pipeline:2022-10-26
 
 ## Running the Nextflow pipeline
-For instructions on running the Nextflow pipeline, including the *Mycobacterium tuberculosis* example, download [the manual](https://github.com/danny-wilson/docs/blob/main/kmer_pipeline_nf.pdf).
+For instructions on running the Nextflow pipeline, including the *Mycobacterium tuberculosis* example, download [the manual](https://github.com/danny-wilson/docs/blob/main/docs/kmer_pipeline_nf.pdf).
 
 ## Running the Jupyter Data Science Notebook
 To launch as a Jupyter Data Science Notebook using Docker
