@@ -3,7 +3,7 @@ options(error = quote({
 	dump.frames(to.file=TRUE, dumpto="Rcoredump")
 	load("Rcoredump.rda")
 	print(Rcoredump)
-	q()
+	q(status = 1)
 }))
 help = paste(
 "get_ref_name.Rscript Read the name of the supplied reference genome",

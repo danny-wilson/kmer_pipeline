@@ -3,7 +3,7 @@ options(error = quote({
 	dump.frames(to.file=TRUE, dumpto="Rcoredump")
 	load("Rcoredump.rda")
 	print(Rcoredump)
-	q()
+	q(status = 1)
 }))
 # Start time
 start.time = proc.time()[3]
