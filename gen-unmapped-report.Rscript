@@ -33,7 +33,7 @@ SRC = args[9]
 PWD = args[10]
 LOGDIR = args[11]
 FIGDIR = paste0(ANATYPE,"kmer",K,"_kmergenealign_figures/")
-MACORMAF = ifelse(MAF==0,NULL,ifelse(MAF<1,"maf","mac"))
+MACORMAF = ifelse(MAF<1,"maf","mac")
 
 # Functions
 # From https://stackoverflow.com/questions/3245862/format-numbers-to-significant-figures-nicely-in-r

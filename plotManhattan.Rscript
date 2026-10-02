@@ -257,7 +257,7 @@ if(!dir.exists(gemma_dir)) stop("Error: gemma directory", gemma_dir," doesn't ex
 if(!is.null(annotateGeneFile)) if(!file.exists(annotateGeneFile)) stop("Error: genes to annotate file does not exist","\n")
 if(minor_allele_threshold==0){
 	cat("Assuming no minor allele threshold - plotting results for all kmers","\n")
-	macormaf = NULL
+	macormaf = "maf"
 } else {
 	if(minor_allele_threshold<1){
 		cat("Minor allele threshold below 1 - reading as a minor allele frequency (MAF) threshold of:", minor_allele_threshold,"\n")

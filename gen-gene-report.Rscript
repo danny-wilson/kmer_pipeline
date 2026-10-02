@@ -33,7 +33,7 @@ MINCOUNT = args[9]
 SRC = args[10]
 PWD = args[11]
 LOGDIR = args[12]
-MACORMAF = ifelse(MAF==0,NULL,ifelse(MAF<1,"maf","mac"))
+MACORMAF = ifelse(MAF<1,"maf","mac")
 
 # Implied arguments
 FIGDIR = paste0(ANATYPE,"kmer",K,"_kmergenealign_figures/")
