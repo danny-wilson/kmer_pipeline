@@ -452,7 +452,7 @@ merge_kinship_matrices = function(t = NULL, n = NULL, b = NULL, p = NULL, imax =
             	}
             	kinship.weight.j = scan(infiles.weights[j],what=integer(0), quiet = TRUE) # SGE added quiet = TRUE
 	            if(length(kinship.weight.j)!=1) {
-    	            stop("Expected one entry in kinship weight file ",weightfile)
+    	            stop("Expected one entry in kinship weight file ",infiles.weights[j])
         	    }
             	# Augment the kinship matrix and its weights
 	            kinship = kinship + kinship.weight.j*kinship.j
