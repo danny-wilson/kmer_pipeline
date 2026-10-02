@@ -5,7 +5,8 @@ that the Python scripts write the same files as the R scripts they replace:
 
 - ordering:   r_order, r_unique, r_sort_strings, r_collate_key
 - numbers:    r_format_num, r_as_character, r_cat, r_paste, r_paste0
-- files:      r_open, r_read_table, r_write_table
+- files:      r_open, r_scan_lines, r_cat_lines, r_read_table, r_write_table
+- language:   r_stop, r_colon, r_index
 - commands:   r_system, r_system2, r_system_intern
 - statistics: neg_log10_pchisq1
 
@@ -47,6 +48,33 @@ def script_setup(script_path, announce=True):
         stamp = os.path.join(os.path.dirname(path), "STAGED_SHA")
         sha = open(stamp).read().strip() if os.path.exists(stamp) else "not staged"
         print(f"Running {path} ({sha})")
+
+
+# --------------------------------------------------------------------------
+# Language
+# --------------------------------------------------------------------------
+
+
+class RError(RuntimeError):
+    """An error raised where the R original calls stop()."""
+
+
+def r_stop(*parts):
+    """R's stop(...): the parts pasted together with no separator (as.character
+    on each). The traceback gives the line number R could not."""
+    raise RError("".join(r_as_character(p) for p in parts))
+
+
+def r_colon(a, b):
+    """R's a:b for integers: inclusive, and descending when a > b (so 1:0 is
+    c(1, 0)). Returned as a Python list of ints."""
+    return list(range(a, b + 1)) if a <= b else list(range(a, b - 1, -1))
+
+
+def r_index(x, idx):
+    """x[idx] with R's positive 1-based indices: 0 is dropped and an index past
+    the end gives NA (None)."""
+    return [None if i > len(x) else x[i - 1] for i in idx if i != 0]
 
 
 # --------------------------------------------------------------------------
@@ -253,6 +281,11 @@ def r_paste0(*args):
     return r_paste(*args, sep="")
 
 
+def r_paste_collapse(x, collapse=""):
+    """paste(x, collapse =) for a character vector; NA (None) becomes "NA"."""
+    return collapse.join("NA" if v is None else v for v in x)
+
+
 # --------------------------------------------------------------------------
 # read.table / write.table
 # --------------------------------------------------------------------------
@@ -422,6 +455,25 @@ def r_open(file):
     else:
         opener = open
     return opener(file, "rt", encoding="utf-8", errors="surrogateescape", newline=None)
+
+
+def r_scan_lines(file, quiet=True):
+    """scan(file, what = character(0), sep = "\\n", quiet =): the lines of the
+    file (compressed or not; any line ending), skipping empty lines, with no
+    quote or comment processing. Unless quiet, writes R's "Read N items" to stderr."""
+    with r_open(file) as f:
+        lines = [l for l in f.read().split("\n") if l != ""]
+    if not quiet:
+        print(f"Read {len(lines)} item{'' if len(lines) == 1 else 's'}", file=sys.stderr, flush=True)
+    return lines
+
+
+def r_cat_lines(x, file, append=False):
+    """cat(x, file = file, sep = "\\n", append =) for a character vector: each
+    element followed by a newline (R ends the output with the separator when it
+    contains a newline). An empty vector gives a single newline, as in R."""
+    with open(file, "a" if append else "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write("".join(v + "\n" for v in x) if len(x) else "\n")
 
 
 def r_read_table(file, header=None, sep="", quote="\"'", comment_char="#",

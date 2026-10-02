@@ -210,13 +210,13 @@ if(!params.skip1)
 	echo "sampid: !{sampid}"
 	ln -sfr $(pwd) !{params.workdir}/countkmers.!{sampid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/countkmers.!{sampid}.log
-	!{params.container_cmd} !{params.container_script_dir}/countkmers.Rscript \
-		!{sampid} \
-		!{params.container_id_file} \
-		!{params.container_analysis_dir} \
-		!{params.output_prefix} \
-		!{params.container_software_file} \
-		!{params.container_analysis_file}
+	!{params.container_cmd} !{params.container_script_dir}/countkmers.py \
+		--task-id !{sampid} \
+		--id-file !{params.container_id_file} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--output-prefix !{params.output_prefix} \
+		--software-file !{params.container_software_file} \
+		--analyses-list !{params.container_analysis_file}
 	'''
 else
 	'''
