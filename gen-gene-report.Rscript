@@ -181,15 +181,15 @@ if(is.intergenic) {
   html.body = html.body %/%
   "  <p>This is an intergenic region." %/%
   "  The user-provided Genbank file lists" %-% genes.html[1] %+% syn.msg[1] %/%
-  "  as" %-% ggbk$length[1] %-% "nucleotides long and" %-% genes.html[2] %+% syn.msg[2] %/%
-  "  as" %-% ggbk$length[2] %-% "nucleotides long." %/%
+  "  as" %-% as.integer(abs(ggbk$end[1]-ggbk$start[1])+1) %-% "nucleotides long and" %-% genes.html[2] %+% syn.msg[2] %/%
+  "  as" %-% as.integer(abs(ggbk$end[2]-ggbk$start[2])+1) %-% "nucleotides long." %/%
   "  They encode the" %-% ggbk$product[1] %-% "(protein ID" %-% ggbk$proteinid[1] %+% ")" %/%
   "  and the" %-% ggbk$product[2] %-% "(protein ID" %-% ggbk$proteinid[2] %+% ").</p>" %/%
   newline
 } else {
   html.body = html.body %/%
   "  <p>The user-provided Genbank file lists" %-% genes.html[1] %+% syn.msg[1] %/%
-  "  as" %-% ggbk$length[1] %-% "nucleotides long." %/%
+  "  as" %-% as.integer(abs(ggbk$end[1]-ggbk$start[1])+1) %-% "nucleotides long." %/%
   "  It encodes the" %-% ggbk$product[1] %-% "(protein ID" %-% ggbk$proteinid[1] %+% ").</p>" %/%
   newline
 }
