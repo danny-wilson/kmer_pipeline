@@ -447,7 +447,7 @@ for(i in process){
 			# Alignment positions out
 			
 			if(length(contig_pos_all)>0){
-				s1 = aggregate(ref_pos_all, by = list(contig_pos_all), FUN = "unique")
+				s1 = aggregate(ref_pos_all, by = list(contig_pos_all), FUN = "unique", simplify = FALSE)
 			
 				out = sapply(s1[,2], function(x, ref_gene) list(unlist(ref_gene[x])), ref_gene = ref.pos.gene.id, USE.NAMES = F)[match(c(1:contig_length[c]), as.numeric(s1[,1]))]
 				
