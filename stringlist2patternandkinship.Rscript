@@ -577,7 +577,7 @@ pattern2kinshippath = file.path(script_location, "pattern2kinship")
 if(!file.exists(pattern2kinshippath)) stop("Error: pattern2kinship path doesn't exist - check pipeline script location in the software file","\n")
 
 pattern2presencecountRscript = file.path(script_location, "pattern2presencecount.Rscript")
-if(!file.exists(pattern2kinshippath)) stop("Error: pattern2presencecount.Rscript path doesn't exist - check pipeline script location in the software file","\n")
+if(!file.exists(pattern2presencecountRscript)) stop("Error: pattern2presencecount.Rscript path doesn't exist - check pipeline script location in the software file","\n")
 
 
 
