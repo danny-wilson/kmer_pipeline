@@ -1396,6 +1396,8 @@ fix_res_table_protein = function(res = NULL, refseq = NULL){
 	res$kmer = as.character(res$kmer)
 	res$sseq = as.character(res$sseq)
 	res$qseq = as.character(res$qseq)
+	# Length of each kmer (F3: was hardcoded as 11)
+	klen = nchar(res$kmer)
 
 	# Fix start and end positions so the whole kmer is aligned, not just plotting the BLAST result
 	which_start_short = which(as.numeric(res$qstart)>1)
@@ -1418,9 +1420,9 @@ fix_res_table_protein = function(res = NULL, refseq = NULL){
 		res$sseq[which_start_short] = sapply(1:length(new_start), function(p, s, q, refseq, seq) paste0(substr(refseq, min((s[p]-q[p]+1):(s[p]-1)), max((s[p]-q[p]+1):(s[p]-1))), seq[p]),s = new_start, q = as.numeric(res$qstart)[which_start_short], refseq = refseq, seq = as.character(res$sseq)[which_start_short], USE.NAMES = F)
 	}
 
-	which_end_short = which(as.numeric(res$qend)<11)
+	which_end_short = which(as.numeric(res$qend)<klen)
 	new_end = as.numeric(res$send)[which_end_short]
-	res$send[which_end_short] = sapply(1:length(new_end), function(p, s, q) return(c(s[p]-q[p]+11)), s = new_end, q = as.numeric(res$qend)[which_end_short],USE.NAMES = F)
+	res$send[which_end_short] = sapply(1:length(new_end), function(p, s, q, k) return(c(s[p]-q[p]+k[p])), s = new_end, q = as.numeric(res$qend)[which_end_short], k = klen[which_end_short], USE.NAMES = F)
 	# res$sseq = substring(refseq, as.numeric(res$sstart), as.numeric(res$send))
 	# Now check if the end is after the end of the protein
 	any_long_end = which(as.numeric(res$send)>nchar(refseq))
@@ -1435,7 +1437,7 @@ fix_res_table_protein = function(res = NULL, refseq = NULL){
 	if(length(new_which_end_short)>0){
 		new_end = new_end[new_which_end_short]
 		which_end_short = which_end_short[new_which_end_short]
-		res$sseq[which_end_short] = sapply(1:length(new_end), function(p, s, q, refseq, seq) paste0(seq[p], substr(refseq, (s[p]+1), (c(s[p]-q[p]+11)))),s = new_end, q = as.numeric(res$qend)[which_end_short], refseq = refseq, seq = as.character(res$sseq)[which_end_short], USE.NAMES = F)
+		res$sseq[which_end_short] = sapply(1:length(new_end), function(p, s, q, k, refseq, seq) paste0(seq[p], substr(refseq, (s[p]+1), (c(s[p]-q[p]+k[p])))),s = new_end, q = as.numeric(res$qend)[which_end_short], k = klen[which_end_short], refseq = refseq, seq = as.character(res$sseq)[which_end_short], USE.NAMES = F)
 		res$qseq[which_end_short] = sapply(1:length(new_end), function(p, o, s, q, kmer, seq) paste0(seq[p], substr(kmer[p], (q[p]+1), (q[p]+length((o[p]+1):s[p])))), o = new_end, s = as.numeric(res$send)[which_end_short], q = as.numeric(res$qend)[which_end_short], kmer = as.character(res$kmer)[which_end_short], seq = as.character(res$qseq)[which_end_short], USE.NAMES = F)
 	}
 	res$origkmer = res$kmer
