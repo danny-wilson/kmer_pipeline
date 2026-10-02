@@ -43,6 +43,14 @@ laststr = function(s) {x=unlist(strsplit(s," ")); x[length(x)]}
 `%-%` = function(a, b) paste(a, b, sep=" ")
 `%/%` = function(a, b) paste(a, b, sep="\n")
 newline = "\n"
+# Read the summary written by plotManhattan.Rscript (a flat JSON object)
+read_summary_json = function(filename) {
+	l = readLines(filename)
+	l = l[grepl(":", l, fixed = TRUE)]
+	keys = sub('^\\s*"([^"]+)".*$', '\\1', l)
+	vals = gsub('"', '', sub(',\\s*$', '', sub('^[^:]*:\\s*', '', l)))
+	return(setNames(vals, keys))
+}
 grepit = function(filename,regex,gz=FALSE) {
 	cmd = "grep"
 	if(gz) cmd = "zgrep"
@@ -100,7 +108,8 @@ filename.plotManhattan.log = paste0(LOGDIR,"/plotManhattan.log")
 # Unmapped kmers
 table.unmapped = read.delim(filename.unmapped)
 max.signif.unmapped = max(table.unmapped$negLog10)
-thr.signif = as.numeric(grepit(filename.plotManhattan.log,'Bonferroni threshold:'))
+summary = read_summary_json(paste0(PREFIX,"_",ANATYPE,K,".summary.json"))
+thr.signif = as.numeric(summary["bonferroni_threshold"])
 
 html.body = html.body %/%
 "  <p>Not all kmers were aligned to the user-supplied reference genome. The strongest" %/%

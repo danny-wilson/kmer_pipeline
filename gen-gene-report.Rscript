@@ -46,6 +46,14 @@ laststr = function(s) {x=unlist(strsplit(s," ")); x[length(x)]}
 `%-%` = function(a, b) paste(a, b, sep=" ")
 `%/%` = function(a, b) paste(a, b, sep="\n")
 newline = "\n"
+# Read the summary written by plotManhattan.Rscript (a flat JSON object)
+read_summary_json = function(filename) {
+	l = readLines(filename)
+	l = l[grepl(":", l, fixed = TRUE)]
+	keys = sub('^\\s*"([^"]+)".*$', '\\1', l)
+	vals = gsub('"', '', sub(',\\s*$', '', sub('^[^:]*:\\s*', '', l)))
+	return(setNames(vals, keys))
+}
 grepit = function(filename,regex,gz=FALSE) {
 	cmd = "grep"
 	if(gz) cmd = "zgrep"
@@ -118,7 +126,8 @@ ref_length = scan(REF_GB, what = character(0), sep = "\n", nlines = 1)
 ref_length = as.numeric(unlist(strsplit(ref_length," "))[which(unlist(strsplit(ref_length," "))!="")][3])
 if(is.na(ref_length)) stop("Error retrieving the reference genome length from the genbank file","\n")
 
-thr.signif = as.numeric(grepit(filename.plotManhattan.log,'Bonferroni threshold:'))
+summary = read_summary_json(paste0(PREFIX,"_",ANATYPE,K,".summary.json"))
+thr.signif = as.numeric(summary["bonferroni_threshold"])
 
 if(FALSE) {
 	gbk.coord = data.frame('refx'=1:max(gbk$start,gbk$end), 'gene'=NA,'genex'=NA,'strand'=NA)

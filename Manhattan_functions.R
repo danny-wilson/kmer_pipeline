@@ -366,6 +366,21 @@ plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = N
 }
 
 
+write_summary_json = function(summary_file = NULL, n_kmers = NULL, n_patterns = NULL, n_untested_patterns = NULL, max_neglog10p = NULL, minor_allele_threshold = NULL, macormaf = NULL, n_tests = NULL, bonferroni = NULL){
+	cat("{",
+		sprintf('  "n_kmers": %d,', as.integer(n_kmers)),
+		sprintf('  "n_patterns": %d,', as.integer(n_patterns)),
+		sprintf('  "n_untested_patterns": %d,', as.integer(n_untested_patterns)),
+		sprintf('  "max_neglog10p": %.17g,', max_neglog10p),
+		sprintf('  "minor_allele_threshold": %.17g,', minor_allele_threshold),
+		sprintf('  "macormaf": "%s",', macormaf),
+		sprintf('  "n_tests": %d,', as.integer(n_tests)),
+		sprintf('  "bonferroni_threshold": %.17g', bonferroni),
+		"}", file = summary_file, sep = "\n")
+	cat("Written summary for reports:", summary_file, "\n")
+}
+
+
 get_pheno_type = function(pheno){
 	
 	if(length(table(pheno))==2) return("binary") else return("continuous")

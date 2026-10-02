@@ -285,8 +285,10 @@ if(macormaf=="maf"){
 
 ## Get Bonferroni threshold
 cat("Bonferroni threshold calculated using",macormaf,"threshold", minor_allele_threshold,"\n")
-bonferroni = -log10(0.05/length(unique(kmerIndex[which(ma>= minor_allele_threshold & !is.na(assoc[kmerIndex,1]))])))
+n_tests = length(unique(kmerIndex[which(ma>= minor_allele_threshold & !is.na(assoc[kmerIndex,1]))]))
+bonferroni = -log10(0.05/n_tests)
 cat("Bonferroni threshold:",bonferroni,"\n")
+write_summary_json(summary_file = paste0(output_dir, output_prefix, "_", kmer_type, kmer_length, ".bowtie2mapping.summary.json"), n_kmers = length(kmerIndex), n_patterns = nPatterns, n_untested_patterns = sum(is.na(assoc[,1])), max_neglog10p = max(as.numeric(assoc[,6]), na.rm = TRUE), minor_allele_threshold = minor_allele_threshold, macormaf = macormaf, n_tests = n_tests, bonferroni = bonferroni)
 
 ## Plot QQ plots
 ###########################

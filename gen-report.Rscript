@@ -44,6 +44,14 @@ laststr = function(s) {x=unlist(strsplit(s," ")); x[length(x)]}
 `%-%` = function(a, b) paste(a, b, sep=" ")
 `%/%` = function(a, b) paste(a, b, sep="\n")
 newline = "\n"
+# Read the summary written by plotManhattan.Rscript (a flat JSON object)
+read_summary_json = function(filename) {
+	l = readLines(filename)
+	l = l[grepl(":", l, fixed = TRUE)]
+	keys = sub('^\\s*"([^"]+)".*$', '\\1', l)
+	vals = gsub('"', '', sub(',\\s*$', '', sub('^[^:]*:\\s*', '', l)))
+	return(setNames(vals, keys))
+}
 grepit = function(filename,regex,gz=FALSE) {
 	cmd = "grep"
 	if(gz) cmd = "zgrep"
@@ -180,15 +188,16 @@ if(FALSE) {
 	
 # Obtain the actual p-value threshold used, after filtering samples with
 # no phenotypes and applying the MAF or MAC filter
-thr.signif = as.numeric(grepit(filename.plotManhattan.log,'Bonferroni threshold:'))
-total.impliedtests = round(0.05/(10^-thr.signif))
+summary = read_summary_json(paste0(PREFIX,"_",ANATYPE,K,".summary.json"))
+thr.signif = as.numeric(summary["bonferroni_threshold"])
+total.impliedtests = as.integer(summary["n_tests"])
 thr.p = 0.05/total.impliedtests
-total.npatterns = as.numeric(grepit(filename.plotManhattan.log,'Number of patterns:'))
-total.nkmers = as.numeric(grepit(filename.plotManhattan.log,'Number of kmers:'))
-total.npatterns.untested = as.numeric(grepit(filename.plotManhattan.log,'Number of untested patterns:'))
-max.signif = as.numeric(grepit(filename.plotManhattan.log,'GEMMA range of -log10(pvalues):'))
-maf.thresh = as.numeric(grepit(filename.plotManhattan.log,'minor allele frequency (MAF) threshold of:'))
-mac.thresh = as.numeric(grepit(filename.plotManhattan.log,'minor allele count (MAC) threshold of:'))
+total.npatterns = as.integer(summary["n_patterns"])
+total.nkmers = as.integer(summary["n_kmers"])
+total.npatterns.untested = as.integer(summary["n_untested_patterns"])
+max.signif = as.numeric(summary["max_neglog10p"])
+maf.thresh = ifelse(summary["macormaf"]=="maf", as.numeric(summary["minor_allele_threshold"]), NA)
+mac.thresh = ifelse(summary["macormaf"]=="mac", as.numeric(summary["minor_allele_threshold"]), NA)
 
 html.body = html.body %/%
 "  <h2>Significance threshold</h2>" %/%
