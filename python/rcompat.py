@@ -5,7 +5,7 @@ that the Python scripts write the same files as the R scripts they replace:
 
 - ordering:   r_order, r_unique, r_sort_strings, r_collate_key
 - numbers:    r_format_num, r_as_character, r_cat, r_paste, r_paste0
-- tables:     r_read_table, r_write_table
+- files:      r_open, r_read_table, r_write_table
 - commands:   r_system, r_system2, r_system_intern
 - statistics: neg_log10_pchisq1
 
@@ -404,6 +404,26 @@ def _type_convert(values):
     return pd.array(values, dtype=object)
 
 
+def r_open(file):
+    """Open a file for reading text as R's file() does: gzip, bzip2 and xz
+    compression are detected from the first bytes, and LF, CRLF and CR all end
+    a line. Bytes that are not UTF-8 pass through unchanged (surrogateescape)."""
+    import bz2
+    import gzip
+    import lzma
+    with open(file, "rb") as f:
+        magic = f.read(6)
+    if magic[:2] == b"\x1f\x8b":
+        opener = gzip.open
+    elif magic[:3] == b"BZh":
+        opener = bz2.open
+    elif magic[:6] == b"\xfd7zXZ\x00":
+        opener = lzma.open
+    else:
+        opener = open
+    return opener(file, "rt", encoding="utf-8", errors="surrogateescape", newline=None)
+
+
 def r_read_table(file, header=None, sep="", quote="\"'", comment_char="#",
                  na_strings=("NA",), check_names=True):
     """R's read.table() with the arguments the pipeline uses (as.is is always
@@ -413,7 +433,7 @@ def r_read_table(file, header=None, sep="", quote="\"'", comment_char="#",
     the number of columns comes from the first five lines. Column types follow
     R: logical -> pandas "boolean", integer -> "Int64", double -> float64,
     character -> object (NA as None)."""
-    with open(file, encoding="utf-8") as f:
+    with r_open(file) as f:
         text = f.read()
     rows = _records(text, None if sep == "" else sep, quote, comment_char)
     if not rows:

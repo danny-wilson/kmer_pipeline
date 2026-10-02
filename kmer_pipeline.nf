@@ -123,7 +123,7 @@ def read_container_script_dir() {
 
 // Read the name of the reference genome
 def read_ref_name() {
-	cmd = "${params.container_cmd} ${params.container_script_dir}/get_ref_name.Rscript ${params.container_ref_fa}"
+	cmd = "${params.container_cmd} ${params.container_script_dir}/get_ref_name.py --fasta-file ${params.container_ref_fa}"
 	proc = cmd.execute()
 	sout = new StringBuilder()
 	ref_name_read_error = new StringBuilder()
