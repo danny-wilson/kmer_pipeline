@@ -1,6 +1,7 @@
 
 read_reference = function(ref_file) {
 	r = scan(ref_file,what=character(0),sep="\n")
+	if(sum(startsWith(r, ">"))>1) stop("Error: reference fasta file ", ref_file, " contains more than one record; only single-record references are supported","\n")
 	rcat = paste(r[2:length(r)],collapse="")
 	return(unlist(strsplit(rcat,"")))
 }

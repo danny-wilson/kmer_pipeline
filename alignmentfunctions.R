@@ -179,6 +179,7 @@ get_alignment_col = function(seq = NULL, cols = NULL, len.col = NULL, snp_cols =
 
 read_reference = function(ref_file) {
 	r = scan(ref_file,what=character(0),sep="\n", quiet = TRUE)
+	if(sum(startsWith(r, ">"))>1) stop("Error: reference fasta file ", ref_file, " contains more than one record; only single-record references are supported","\n")
 	rcat = paste(r[2:length(r)],collapse="")
 	return(unlist(strsplit(rcat,"")))
 }
