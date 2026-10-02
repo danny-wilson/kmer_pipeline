@@ -34,9 +34,6 @@ def main():
         raise RuntimeError("Error: reference fasta file does not begin with a name starting with >")
     ref_name = ref_name[1:1000000]
     sys.stdout.write(ref_name)
-    # As R's readLines() warns, so the .nf's empty-stderr check fails as it does with R
-    if text and not text.endswith("\n"):
-        print(f"Warning: incomplete final line found on '{REF_FA}'", file=sys.stderr)
 
 
 if __name__ == "__main__":
