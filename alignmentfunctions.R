@@ -1450,6 +1450,8 @@ fix_res_table_nucleotide = function(res = NULL, ref_fa = NULL, kmer_len = NULL){
 	res$sseq = as.character(res$sseq)
 	res$qseq = as.character(res$qseq)
 	res$origkmer = as.character(res$kmer)
+	# Length of each kmer (F4: was hardcoded as 31 or taken from kmer_len, which is 0 for variable-length kmers)
+	klen = nchar(res$kmer)
 	# For those which aligned to the reverse strand, reverse complement the sequences
 	wh_revstrand = which(res$sstrand=="minus")
 	new_sseq = sapply(as.character(res$sseq[wh_revstrand]), function(x) paste(rc_full(unlist(strsplit(x,""))),collapse = ""), USE.NAMES = F)
@@ -1457,8 +1459,8 @@ fix_res_table_nucleotide = function(res = NULL, ref_fa = NULL, kmer_len = NULL){
 	new_sstart = as.numeric(res$send)[wh_revstrand]
 	new_send = as.numeric(res$sstart)[wh_revstrand]
 	new_kmer = sapply(as.character(res$kmer[wh_revstrand]), function(x) paste(rc_full(unlist(strsplit(x,""))),collapse = ""), USE.NAMES = F)
-	new_qend = kmer_len-as.numeric(res$qstart)[wh_revstrand]+1
-	new_qstart = 31-as.numeric(res$qend)[wh_revstrand]+1
+	new_qend = klen[wh_revstrand]-as.numeric(res$qstart)[wh_revstrand]+1
+	new_qstart = klen[wh_revstrand]-as.numeric(res$qend)[wh_revstrand]+1
 
 	res$sstart[wh_revstrand] = new_sstart
 	res$send[wh_revstrand] = new_send
@@ -1490,9 +1492,9 @@ fix_res_table_nucleotide = function(res = NULL, ref_fa = NULL, kmer_len = NULL){
 		res$sseq[which_start_short] = sapply(1:length(new_start), function(p, s, q, ref_fa, seq) paste0(substr(ref_fa, min((s[p]-q[p]+1):(s[p]-1)), max((s[p]-q[p]+1):(s[p]-1))), seq[p]),s = new_start, q = as.numeric(res$qstart)[which_start_short], ref_fa = ref_fa, seq = as.character(res$sseq)[which_start_short], USE.NAMES = F)
 	}
 
-	which_end_short = which(as.numeric(res$qend)<kmer_len)
+	which_end_short = which(as.numeric(res$qend)<klen)
 	new_end = as.numeric(res$send)[which_end_short]
-	res$send[which_end_short] = sapply(1:length(new_end), function(p, s, q) return(c(s[p]-q[p]+kmer_len)), s = new_end, q = as.numeric(res$qend)[which_end_short],USE.NAMES = F)
+	res$send[which_end_short] = sapply(1:length(new_end), function(p, s, q, k) return(c(s[p]-q[p]+k[p])), s = new_end, q = as.numeric(res$qend)[which_end_short], k = klen[which_end_short], USE.NAMES = F)
 	# Now check if the end is after the end of the protein
 	any_long_end = which(as.numeric(res$send)>nchar(ref_fa))
 	if(length(any_long_end)>0){
@@ -1503,7 +1505,7 @@ fix_res_table_nucleotide = function(res = NULL, ref_fa = NULL, kmer_len = NULL){
 	if(length(new_which_end_short)>0){
 		new_end = new_end[new_which_end_short]
 		which_end_short = which_end_short[new_which_end_short]
-		res$sseq[which_end_short] = sapply(1:length(new_end), function(p, s, q, ref_fa, seq) paste0(seq[p], substr(ref_fa, (s[p]+1), (c(s[p]-q[p]+kmer_len)))),s = new_end, q = as.numeric(res$qend)[which_end_short], ref_fa = ref_fa, seq = as.character(res$sseq)[which_end_short], USE.NAMES = F)
+		res$sseq[which_end_short] = sapply(1:length(new_end), function(p, s, q, k, ref_fa, seq) paste0(seq[p], substr(ref_fa, (s[p]+1), (c(s[p]-q[p]+k[p])))),s = new_end, q = as.numeric(res$qend)[which_end_short], k = klen[which_end_short], ref_fa = ref_fa, seq = as.character(res$sseq)[which_end_short], USE.NAMES = F)
 		res$qseq[which_end_short] = sapply(1:length(new_end), function(p, o, s, q, kmer, seq) paste0(seq[p], substr(kmer[p], (q[p]+1), (q[p]+length((o[p]+1):s[p])))), o = new_end, s = as.numeric(res$send)[which_end_short], q = as.numeric(res$qend)[which_end_short], kmer = as.character(res$kmer)[which_end_short], seq = as.character(res$qseq)[which_end_short], USE.NAMES = F)
 	}
 
