@@ -82,6 +82,10 @@ setwd(PWD)
 table.topgenes = read.table(filename.topgenes)
 max.signif = max(table.topgenes[,2],na.rm=TRUE)
 
+if(HIT_NUM>nrow(table.topgenes)) {
+	cat("Hit", HIT_NUM, "not required: only", nrow(table.topgenes), "regions in", filename.topgenes, "\n")
+	q("no")
+}
 gene = table.topgenes[HIT_NUM,1]
 gene.html = paste0("<i>",gene,"</i>")
 gene.filename = gsub(":","_",gene)

@@ -18,7 +18,7 @@ create_figures_dir = function(dir = NULL, kmer_type = NULL, kmer_length = NULL, 
 get_genes_to_plot = function(gene_names = NULL, y = NULL, gene_conversion = NULL, ymax = NULL, gene_panel = NULL, ref = NULL, xadjust = NULL, ngenes = 20){
 	if(!is.null(gene_names)){
 		o = order(as.numeric(y), decreasing = T)
-		if(is.null(y)) top_genes = gene_names else top_genes = unique(as.character(gene_names[o]))[1:ngenes]
+		if(is.null(y)) top_genes = gene_names else top_genes = head(unique(as.character(gene_names[o])), ngenes)
 		if(!is.null(xadjust)) xadjust = xadjust[order(match(top_genes, ref[,"name"]))]
 		top_genes = top_genes[order(match(top_genes, ref[,"name"]))]
 		gene_name_conversion = sapply(top_genes, function(x) as.character(gene_conversion[x]), USE.NAMES = F)
@@ -289,7 +289,7 @@ top20genes = function(gene_names = NULL, ma = NULL, minor_allele_threshold = NUL
 	
 	# Find the top 20 genes (for kmers with MAC/MAF above the threshold) by p-value and store the gene name plus the most significant p-value per gene
 	which_genes_to_annotate = which(!is.na(gene_names) & ma>=minor_allele_threshold)
-	top20genes = unique(gene_names[which_genes_to_annotate][order(ypos[which_genes_to_annotate], decreasing = T)])[1:20]
+	top20genes = head(unique(gene_names[which_genes_to_annotate][order(ypos[which_genes_to_annotate], decreasing = T)]), 20)
 	top20genespvals = c()
 	for(i in 1:length(top20genes)){
 		top20genespvals[i] = max(ypos[which_genes_to_annotate][which(gene_names[which_genes_to_annotate]==top20genes[i])], na.rm = T)
