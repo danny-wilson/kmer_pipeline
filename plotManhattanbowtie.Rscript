@@ -427,7 +427,7 @@ for(i in which_to_plot){
 		}
 	
 		if(plot.i){
-			plot_manhattan(outfilename = outfilename, xpos = xpos, ma_threshold_pass = ma_threshold_pass, ypos = ypos, ylims.i = ylims.i, annotateGeneFile = annotateGeneFile, ref = ref, which_genes_to_annotate.i = which_genes_to_annotate.i, allCOLS = allCOLS, allPCH = allPCH, i = i, bonferroni = bonferroni, legendtext = legendtext, legendcol = legendcol, legendpch = legendpch, legendlty = legendlty, beta = as.numeric(assoc[,2]), gene_names = gene_names, gene_conversion = gene_conversion, pheno_type = pheno_type)
+			plot_manhattan(outfilename = outfilename, xpos = xpos, ma_threshold_pass = ma_threshold_pass, ypos = ypos, ylims.i = ylims.i, annotateGeneFile = annotateGeneFile, ref = ref, which_genes_to_annotate.i = which_genes_to_annotate.i, allCOLS = allCOLS, allPCH = allPCH, i = i, bonferroni = bonferroni, legendtext = legendtext, legendcol = legendcol, legendpch = legendpch, legendlty = legendlty, beta = as.numeric(assoc[,2]), gene_names = gene_names, gene_conversion = gene_conversion, pheno_type = pheno_type, ref_length = ref_length)
 
 		}
 	

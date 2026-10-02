@@ -311,7 +311,7 @@ top20genes = function(gene_names = NULL, ma = NULL, minor_allele_threshold = NUL
 }
 
 
-plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = NULL, ypos = NULL, ylims.i = NULL, annotateGeneFile = NULL, ref = NULL, which_genes_to_annotate.i = NULL, allCOLS = NULL, allPCH = NULL, i = NULL, bonferroni = NULL, legendtext = NULL, legendcol = NULL, legendpch = NULL, legendlty = NULL, beta = NULL, gene_names = NULL, gene_conversion = NULL, pheno_type = NULL){
+plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = NULL, ypos = NULL, ylims.i = NULL, annotateGeneFile = NULL, ref = NULL, which_genes_to_annotate.i = NULL, allCOLS = NULL, allPCH = NULL, i = NULL, bonferroni = NULL, legendtext = NULL, legendcol = NULL, legendpch = NULL, legendlty = NULL, beta = NULL, gene_names = NULL, gene_conversion = NULL, pheno_type = NULL, ref_length = NULL){
 	
 			
 	
@@ -343,7 +343,7 @@ plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = N
 	
 	mtext("Position in reference genome (Mb)", side = 1, line = 2.5, cex = 0.8)
 	mtext(expression(paste("Significance (-log"[10],italic(' p'),") LMM",collapse="")), side = 2, line = 2.8, cex = 0.8)
-	axis(1, cex.axis = 0.8, at = c(0,1,2,3,4,5)*1e6, labels = c("0","1","2","3","4","5"))
+	axis(1, cex.axis = 0.8, at = c(0:floor(ref_length/1e6))*1e6, labels = as.character(0:floor(ref_length/1e6)))
 	axis(2, cex.axis = 0.8)
 	abline(h = bonferroni, col = "black", lty = 2)
 	par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
