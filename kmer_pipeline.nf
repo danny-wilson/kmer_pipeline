@@ -475,7 +475,7 @@ else if(!params.skip4 && params.container_covariate_file!="")
 		!{params.kmer_type} \
 		!{params.kmer_length} \
 		!{params.container_software_file} \
-		!{params.container_covariate_file
+		!{params.container_covariate_file}
 	cp --remove-destination $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	'''
 else
