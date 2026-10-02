@@ -448,16 +448,16 @@ if(!params.skip4 && params.container_covariate_file=="")
 	echo "Step 4: Running GEMMA"
 	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
-	!{params.container_cmd} !{params.container_script_dir}/rungemma.Rscript \
-		!{taskid} \
-		!{params.p} \
-		!{params.kmerFilePrefix} \
-		!{params.container_id_file} \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.container_software_file}
+	!{params.container_cmd} !{params.container_script_dir}/rungemma.py \
+		--task-id !{taskid} \
+		--p !{params.p} \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--id-file !{params.container_id_file} \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--kmertype !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--software-file !{params.container_software_file}
 	cp --remove-destination $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	'''
 else if(!params.skip4 && params.container_covariate_file!="")
@@ -465,17 +465,17 @@ else if(!params.skip4 && params.container_covariate_file!="")
 	echo "Step 4: Running GEMMA"
 	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
-	!{params.container_cmd} !{params.container_script_dir}/rungemma.Rscript \
-		!{taskid} \
-		!{params.p} \
-		!{params.kmerFilePrefix} \
-		!{params.container_id_file} \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.container_software_file} \
-		!{params.container_covariate_file}
+	!{params.container_cmd} !{params.container_script_dir}/rungemma.py \
+		--task-id !{taskid} \
+		--p !{params.p} \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--id-file !{params.container_id_file} \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--kmertype !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--software-file !{params.container_software_file} \
+		--covariate-file !{params.container_covariate_file}
 	cp --remove-destination $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	'''
 else
