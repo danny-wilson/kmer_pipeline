@@ -236,6 +236,18 @@ def _blast_table(blast_output_file, ncol, perident, kmers_gene_i, nsamples, extr
     return t
 
 
+def get_top_genes(input_dir, prefix, ngenes, nsamples, bonferroni, ref_name, kmer_type=None, kmer_length=None):
+    """The top-gene k-mer files written by plotManhattan, in gene order, and the
+    gene names. Not called (plot_closeup_alignments is given them), as in R."""
+    genes = rcompat.r_system_intern("ls " + r_paste0(input_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name,
+                                                     "*topgene_*kmersandpvals.txt"))
+    order = [float(g.split("/")[-1].split("topgene_")[1].split("_")[0]) for g in genes]
+    genes = [genes[k] for k in rcompat.r_order(order)]
+    genes_names = [g.split("_topgene_" + str(x + 1) + "_")[1].split("_kmersandpvals.txt")[0] for x, g in enumerate(genes)]
+    r_cat("Read in top gene names", "\n")
+    return {"genes": genes, "genes_names": genes_names, "genes_all": list(genes)}
+
+
 def process_blast_protein(prefix, i, kmers_gene_i, genes_names, j, blastPath, correct_frame, genename_i, all_translations,
                           kmer_type, kmer_length, perident, nsamples, output_dir, ref_name):
     correct_or_wrong = "correct_frame" if j == correct_frame else "wrong_frame"

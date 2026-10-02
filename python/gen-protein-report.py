@@ -109,7 +109,8 @@ def main():
         blast_nul_gd = [r["kmer"] not in mapped and r["negLog10"] >= thr_signif for r in blast_nul]
 
     filenames_kmer_maf = rdir(filename_kmer_maf)
-    filenames_kmer_maf0 = [f for f in rdir(filename_kmer_maf0) if f not in set(filenames_kmer_maf)]
+    maf_set = set(filenames_kmer_maf)
+    filenames_kmer_maf0 = [f for f in rdir(filename_kmer_maf0) if f not in maf_set]
 
     if filenames_kmer_maf:
         pstem = FIGDIR + stem + "_" + gene + "_correct_frame_"  # a regular expression, as in R

@@ -265,6 +265,25 @@ def main():
     with open(outfile_html, "w") as f:
         f.write(html_head + " " + html_body + " " + html_foot)
 
+    if False:  # as in R (if(FALSE)): the other reports are run by Nextflow instead
+        print("Generating top hit gene reports:")
+
+        def fp(s):
+            return s.replace(" ", "\\ ")
+        for i in range(1, int(NGENES) + 1):
+            CMD = " ".join([sys.executable, fp(SRC + "/gen-gene-report.py"), "--hit-num", str(i), "--prefix", PREFIX,
+                            "--anatype", ANATYPE, "--k", K, "--refname", REFNAME, "--ref-gb", fp(REF_GB), "--maf", MAF,
+                            "--alignident", ALIGNIDENT, "--mincount", MINCOUNT, "--srcdir", fp(SRC), "--outdir", fp(PWD),
+                            "--logdir", fp(LOGDIR)])
+            rcompat.r_system(CMD)
+            print("Done", i, "of", NGENES)
+        # And for unmapped kmers
+        CMD = " ".join([sys.executable, fp(SRC + "/gen-unmapped-report.py"), "--prefix", PREFIX, "--anatype", ANATYPE,
+                        "--k", K, "--refname", REFNAME, "--ref-gb", fp(REF_GB), "--maf", MAF, "--alignident", ALIGNIDENT,
+                        "--mincount", MINCOUNT, "--srcdir", fp(SRC), "--outdir", fp(PWD), "--logdir", fp(LOGDIR)])
+        rcompat.r_system(CMD)
+        print("Done unmapped kmer report")
+
 
 def slideshow(html_body, filenames, descriptions, img_style, close=True):
     """The slide-show block (R builds it inline in gen-report and the gene reports)."""

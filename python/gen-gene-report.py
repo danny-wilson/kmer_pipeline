@@ -237,7 +237,8 @@ def run(args, protein):
                         for r in blast_nul]
 
     filenames_kmer_maf = rdir(filename_kmer_maf)
-    filenames_kmer_maf0 = [f for f in rdir(filename_kmer_maf0) if f not in set(filenames_kmer_maf)]
+    maf_set = set(filenames_kmer_maf)
+    filenames_kmer_maf0 = [f for f in rdir(filename_kmer_maf0) if f not in maf_set]
 
     if filenames_kmer_maf:
         pstem = FIGDIR + stem + "_" + gene + "_plot_"  # used as a regular expression, as in R
