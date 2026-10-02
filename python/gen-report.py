@@ -120,7 +120,9 @@ def main():
 
     def qnorm(p, mean, sd):
         if mean is None or sd is None:
-            return None
+            return None  # NA
+        if math.isnan(mean) or math.isnan(sd):
+            return math.nan
         from scipy.stats import norm
         return float(norm.ppf(p, mean, sd))
     lo = qnorm(0.025, pve, se_pve)
@@ -131,7 +133,8 @@ def main():
         "  <p>The sample heritability (proportion of variance explained) under the null",
         "  linear mixed model (LMM) was " + s3(pve) + " with a standard error of " + s3(se_pve) + ",",
         "  which implies a 95% confidence interval of",
-        "  (" + s3(None if lo is None else max(0.0, lo)) + ", " + s3(None if hi is None else min(1.0, hi)) + ").",
+        "  (" + s3(None if lo is None else (lo if math.isnan(lo) else max(0.0, lo))) + ", "
+        + s3(None if hi is None else (hi if math.isnan(hi) else min(1.0, hi))) + ").",
         "  </p>", NL])
 
     # Obtain the actual p-value threshold used, after filtering samples with

@@ -90,7 +90,7 @@ def r_as_numeric(s):
     t = t.lstrip("+")
     if t.lower().lstrip("-").startswith("0x"):
         return float.fromhex(t)
-    return float(t.replace("Inf", "inf").replace("NaN", "nan"))
+    return float(t)  # Python reads nan, inf and infinity in any case, as R_strtod does
 
 
 def r_as_numeric_value(v):
@@ -349,8 +349,13 @@ def r_formatC_fg(x, digits, keep_trailing_zeros=True):
 
 def r_s3(x, digits=3):
     """The reports' s3(): gsub("\\.$", "", formatC(signif(x, 3), digits = 3, format = "fg", flag = "#"))."""
-    if x is None or (isinstance(x, float) and math.isnan(x)):
-        return "NA"
+    if x is None:  # NA; formatC right-justifies non-finite values to width digits + 1
+        return "NA".rjust(digits + 1)
+    x = float(x)
+    if math.isnan(x):
+        return "NaN".rjust(digits + 1)
+    if math.isinf(x):
+        return ("Inf" if x > 0 else "-Inf").rjust(digits + 1)
     out = r_formatC_fg(r_signif(x, digits), digits)
     return out[:-1] if out.endswith(".") else out
 
@@ -417,7 +422,7 @@ _INT_RE = re.compile(r"^\s*[+-]?[0-9]+$")
 _DBL_RE = re.compile(
     r"^\s*[+-]?(?:(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
     r"|0[xX][0-9a-fA-F]+(?:\.[0-9a-fA-F]*)?(?:[pP][+-]?[0-9]+)?"
-    r"|Inf|inf|NaN|NA)\s*$")
+    r"|(?i:inf(?:inity)?|nan)|NA)\s*$")
 _LOGICAL = {"T": True, "TRUE": True, "true": True, "True": True,
             "F": False, "FALSE": False, "false": False, "False": False}
 
@@ -555,7 +560,7 @@ def _type_convert(values):
                 return np.nan
             if t.lower().lstrip("-").startswith("0x"):
                 return float.fromhex(t)
-            return float(t.replace("Inf", "inf").replace("NaN", "nan"))
+            return float(t)
         return np.array([np.nan if blank(v) else dbl(v) for v in values], dtype=float)
     return pd.array(values, dtype=object)
 
