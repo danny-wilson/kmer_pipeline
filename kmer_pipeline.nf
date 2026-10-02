@@ -836,19 +836,19 @@ if(!params.skip7)
 	echo "Step 7B: Generating HTML protein report"
 	ln -sfr $(pwd) !{params.workdir}/genProteinReport.!{hitnum}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genProteinReport.!{hitnum}.log
-	!{params.container_cmd} !{params.container_script_dir}/gen-protein-report.Rscript \
-		!{hitnum} \
-		!{params.output_prefix} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.ref_name} \
-		!{params.container_ref_gb} \
-		!{params.minor_allele_threshold} \
-		!{params.nucmerident} \
-		!{params.min_count} \
-		!{params.container_script_dir} \
-		!{params.container_analysis_dir} \
-		!{params.container_logdir}
+	!{params.container_cmd} !{params.container_script_dir}/gen-protein-report.py \
+		--hit-num !{hitnum} \
+		--prefix !{params.output_prefix} \
+		--anatype !{params.kmer_type} \
+		--k !{params.kmer_length} \
+		--refname !{params.ref_name} \
+		--ref-gb !{params.container_ref_gb} \
+		--maf !{params.minor_allele_threshold} \
+		--alignident !{params.nucmerident} \
+		--mincount !{params.min_count} \
+		--srcdir !{params.container_script_dir} \
+		--outdir !{params.container_analysis_dir} \
+		--logdir !{params.container_logdir}
 	'''
 else
 	'''
