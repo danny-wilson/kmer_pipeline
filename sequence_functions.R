@@ -221,7 +221,10 @@ create_gene_lookup = function(ref = NULL, ref_length = NULL){
 			intergenic_names = c(intergenic_names, paste0(ref$name[length(ref$name)], ":"))
 			gene_start = c(gene_start, (ref$end[nrow(ref)]+1))
 			gene_end = c(gene_end, ref_length)
-			for(j in (as.numeric(ref$end[nrow(ref)]):length(ref.pos.gene.id))){
+			# The final intergenic region runs from after the last gene to the end of the
+			# (circular) reference and wraps round to the base before the first gene
+			last_region = c(seq_len(length(ref.pos.gene.id))[-seq_len(as.numeric(ref$end[nrow(ref)]))], seq_len(as.numeric(ref$start[1])-1))
+			for(j in last_region){
 				ref.pos.gene.id[[j]] = c(ref.pos.gene.id[[j]], nrow(ref)+length(intergenic_names))
 			}
 		}

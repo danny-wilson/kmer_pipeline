@@ -148,7 +148,10 @@ read_reference_files = function(ref_gb = NULL, ref.fa = NULL, ref_length = NULL,
 		}
 		if(i==nrow(ref)){
 			intergenic_names = c(intergenic_names, paste0(ref$name[length(ref$name)], ":"))
-			for(j in (as.numeric(ref$end[nrow(ref)]):length(ref.pos.gene.id))){
+			# The final intergenic region runs from after the last gene to the end of the
+			# (circular) reference and wraps round to the base before the first gene
+			last_region = c(seq_len(length(ref.pos.gene.id))[-seq_len(as.numeric(ref$end[nrow(ref)]))], seq_len(as.numeric(ref$start[1])-1))
+			for(j in last_region){
 				ref.pos.gene.id[[j]] = c(ref.pos.gene.id[[j]], nrow(ref)+length(intergenic_names))
 			}
 		}
