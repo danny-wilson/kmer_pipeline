@@ -304,6 +304,57 @@ def r_format_num(x, digits=7):
     return s
 
 
+def r_signif(x, digits):
+    """R's signif() (fprec in src/nmath/fprec.c): round half to even at
+    `digits` significant digits."""
+    x = float(x)
+    if math.isnan(x) or math.isinf(x) or x == 0:
+        return x
+    dig = max(1, int(round(digits)))
+    sgn = -1.0 if x < 0 else 1.0
+    x = abs(x)
+    l10 = math.log10(x)
+    e10 = int(dig - 1 - math.floor(l10))
+    if e10 > 0:
+        p10 = 10.0 ** e10
+        return sgn * (float(np.rint(x * p10)) / p10)
+    p10 = 10.0 ** (-e10)
+    return sgn * (float(np.rint(x / p10)) * p10)
+
+
+def r_formatC_fg(x, digits, keep_trailing_zeros=True):
+    """formatC(x, digits =, format = "fg", flag = "#") for one double (R's
+    str_signif): fixed notation with `digits` significant digits."""
+    x = float(x)
+    if math.isnan(x):
+        return "NA"
+    if math.isinf(x):
+        return "Inf" if x > 0 else "-Inf"
+    if x == 0:
+        return "0"
+    dig = digits
+    xxx = abs(x)
+    iex = int(math.floor(math.log10(xxx) + 1e-12))
+    X = round(xxx / 10.0 ** iex + 1e-12, dig - 1)
+    xx = x
+    if iex > 0 and X >= 10:
+        xx = X * 10.0 ** iex
+        iex += 1
+    if iex == -4 and abs(xx) < 1e-4:
+        iex = -5
+    if iex < -4:
+        return "%#.*f" % (dig - 1 - iex, xx)
+    return "%#.*g" % (iex + 1 if iex >= dig else dig, xx)
+
+
+def r_s3(x, digits=3):
+    """The reports' s3(): gsub("\\.$", "", formatC(signif(x, 3), digits = 3, format = "fg", flag = "#"))."""
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return "NA"
+    out = r_formatC_fg(r_signif(x, digits), digits)
+    return out[:-1] if out.endswith(".") else out
+
+
 def r_str(v, digits):
     """One R value as text: None/NaN -> "NA", bool -> TRUE/FALSE, int as is,
     float through r_format_num, anything else str()."""

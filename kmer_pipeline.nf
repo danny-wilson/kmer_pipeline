@@ -768,19 +768,19 @@ if(!params.skip7)
 	echo "Step 7: Generating HTML report"
 	ln -sfr $(pwd) !{params.workdir}/genReport
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genReport.log
-	!{params.container_cmd} !{params.container_script_dir}/gen-report.Rscript \
-		!{params.output_prefix} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.ref_name} \
-		!{params.container_ref_gb} \
-		!{params.minor_allele_threshold} \
-		!{params.nucmerident} \
-		!{params.min_count} \
-		!{params.ntopgenes} \
-		!{params.container_script_dir} \
-		!{params.container_analysis_dir} \
-		!{params.container_logdir}
+	!{params.container_cmd} !{params.container_script_dir}/gen-report.py \
+		--prefix !{params.output_prefix} \
+		--anatype !{params.kmer_type} \
+		--k !{params.kmer_length} \
+		--refname !{params.ref_name} \
+		--ref-gb !{params.container_ref_gb} \
+		--maf !{params.minor_allele_threshold} \
+		--alignident !{params.nucmerident} \
+		--mincount !{params.min_count} \
+		--ngenes !{params.ntopgenes} \
+		--srcdir !{params.container_script_dir} \
+		--outdir !{params.container_analysis_dir} \
+		--logdir !{params.container_logdir}
 	'''
 else
 	'''
@@ -802,19 +802,19 @@ if(!params.skip7)
 	echo "Step 7B: Generating HTML gene report"
 	ln -sfr $(pwd) !{params.workdir}/genGeneReport.!{hitnum}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genGeneReport.!{hitnum}.log
-	!{params.container_cmd} !{params.container_script_dir}/gen-gene-report.Rscript \
-		!{hitnum} \
-		!{params.output_prefix} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.ref_name} \
-		!{params.container_ref_gb} \
-		!{params.minor_allele_threshold} \
-		!{params.nucmerident} \
-		!{params.min_count} \
-		!{params.container_script_dir} \
-		!{params.container_analysis_dir} \
-		!{params.container_logdir}
+	!{params.container_cmd} !{params.container_script_dir}/gen-gene-report.py \
+		--hit-num !{hitnum} \
+		--prefix !{params.output_prefix} \
+		--anatype !{params.kmer_type} \
+		--k !{params.kmer_length} \
+		--refname !{params.ref_name} \
+		--ref-gb !{params.container_ref_gb} \
+		--maf !{params.minor_allele_threshold} \
+		--alignident !{params.nucmerident} \
+		--mincount !{params.min_count} \
+		--srcdir !{params.container_script_dir} \
+		--outdir !{params.container_analysis_dir} \
+		--logdir !{params.container_logdir}
 	'''
 else
 	'''
@@ -869,18 +869,18 @@ if(!params.skip7)
 	echo "Step 7C: Generating HTML unmapped report"
 	ln -sfr $(pwd) !{params.workdir}/genUnmappedReport
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genUnmappedReport.log
-	!{params.container_cmd} !{params.container_script_dir}/gen-unmapped-report.Rscript \
-		!{params.output_prefix} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.ref_name} \
-		!{params.container_ref_gb} \
-		!{params.minor_allele_threshold} \
-		!{params.nucmerident} \
-		!{params.min_count} \
-		!{params.container_script_dir} \
-		!{params.container_analysis_dir} \
-		!{params.container_logdir}
+	!{params.container_cmd} !{params.container_script_dir}/gen-unmapped-report.py \
+		--prefix !{params.output_prefix} \
+		--anatype !{params.kmer_type} \
+		--k !{params.kmer_length} \
+		--refname !{params.ref_name} \
+		--ref-gb !{params.container_ref_gb} \
+		--maf !{params.minor_allele_threshold} \
+		--alignident !{params.nucmerident} \
+		--mincount !{params.min_count} \
+		--srcdir !{params.container_script_dir} \
+		--outdir !{params.container_analysis_dir} \
+		--logdir !{params.container_logdir}
 	'''
 else
 	'''
