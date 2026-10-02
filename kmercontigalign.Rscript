@@ -114,7 +114,7 @@ read_reference_files = function(ref_gb = NULL, ref.fa = NULL, ref_length = NULL,
 	
 	# Get the reference name
 	ref.name = scan(ref.fa, what = character(0), sep = "\n", nlines = 1, quiet = TRUE)
-	if(sum(startsWith(readLines(ref.fa), ">"))>1) stop("Error: reference fasta file ", ref.fa, " contains more than one record; only single-record references are supported","\n")
+	if(sum(startsWith(readLines(ref.fa, warn = FALSE), ">"))>1) stop("Error: reference fasta file ", ref.fa, " contains more than one record; only single-record references are supported","\n")
 	ref.name = unlist(strsplit(ref.name, " "))[1]
 	if(substr(ref.name,1,1)!=">") stop("Error: reference fasta file does not begin with a name starting with '>'","\n")
 	ref.name = substr(ref.name,2,1e6)
