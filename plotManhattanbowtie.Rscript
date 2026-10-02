@@ -101,7 +101,7 @@ minor_allele_threshold = as.numeric(args[9])
 samtools_filter = as.integer(args[10])
 software_file = as.character(args[11])
 blastident = as.integer(args[12])
-ngenes = as.integer(args[13]))
+ngenes = as.integer(args[13])
 if(length(args)>13){
 	annotateGeneFile = as.character(args[14])
 	override_signif = as.logical(args[15])
@@ -291,7 +291,7 @@ cat("Bonferroni threshold:",bonferroni,"\n")
 ## Plot QQ plots
 ###########################
 
-plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = 0, , macormaf = macormaf, mapatterns = mapatterns, kmer_type = kmer_type, kmer_length = kmer_length)
+plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = 0, macormaf = macormaf, mapatterns = mapatterns, kmer_type = kmer_type, kmer_length = kmer_length)
 plot_QQ(kmerIndex = kmerIndex, assoc = assoc, output_dir = figures_dir, prefix = output_prefix, minor_allele_threshold = minor_allele_threshold, macormaf = macormaf, mapatterns = mapatterns, kmer_type = kmer_type, kmer_length = kmer_length)
 
 
