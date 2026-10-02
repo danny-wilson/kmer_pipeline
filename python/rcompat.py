@@ -8,7 +8,7 @@ that the Python scripts write the same files as the R scripts they replace:
 - files:      r_dir_create, r_open, r_scan_lines, r_cat_lines, r_read_table, r_write_table
 - language:   r_stop, r_colon, r_index, r_seq, r_as_integer, r_as_numeric
 - commands:   r_system, r_system2, r_system_intern
-- statistics: neg_log10_pchisq1
+- statistics: neg_log10_pchisq1_r (R's pchisq, bit for bit), neg_log10_pchisq1
 
 R's integers and doubles print differently (100000L is "100000", 1e5 is
 "1e+05"), so callers pass int for R integers and float for R doubles.
@@ -713,6 +713,154 @@ def r_system_intern(cmd):
 # --------------------------------------------------------------------------
 # Statistics
 # --------------------------------------------------------------------------
+
+
+# --- R 4.1.3's pchisq(D, df = 1, lower.tail = FALSE, log.p = TRUE), i.e.
+# pgamma(D/2, shape 0.5, lower.tail = FALSE, log.p = TRUE), ported from src/nmath
+# (pgamma.c, dpois.c, bd0.c, stirlerr.c) for shape 0.5 only, so that -log10 p is
+# bit-identical to R's. Constants R computes with lgammafn() are R's own values.
+_DBL_EPSILON = 2.220446049250313e-16
+_DBL_MIN = 2.2250738585072014e-308
+_M_LN2 = math.log(2)
+_M_2PI = 6.283185307179586476925286766559
+_M_CUTOFF = _M_LN2 * 1024 / _DBL_EPSILON          # M_LN2 * DBL_MAX_EXP / DBL_EPSILON
+_SCALEFACTOR = 4294967296.0 ** 8                   # SQR(SQR(SQR(2^32)))
+_LGAMMA_1_5 = float.fromhex("-0x1.eeb95b094c18ep-4")   # R's lgammafn(1.5) = lgamma1p(0.5)
+_LGAMMA_0_5 = float.fromhex("0x1.250d048e7a1bdp-1")    # R's lgammafn(0.5)
+_STIRLERR_0_5 = 0.1534264097200273452913848         # sferr_halves[1]
+
+
+def _log1_exp(x):
+    """R_Log1_Exp: log(1 - exp(x)) for x <= 0."""
+    return math.log(-math.expm1(x)) if x > -_M_LN2 else math.log1p(-math.exp(x))
+
+
+def _bd0(x, np_):
+    if not math.isfinite(x) or not math.isfinite(np_) or np_ == 0.0:
+        return math.nan
+    if abs(x - np_) < 0.1 * (x + np_):
+        v = (x - np_) / (x + np_)
+        s = (x - np_) * v
+        if abs(s) < _DBL_MIN:
+            return s
+        ej = 2 * x * v
+        v *= v
+        for j in range(1, 1000):
+            ej *= v
+            s_ = s
+            s += ej / ((j << 1) + 1)
+            if s == s_:
+                return s
+    return x * math.log(x / np_) + np_ - x
+
+
+def _dpois_raw_log(x, lam):
+    """dpois_raw(x, lambda, give_log = TRUE) for x = 0.5."""
+    if lam == 0:
+        return 0.0 if x == 0 else -math.inf
+    if not math.isfinite(lam):
+        return -math.inf
+    if x < 0:
+        return -math.inf
+    if x <= lam * _DBL_MIN:
+        return -lam
+    if lam < x * _DBL_MIN:
+        return -lam + x * math.log(lam) - _LGAMMA_1_5  # lgammafn(x + 1) for x = 0.5
+    return -0.5 * math.log(_M_2PI * x) + (-_STIRLERR_0_5 - _bd0(x, lam))
+
+
+def _dpois_wrap_log(x_plus_1, lam):
+    """dpois_wrap(0.5, lambda, give_log = TRUE)."""
+    if not math.isfinite(lam):
+        return -math.inf
+    if lam > abs(x_plus_1 - 1) * _M_CUTOFF:
+        return -lam - _LGAMMA_0_5
+    return _dpois_raw_log(x_plus_1, lam) + math.log(x_plus_1 / lam)
+
+
+def _pd_lower_cf(y, d):
+    if y == 0:
+        return 0.0
+    f0 = y / d
+    if abs(y - 1) < abs(d) * _DBL_EPSILON:
+        return f0
+    if f0 > 1.0:
+        f0 = 1.0
+    c2, c4 = y, d
+    a1, b1, a2, b2 = 0.0, 1.0, y, d
+    while b2 > _SCALEFACTOR:
+        a1 /= _SCALEFACTOR
+        b1 /= _SCALEFACTOR
+        a2 /= _SCALEFACTOR
+        b2 /= _SCALEFACTOR
+    i, of, f = 0.0, -1.0, 0.0
+    while i < 200000:
+        i += 1
+        c2 -= 1
+        c3 = i * c2
+        c4 += 2
+        a1 = c4 * a2 + c3 * a1
+        b1 = c4 * b2 + c3 * b1
+        i += 1
+        c2 -= 1
+        c3 = i * c2
+        c4 += 2
+        a2 = c4 * a1 + c3 * a2
+        b2 = c4 * b1 + c3 * b2
+        if b2 > _SCALEFACTOR:
+            a1 /= _SCALEFACTOR
+            b1 /= _SCALEFACTOR
+            a2 /= _SCALEFACTOR
+            b2 /= _SCALEFACTOR
+        if b2 != 0:
+            f = a2 / b2
+            af = abs(f)
+            if abs(f - of) <= _DBL_EPSILON * (af if f0 < af else f0):
+                return f
+            of = f
+    return f
+
+
+def r_pchisq1_upper_log(D):
+    """R's pchisq(D, 1, lower.tail = FALSE, log.p = TRUE), bit for bit."""
+    x = float(D) / 2.0
+    alph = 0.5
+    if math.isnan(x):
+        return x
+    if x <= 0:
+        return 0.0
+    if math.isinf(x):
+        return -math.inf
+    if x < 1:  # pgamma_smallx
+        s, c, n = 0.0, alph, 0.0
+        while True:
+            n += 1
+            c *= -x / n
+            term = c / (alph + n)
+            s += term
+            if not abs(term) > _DBL_EPSILON * abs(s):
+                break
+        lf2 = alph * math.log(x) - _LGAMMA_1_5
+        return _log1_exp(math.log1p(s) + lf2)
+    # alph - 1 < x and alph < 0.8 * (x + 50): always for x >= 1 and shape 0.5
+    d = _dpois_wrap_log(alph, x)
+    if x * _DBL_EPSILON > 1 - alph:
+        s = 0.0
+    else:
+        f = _pd_lower_cf(alph, x - (alph - 1)) * x / alph
+        s = math.log(f)
+    return s + d
+
+
+_NEG_LOG_10 = float.fromhex("-0x1.26bb1bbb55516p+1")  # R's -log(10)
+
+
+def neg_log10_pchisq1_r(D):
+    """-log10 p as R computes it: pchisq(D, 1, lower = FALSE, log.p = TRUE) / -log(10),
+    bit-identical (D <= 0 gives 0, NaN gives NaN)."""
+    D = np.asarray(D, dtype=float)
+    out = np.array([r_pchisq1_upper_log(v) / _NEG_LOG_10 for v in D.ravel()], dtype=float).reshape(D.shape)
+    return out + 0.0  # -0.0 -> 0.0
 
 
 def neg_log10_pchisq1(D):

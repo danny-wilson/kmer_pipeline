@@ -159,7 +159,7 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     l0 = extract_lambda_lognull(gemma_log_file[0])["lognull"]
 
     D = np.array([get_loglik(rcompat.r_as_numeric(r[4]), l0) for r in assoc], dtype=float)
-    pvals = rcompat.neg_log10_pchisq1(D)
+    pvals = rcompat.neg_log10_pchisq1_r(D)
     for r, p in zip(assoc, pvals):
         r.append(rcompat.r_as_character(float(p)))
     tested = set()
