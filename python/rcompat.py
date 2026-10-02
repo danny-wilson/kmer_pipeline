@@ -108,6 +108,19 @@ def r_sort_strings(x, decreasing=False):
     return sorted((s for s in x if not _is_na(s)), key=r_collate_key, reverse=decreasing)
 
 
+def r_dir(path, glob=None, full_names=False):
+    """R's dir(path, pattern = glob2rx(glob), full.names =): file names in R's
+    sort order. glob2rx makes * any characters and ? one, anchored at both ends."""
+    import fnmatch
+    import os
+    names = [n for n in os.listdir(path) if not n.startswith(".")]  # all.files = FALSE
+    if glob is not None:
+        names = [n for n in names if fnmatch.fnmatchcase(n, glob.replace("[", "[[]"))]
+    if full_names:  # as R: path "/" name, keeping any "//"
+        names = [path + "/" + n for n in names]
+    return r_sort_strings(names)
+
+
 # --------------------------------------------------------------------------
 # Number formatting (R's formatReal for a single value)
 # --------------------------------------------------------------------------
