@@ -330,6 +330,15 @@ rm(kmerCOLS)
 # PCH by alignment count
 pch_standard = rep(1, length(final_kmer_pos))
 
+# Top genes are chosen from all kmers, before any subsampling for plotting
+ma_full = ma[final_kmer_pos_index]
+gene_conversion_full = final_kmer_genes
+names(gene_conversion_full) = final_kmer_genes
+top20genes(gene_names = final_kmer_genes, ma = ma_full, minor_allele_threshold = minor_allele_threshold, ypos = ypos, macormaf = macormaf, output_dir = figures_dir, prefix = output_prefix, kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
+which_genes_full = which(!is.na(final_kmer_genes) & ma_full>=(minor_allele_threshold))
+topngenes = as.character(get_genes_to_plot(gene_names = final_kmer_genes[which_genes_full], y = ypos[which_genes_full], gene_conversion = gene_conversion_full[which_genes_full], ymax = 10, gene_panel = c(), ref = ref, ngenes = ngenes)[,1])
+rm(ma_full, gene_conversion_full, which_genes_full)
+
 # Subsample for faster plotting
 # s = union(sample(c(1:length(final_kmer_pos)),1e6),which(ypos>2))
 if(length(which(!is.na(ypos)))<1e6){
@@ -357,7 +366,6 @@ gene_names = final_kmer_genes[s]
 gene_conversion = gene_names
 names(gene_conversion) = gene_names
 
-top20genes(gene_names = gene_names, ma = ma, minor_allele_threshold = minor_allele_threshold, ypos = ypos, macormaf = macormaf, output_dir = figures_dir, prefix = output_prefix, kmer_type = kmer_type, kmer_length = kmer_length, ref.name = ref.name)
 
 
 # Plot
@@ -439,8 +447,6 @@ for(i in which_to_plot){
 
 # Get kmers for top ngenes genes
 
-which_genes_to_annotate.i = which(!is.na(gene_names) & ma>=(minor_allele_threshold))
-topngenes = as.character(get_genes_to_plot(gene_names = gene_names[which_genes_to_annotate.i], y = ypos[which_genes_to_annotate.i], gene_conversion = gene_conversion[which_genes_to_annotate.i], ymax = 10, gene_panel = c(), ref = ref, ngenes = ngenes)[,1])
 
 final_kmer_list = scan(gzfile(kmerSeqFile), what = character(0), sep = "\n", quiet = TRUE)
 
