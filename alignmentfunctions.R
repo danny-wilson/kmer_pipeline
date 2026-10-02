@@ -1699,7 +1699,7 @@ process_blast_nucleotide = function(blastPath = NULL, prefix = NULL, kmer_type =
 	if(length(blast.search)!=0){
 		# Create a matrix of the blast results
 		blast.search = matrix(blast.search,ncol=15,byrow=TRUE)
-		blast.search = blast.search[which(as.numeric(blast.search[,4])>=perident),]
+		blast.search = blast.search[which(as.numeric(blast.search[,4])>=perident),,drop=FALSE]
 		kmer.index = as.numeric(substr(as.character(blast.search[,1]), 5, 100000000))
 		blast.search = cbind(kmers_gene_i[kmer.index,], blast.search)
 		colnames(blast.search) = c("kmer","negLog10","beta","mac","qseqid","sseqid", "sacc", "pident", "length", "mismatch", "gapopen", "qstart", "qend" ,"evalue", "sstart","send","sseq","qseq", "sstrand")
