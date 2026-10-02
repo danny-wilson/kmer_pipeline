@@ -670,27 +670,27 @@ if(!params.skip6)
 	echo "Step 6: Plotting figures using contig alignment positions"
 	ln -sfr $(pwd) !{params.workdir}/plotManhattan
 	ln -sfr $(pwd)/.command.log !{params.logdir}/plotManhattan.log
-	!{params.container_cmd} !{params.container_script_dir}/plotManhattan.Rscript \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.kmerFilePrefix} \
-		!{params.container_ref_gb} \
-		!{params.container_ref_fa} \
-		!{params.gene_lookup_file} \
-		!{params.container_id_file} \
-		!{params.nucmerident} \
-		!{params.min_count} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.minor_allele_threshold} \
-		!{params.container_software_file} \
-		!{params.blastident} \
-		!{params.ntopgenes}
+	!{params.container_cmd} !{params.container_script_dir}/plotManhattan.py \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--ref-gb !{params.container_ref_gb} \
+		--ref-fa !{params.container_ref_fa} \
+		--gene-lookup-file !{params.gene_lookup_file} \
+		--id-file !{params.container_id_file} \
+		--nucmerident !{params.nucmerident} \
+		--min-count !{params.min_count} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--minor-allele-threshold !{params.minor_allele_threshold} \
+		--software-file !{params.container_software_file} \
+		--blastident !{params.blastident} \
+		--ngenes !{params.ntopgenes}
 	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotManhattan.log
 	'''
 	/* Temporarily removed since default values cannot be explicitly specified:\
-	!{params.annotateGeneFile} \
-	!{params.override_signif}*/
+	--annotate-gene-file !{params.annotateGeneFile} \
+	--override-signif !{params.override_signif}*/
 else
 	'''
 	echo "Skipping Step 6: Plotting figures using contig alignment positions"
