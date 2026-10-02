@@ -21,19 +21,17 @@ from rcompat import r_cat, r_paste0, r_stop
 ###################################################################################################
 
 
-def file_size(path):
-    """as.numeric(system("ls -l <path> | cut -d ' ' -f5", intern = T)): the size,
-    or None (R's numeric(0)) when ls prints nothing."""
-    out = rcompat.r_system_intern("ls -l " + path + " | cut -d ' ' -f5")
+def size_of(out):
+    """as.numeric() of the output of system("ls -l <path> | cut -d ' ' -f5", intern = T):
+    the size, or None (R's numeric(0)) when ls printed nothing."""
     if not out:
         return None
     v = rcompat.r_as_numeric(out[0])
     return math.nan if v is None else v
 
 
-def size_is_zero(path):
+def size_is_zero(size):
     """if(as.numeric(system("ls -l ...", intern = T)) == 0): R stops when ls prints nothing."""
-    size = file_size(path)
     if size is None:
         raise rcompat.RError("argument is of length zero")
     return size == 0
@@ -84,7 +82,7 @@ def create_pattern_batch(fullkmerlistfile, p, t, stringlist2patternpath, kmerlis
 
     # Check that files have been created and are not empty
     outfiles = [batches_dir + output_prefix_batch + s for s in (".patternKey.txt.gz", ".patternIndex.txt.gz")]
-    outfiles_size = [file_size(x) for x in outfiles]
+    outfiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in outfiles]
     if r_any_zero(outfiles_size):
         r_stop("One or more task_id ", t, " ", output_prefix_batch,
                " patternKey, patternKeySize or patternIndex files are empty")
@@ -170,7 +168,7 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
                 time.sleep(1)
 
             # Check files aren't empty
-            infiles_size = [file_size(x) for x in infiles]
+            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
             if r_any_zero(infiles_size):
                 r_stop("One or more file size is zero ", "".join(infiles), "\n")
             # Create patternKeySize files
@@ -202,10 +200,11 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
                     if j == 2:
                         prefixA = infiles[0].replace(".patternKey.txt.gz", "")
                         prefixB = infiles[1].replace(".patternKey.txt.gz", "")
+                        rcompat.r_system(patternmergepath + " " + prefixA + " " + prefixB + " " + tmpfile_prefix[j % 2])
                     else:
                         prefixA = tmpfile_prefix[(j - 1) % 2]
                         prefixB = infiles[j - 1].replace(".patternKey.txt.gz", "")
-                    rcompat.r_system(patternmergepath + " " + prefixA + " " + prefixB + " " + tmpfile_prefix[j % 2])
+                        rcompat.r_system(patternmergepath + " " + prefixA + " " + prefixB + " " + tmpfile_prefix[j % 2])
                 # Finally move the tmpfiles into place
                 # Behaviour: j equals the last value in the list
                 rcompat.r_system("mv " + tmpfile_patternKey[j % 2] + " " + outfile_patternKey)
@@ -243,7 +242,7 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
                     r_stop("Could not find files", "".join(infiles_completed))
                 time.sleep(1)
 
-            infiles_size = [file_size(x) for x in infiles]
+            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
             if r_any_zero(infiles_size):
                 r_stop("One or more file size is zero ", " ".join(infiles), "\n")
             # Merge the patternKey files and redefine the patternKeySize and patternIndex files
@@ -300,7 +299,7 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
 def create_final_merged_pattern_files(outfile_patternKey, outfile_patternKeySize, outfile_patternIndex, outfile_prefix,
                                       prefix, output_dir, kmertype, kmerlen, files, batches_dir, t):
     # Check final files aren't empty
-    outfiles_size = [file_size(x) for x in (outfile_patternKey, outfile_patternKeySize, outfile_patternIndex)]
+    outfiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in (outfile_patternKey, outfile_patternKeySize, outfile_patternIndex)]
     if r_any_zero(outfiles_size):
         r_stop("One or more task_id ", t, " final ", outfile_prefix, " patternKey, patternKeySize or patternIndex files are empty")
     final_file_prefix = r_paste0(output_dir, prefix, "_", kmertype, kmerlen)
@@ -338,14 +337,14 @@ def create_kinship_batch(batch_prefix, batches_dir, nkmersbatch, patterncountspa
     rcompat.r_system(cmd)
 
     # Check kinship file not empty
-    if size_is_zero(batches_dir + batch_prefix + ".kinship.txt.gz"):
+    if size_is_zero(size_of(rcompat.r_system_intern("ls -l " + batches_dir + batch_prefix + ".kinship.txt.gz | cut -d ' ' -f5"))):
         r_stop(batches_dir + batch_prefix + " kinship matrix file empty", "\n")
 
     # Output kinship matrix weight (i.e. total count): write() of an R double
     with open(batches_dir + batch_prefix + ".kinshipWeight.txt", "w") as f:
         f.write(rcompat.r_str(nkmersbatch[1] - nkmersbatch[0] + 1, 7) + "\n")
     # Check kinship weight file not empty
-    if size_is_zero(batches_dir + batch_prefix + ".kinshipWeight.txt"):
+    if size_is_zero(size_of(rcompat.r_system_intern("ls -l " + batches_dir + batch_prefix + ".kinshipWeight.txt | cut -d ' ' -f5"))):
         r_stop(batches_dir + batch_prefix + " kinship weight file empty", "\n")
 
     r_cat("Created kinship matrix batch:", batches_dir + batch_prefix + ".kinship.txt.gz", "\n")
@@ -447,7 +446,7 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
             nattempts = 0
             # Check input files exist and are not empty. As in R, the sizes are
             # measured once, before waiting.
-            infiles_size = [file_size(x) for x in infiles]
+            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
             while True:
                 missing = not all(os.path.exists(f) for f in infiles) or not all(os.path.exists(f) for f in infiles_completed)
                 if any(s is not None and s == s and not s > 0 for s in infiles_size):
@@ -517,10 +516,10 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
                 if nattempts > 3600:
                     r_stop("Could not find files", "".join(infiles))
                 time.sleep(1)
-            infiles_size = [file_size(x) for x in infiles]
+            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
             if r_any_zero(infiles_size):
                 r_stop("One or more file size is zero ", " ".join(infiles), "\n")
-            infiles_weights_size = [file_size(x) for x in infiles_weights]
+            infiles_weights_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles_weights]
             if r_any_zero(infiles_weights_size):
                 r_stop("One or more file size is zero ", " ".join(infiles_weights), "\n")
             # Read each file and augment the kinship matrix
@@ -556,7 +555,7 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
 
 def create_final_kinship_file(outfile_kinship, outfile_kinshipWeight, t, outfile_prefix, output_dir, prefix, kmertype,
                               kmerlen, files, batches_dir):
-    outfiles_size = [file_size(x) for x in (outfile_kinship, outfile_kinshipWeight)]
+    outfiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in (outfile_kinship, outfile_kinshipWeight)]
     if r_any_zero(outfiles_size):
         r_stop("One or more task_id ", t, " ", outfile_prefix, " kinship or kinship weight files are empty")
     final_file_prefix = r_paste0(output_dir, prefix, "_", kmertype, kmerlen)

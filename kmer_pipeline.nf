@@ -571,19 +571,19 @@ if(!params.skip5)
 	echo "Step 5: Running contig alignment"
 	ln -sfr $(pwd) !{params.workdir}/kmercontigalign.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/kmercontigalign.!{taskid}.log
-	!{params.container_cmd} !{params.container_script_dir}/kmercontigalignonly.Rscript \
-		!{taskid} \
-		!{params.n} \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.container_id_file} \
-		!{params.container_ref_fa} \
-		!{params.container_ref_gb} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.nucmerident} \
-		!{params.kmerFilePrefix}.kmermerge.txt.gz \
-		!{params.container_software_file}
+	!{params.container_cmd} !{params.container_script_dir}/kmercontigalignonly.py \
+		--task-id !{taskid} \
+		--n !{params.n} \
+		--output-prefix !{params.output_prefix} \
+		--output-dir !{params.container_analysis_dir} \
+		--id-file !{params.container_id_file} \
+		--ref-fa !{params.container_ref_fa} \
+		--ref-gb !{params.container_ref_gb} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--nucmerident !{params.nucmerident} \
+		--kmerseqfile !{params.kmerFilePrefix}.kmermerge.txt.gz \
+		--software-file !{params.container_software_file}
 	'''
 else
 	'''
@@ -606,18 +606,18 @@ if(!params.skip5)
 	echo "Step 5A: Merging contig alignments"
 	ln -sfr $(pwd) !{params.workdir}/kmercontigalignmerge.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/kmercontigalignmerge.!{taskid}.log
-	!{params.container_cmd} !{params.container_script_dir}/kmercontigalignmerge.Rscript \
-		!{taskid} \
-		!{params.n} \
-		!{params.p5} \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.kmergenecombination} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.container_ref_fa} \
-		!{params.nucmerident} \
-		!{params.container_software_file}
+	!{params.container_cmd} !{params.container_script_dir}/kmercontigalignmerge.py \
+		--task-id !{taskid} \
+		--n !{params.n} \
+		--p !{params.p5} \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--input-files !{params.kmergenecombination} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--ref-fa !{params.container_ref_fa} \
+		--nucmerident !{params.nucmerident} \
+		--software-file !{params.container_software_file}
 	'''
 else
 	'''
