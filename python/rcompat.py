@@ -5,8 +5,8 @@ that the Python scripts write the same files as the R scripts they replace:
 
 - ordering:   r_order, r_unique, r_sort_strings, r_collate_key
 - numbers:    r_format_num, r_as_character, r_cat, r_paste, r_paste0
-- files:      r_open, r_scan_lines, r_cat_lines, r_read_table, r_write_table
-- language:   r_stop, r_colon, r_index
+- files:      r_dir_create, r_open, r_scan_lines, r_cat_lines, r_read_table, r_write_table
+- language:   r_stop, r_colon, r_index, r_seq, r_as_integer, r_as_numeric
 - commands:   r_system, r_system2, r_system_intern
 - statistics: neg_log10_pchisq1
 
@@ -69,6 +69,78 @@ def r_colon(a, b):
     """R's a:b for integers: inclusive, and descending when a > b (so 1:0 is
     c(1, 0)). Returned as a Python list of ints."""
     return list(range(a, b + 1)) if a <= b else list(range(a, b - 1, -1))
+
+
+def r_as_integer(s):
+    """as.integer() of a command-line string: None (NA) if it isn't a number,
+    otherwise truncated towards zero, as R does."""
+    v = r_as_numeric(s)
+    if v is None or math.isnan(v) or math.isinf(v) or abs(v) > 2147483647:
+        return None
+    return int(v)
+
+
+def r_as_numeric(s):
+    """as.numeric() of a string: None (NA) if R can't read it as a number."""
+    if s is None:
+        return None
+    t = s.strip()
+    if not _DBL_RE.match(t) or t in ("NA", "-NA", "+NA"):
+        return None
+    t = t.lstrip("+")
+    if t.lower().lstrip("-").startswith("0x"):
+        return float.fromhex(t)
+    return float(t.replace("Inf", "inf").replace("NaN", "nan"))
+
+
+def r_as_numeric_value(v):
+    """as.numeric() of one value from a data frame column (r_read_table types):
+    logical TRUE/FALSE -> 1/0, numbers as floats, strings as as.numeric(); NA -> None."""
+    if _is_na(v):
+        return None
+    if isinstance(v, (bool, np.bool_)):
+        return 1.0 if v else 0.0
+    if isinstance(v, (int, float, np.integer, np.floating)):
+        return float(v)
+    return r_as_numeric(str(v))
+
+
+def r_dir_create(path):
+    """R's dir.create(path): never fails. If the directory already exists (e.g.
+    created at the same moment by a parallel task) or can't be made, R warns and
+    returns FALSE."""
+    import os
+    try:
+        os.mkdir(path)
+        return True
+    except FileExistsError:
+        print(f"Warning message:\nIn dir.create({path!r}) : '{path}' already exists", file=sys.stderr, flush=True)
+    except OSError as e:
+        print(f"Warning message:\nIn dir.create({path!r}) : cannot create dir '{path}', reason '{e.strerror}'",
+              file=sys.stderr, flush=True)
+    return False
+
+
+def r_pipe(cmd):
+    """The text R reads from pipe(cmd) (e.g. scan(pipe(cmd))): /bin/sh, stdout."""
+    _flush()
+    return subprocess.run(cmd, shell=True, executable="/bin/sh", stdout=subprocess.PIPE).stdout.decode("utf-8")
+
+
+def r_seq(from_, to, by):
+    """seq(from, to, by) for doubles, as R's seq.default (with its 1e-10 fuzz)."""
+    from_, to, by = float(from_), float(to), float(by)
+    delta = to - from_
+    if delta == 0 and to == 0:
+        return [to]
+    n = delta / by
+    if n < 0:
+        raise ValueError("wrong sign in 'by' argument")
+    if abs(delta) / max(abs(to), abs(from_)) < 100 * 2.220446049250313e-16:
+        return [from_]
+    n = int(n + 1e-10)
+    x = [from_ + k * by for k in range(n + 1)]
+    return [min(v, to) for v in x] if by > 0 else [max(v, to) for v in x]
 
 
 def r_index(x, idx):

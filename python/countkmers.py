@@ -55,7 +55,7 @@ def count_protein_kmers(fastaFile, writeToFile=False, kmerLen=31, kmerDir=None, 
 def create_kmercount_dir(dir, kmertype, kmerlength):
     kmer_dir = dir + "/" + rcompat.r_paste0(kmertype, "kmer", kmerlength, "/")  # file.path
     if not os.path.isdir(kmer_dir):
-        os.mkdir(kmer_dir)
+        rcompat.r_dir_create(kmer_dir)
     r_cat(rcompat.r_paste0("Counting ", kmertype, " kmers of length ", kmerlength), "\n")
     return kmer_dir
 
@@ -67,7 +67,7 @@ def nucleotide_kmer_counting(output_dir, kmerlength, dsk_path, dsk2ascii_path, c
     k = rcompat.r_as_character(kmerlength)
     # Run DSK
     dsktmpdir = sample_id + "-countkmers-tmpdir"
-    os.mkdir(dsktmpdir)
+    rcompat.r_dir_create(dsktmpdir)
     rcompat.r_system(dsk_path + " -file " + contig_path + " -kmer-size " + k + " -max-disk 0 -abundance-min 1 -out "
                      + sample_id + " -out-tmp " + dsktmpdir)
     import shutil
@@ -228,7 +228,7 @@ def main():
         r_stop("Error: contig path", contig_path, "doesn't exist", "\n")
 
     if not os.path.isdir(output_dir + "/translated_contigs"):
-        os.mkdir(output_dir + "/translated_contigs")
+        rcompat.r_dir_create(output_dir + "/translated_contigs")
 
     # Read in analyses to run
     if analyses_list is not None:

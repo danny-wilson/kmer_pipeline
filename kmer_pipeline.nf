@@ -316,16 +316,16 @@ if(!params.skip2)
 	echo "taskid: !{taskid}"
 	ln -sfr $(pwd) !{params.workdir}/createfullkmerlist.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/createfullkmerlist.!{taskid}.log
-	!{params.container_cmd} !{params.container_script_dir}/createfullkmerlist.Rscript \
-		!{taskid} \
-		!{params.n} \
-		!{params.p} \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.container_id_file} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.container_software_file}
+	!{params.container_cmd} !{params.container_script_dir}/createfullkmerlist.py \
+		--task-id !{taskid} \
+		--n !{params.n} \
+		--p !{params.p} \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--id-file !{params.container_id_file} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--software-file !{params.container_software_file}
 	'''
 else
 	'''
@@ -373,18 +373,18 @@ if(!params.skip3)
 	echo "Step 3: Creating kmer presence/absence patterns and kinship matrix"
 	ln -sfr $(pwd) !{params.workdir}/stringlist2patternandkinship.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/stringlist2patternandkinship.!{taskid}.log
-	!{params.container_cmd} !{params.container_script_dir}/stringlist2patternandkinship.Rscript \
-		!{taskid} \
-		!{params.p} \
-		!{params.container_id_file} \
-		!{params.kmerFilePrefix}.kmermerge.txt.gz \
-		!{params.kmerFilePrefix}_kmers_filepaths.txt \
-		!{params.container_analysis_dir} \
-		!{params.output_prefix} \
-		!{params.kmer_type} \
-		!{params.container_software_file} \
-		!{params.kmer_length} \
-		!{params.min_count}
+	!{params.container_cmd} !{params.container_script_dir}/stringlist2patternandkinship.py \
+		--task-id !{taskid} \
+		--p !{params.p} \
+		--id-file !{params.container_id_file} \
+		--fullkmerlistfile !{params.kmerFilePrefix}.kmermerge.txt.gz \
+		--kmercountslistfile !{params.kmerFilePrefix}_kmers_filepaths.txt \
+		--analysis-dir !{params.container_analysis_dir} \
+		--output-prefix !{params.output_prefix} \
+		--kmertype !{params.kmer_type} \
+		--software-file !{params.container_software_file} \
+		--kmer-length !{params.kmer_length} \
+		--mincount !{params.min_count}
 	'''
 else
 	'''
