@@ -709,16 +709,16 @@ shell:
 	echo "Step 5B: Running bowtie2 (nucleotide kmers only)"
 	ln -sfr $(pwd) !{params.workdir}/runbowtie
 	ln -sfr $(pwd)/.command.log !{params.logdir}/runbowtie.log
-	!{params.container_cmd} !{params.container_script_dir}/runbowtie.Rscript \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.kmerFilePrefix} \
-		!{params.container_ref_fa} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.container_software_file} \
-		!{params.bowtie_parameters} \
-		!{params.samtools_filter}
+	!{params.container_cmd} !{params.container_script_dir}/runbowtie.py \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--ref-fa !{params.container_ref_fa} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--software-file !{params.container_software_file} \
+		--bowtie-parameters=!{params.bowtie_parameters} \
+		--samtools-filter !{params.samtools_filter}
 	'''
 }
 
@@ -734,20 +734,20 @@ shell:
 	echo "Step 6B: Plotting figures using bowtie2 mapping positions (nucleotide kmers only)"
 	ln -sfr $(pwd) !{params.workdir}/plotManhattanbowtie
 	ln -sfr $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
-	!{params.container_cmd} !{params.container_script_dir}/plotManhattanbowtie.Rscript \
-		!{params.output_prefix} \
-		!{params.container_analysis_dir} \
-		!{params.kmerFilePrefix} \
-		!{params.container_ref_gb} \
-		!{params.container_ref_fa} \
-		!{params.container_id_file} \
-		!{params.kmer_type} \
-		!{params.kmer_length} \
-		!{params.minor_allele_threshold} \
-		!{params.samtools_filter} \
-		!{params.container_software_file} \
-		!{params.blastident} \
-		!{params.ntopgenes}
+	!{params.container_cmd} !{params.container_script_dir}/plotManhattanbowtie.py \
+		--output-prefix !{params.output_prefix} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--ref-gb !{params.container_ref_gb} \
+		--ref-fa !{params.container_ref_fa} \
+		--id-file !{params.container_id_file} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		--minor-allele-threshold !{params.minor_allele_threshold} \
+		--samtools-filter !{params.samtools_filter} \
+		--software-file !{params.container_software_file} \
+		--blastident !{params.blastident} \
+		--ngenes !{params.ntopgenes}
 	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
 	'''
 	/* Temporarily removed since default values cannot be explicitly specified \

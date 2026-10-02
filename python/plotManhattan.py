@@ -29,6 +29,28 @@ def read_ref_length(ref_gb):
     return ref_length
 
 
+def first_gene_ids(ref, lookup_rows, ref_length):
+    """ref.pos.gene.id[[pos]][1] from create_gene_lookup: for each reference
+    position, the first gene (in reference order) covering it, else the
+    intergenic region; 0 for none. As an array indexed by position."""
+    import numpy as np
+    n = int(ref_length)
+    first = np.zeros(n + 2, dtype=np.int64)
+    nref = len(ref)
+    for gid, (name, _, s, e, _) in enumerate(lookup_rows, start=1):
+        lo, hi = int(min(s, e)), int(max(s, e))
+        if gid > nref and gid == len(lookup_rows):  # the final region wraps round to before the first gene
+            ranges = [(lo, n), (1, int(lookup_rows[0][2]) - 1)]
+        else:
+            ranges = [(lo, hi)]
+        for a, b in ranges:
+            a, b = max(a, 1), min(b, n)
+            if a <= b:
+                seg = first[a:b + 1]
+                seg[seg == 0] = gid
+    return first
+
+
 def get_gene_xpos(gene_lookup_file, ref_gb):
     import sequence_functions
     ref_length = read_ref_length(ref_gb)
@@ -114,7 +136,6 @@ def read_kmer_alignment(alignPosFile, alignCountFile, min_count, gene_lookup_pos
 
 def main():
     rcompat.script_setup(__file__)
-    start_time = time.monotonic()
     parser = argparse.ArgumentParser(description="plotManhattan.py plot QQ and Manhattan plots", allow_abbrev=False)
     parser.add_argument("--output-prefix", required=True)
     parser.add_argument("--analysis-dir", required=True)
@@ -133,7 +154,13 @@ def main():
     parser.add_argument("--ngenes", required=True)
     parser.add_argument("--annotate-gene-file", default=None, help="genes/IRs to annotate (instead of the top genes)")
     parser.add_argument("--override-signif", default="FALSE", help="TRUE/FALSE: plot alignments whatever the significance")
-    args = parser.parse_args()
+    run(parser.parse_args(), bowtie=False)
+
+
+def run(args, bowtie):
+    """The body of plotManhattan; plotManhattanbowtie.py runs it with bowtie=True
+    (k-mer positions from the bowtie2 mapping instead of the contig alignment)."""
+    start_time = time.monotonic()
 
     # Initialize variables
     output_prefix = args.output_prefix
@@ -141,10 +168,14 @@ def main():
     kmerfilePrefix = args.kmerfile_prefix
     ref_gb = args.ref_gb
     ref_fa = args.ref_fa
-    gene_lookup_file = args.gene_lookup_file
     id_file = args.id_file
-    nucmerident = rcompat.r_as_integer(args.nucmerident)
-    min_count = rcompat.r_as_integer(args.min_count)
+    if bowtie:
+        gene_lookup_file = nucmerident = min_count = None
+        samtools_filter = rcompat.r_as_integer(args.samtools_filter)
+    else:
+        gene_lookup_file = args.gene_lookup_file
+        nucmerident = rcompat.r_as_integer(args.nucmerident)
+        min_count = rcompat.r_as_integer(args.min_count)
     kmer_type = args.kmer_type.lower()
     kmer_length = rcompat.r_as_integer(args.kmer_length)
     minor_allele_threshold = rcompat.r_as_numeric(args.minor_allele_threshold)
@@ -165,13 +196,13 @@ def main():
         r_stop("Error: reference genbank file doesn't exist", "\n")
     if not os.path.exists(ref_fa):
         r_stop("Error: reference fasta file doesn't exist", "\n")
-    if not os.path.exists(gene_lookup_file):
+    if not bowtie and not os.path.exists(gene_lookup_file):
         r_stop("Error: reference gene ID file doesn't exist", "\n")
     if not os.path.exists(id_file):
         r_stop("Error: sample ID file doesn't exist", "\n")
-    if nucmerident is None or nucmerident > 100 or nucmerident < 0:
+    if not bowtie and (nucmerident is None or nucmerident > 100 or nucmerident < 0):
         r_stop("Error: nucmer identity threshold must be between 0-100", "\n")
-    if min_count is None:
+    if not bowtie and min_count is None:
         r_stop("Error: min count must be an integer", "\n")
     if kmer_type != "protein" and kmer_type != "nucleotide":
         r_stop("Error: kmer type must be either 'protein' or 'nucleotide'", "\n")
@@ -179,7 +210,7 @@ def main():
         r_stop("Error: kmer length must be an integer", "\n")
     if minor_allele_threshold is None:
         r_stop("Error: minor allele threshold must be a number", "\n")
-    if 0.5 < minor_allele_threshold < 1:
+    if not bowtie and 0.5 < minor_allele_threshold < 1:
         r_stop("Error: minor allele threshold must be <=0.5 or >=1")
     if not os.path.exists(software_file):
         r_stop("Error: software file doesn't exist", "\n")
@@ -198,14 +229,20 @@ def main():
     kmerIndexFile = kmerfilePrefix + ".patternmerge.patternIndex.txt.gz"
     kmerPresenceCountFile = kmerfilePrefix + ".patternmerge.presenceCount.txt.gz"
     kmerSeqFile = kmerfilePrefix + ".kmermerge.txt.gz"
-    alignPosFile = r_paste0(kmerfilePrefix, ".", ref_name, "_t", nucmerident, ".kmeralignmerge.txt.gz")
-    alignCountFile = r_paste0(kmerfilePrefix, ".", ref_name, "_t", nucmerident, ".kmeralignmerge.count.txt.gz")
-
-    for f, what in ((kmerKeySizeFile, "kmer pattern key size"), (kmerIndexFile, "kmer pattern index"),
-                    (kmerPresenceCountFile, "kmer presence count"), (alignPosFile, "align pos"),
-                    (alignCountFile, "align count"), (kmerSeqFile, "kmer sequence")):
+    if bowtie:
+        mappingFile = r_paste0(kmerfilePrefix, ".", ref_name, ".SAMq", samtools_filter, ".bowtie2map.txt.gz")
+        inputs = ((kmerKeySizeFile, "kmer pattern key size"), (kmerIndexFile, "kmer pattern index"),
+                  (kmerPresenceCountFile, "kmer presence count"), (mappingFile, "bowtie2 mapping"),
+                  (kmerSeqFile, "kmer sequence"))
+    else:
+        alignPosFile = r_paste0(kmerfilePrefix, ".", ref_name, "_t", nucmerident, ".kmeralignmerge.txt.gz")
+        alignCountFile = r_paste0(kmerfilePrefix, ".", ref_name, "_t", nucmerident, ".kmeralignmerge.count.txt.gz")
+        inputs = ((kmerKeySizeFile, "kmer pattern key size"), (kmerIndexFile, "kmer pattern index"),
+                  (kmerPresenceCountFile, "kmer presence count"), (alignPosFile, "align pos"),
+                  (alignCountFile, "align count"), (kmerSeqFile, "kmer sequence"))
+    for f, what in inputs:
         if not os.path.exists(f):
-            r_stop("Error: " + what + " file doesn't exist", "\n")
+            r_stop("Error: " + what + " file doesn't exist" + (": " + f + " \n" if bowtie else ""), "" if bowtie else "\n")
 
     # Read in software file
     software_paths = rcompat.r_read_table(software_file, header=True, sep="\t", quote="")
@@ -244,11 +281,8 @@ def main():
     for label, v in (("Output prefix:", output_prefix), ("Analysis directory:", output_dir),
                      ("Kmer file prefix:", kmerfilePrefix), ("Kmer pattern key size file:", kmerKeySizeFile),
                      ("Kmer pattern index file:", kmerIndexFile), ("Kmer pattern presence count file:", kmerPresenceCountFile),
-                     ("Kmer list file:", kmerSeqFile), ("Kmer alignment gene file:", alignPosFile),
-                     ("Kmer alignment gene count file:", alignCountFile), ("Reference genbank file:", ref_gb),
-                     ("Reference fasta file:", ref_fa), ("Kmer alignment gene ID file:", gene_lookup_file),
-                     ("ID file path:", id_file), ("Nucmer alignment minimum % identity:", nucmerident),
-                     ("Kmer alignment min genome count:", min_count), ("Kmer type:", kmer_type),
+                     ("Kmer list file:", kmerSeqFile), ("Reference genbank file:", ref_gb),
+                     ("Reference fasta file:", ref_fa), ("ID file path:", id_file), ("Kmer type:", kmer_type),
                      ("Kmer length:", kmer_length), ("Minor allele threshold:", minor_allele_threshold),
                      ("BLAST alignment minimum % identity:", blastident), ("Number of top genes to output:", ngenes),
                      ("Software file:", software_file), ("Script location:", script_location)):
@@ -259,8 +293,9 @@ def main():
     r_cat("#############################################", "\n\n")
 
     # Create an output directory
+    alignmenttype = "bowtie2mapping" if bowtie else "kmergenealign"
     figures_dir = mf.create_figures_dir(dir=output_dir, kmer_type=kmer_type, kmer_length=kmer_length,
-                                        alignmenttype="kmergenealign")
+                                        alignmenttype=alignmenttype)
 
     # Get GEMMA input directory
     gemma_dir = output_dir + "/" + r_paste0(kmer_type, "kmer", kmer_length, "_gemma") + "/" + "output/"
@@ -286,7 +321,7 @@ def main():
     nsamples = sum(1 for p in pheno if p is not None)
 
     # Check count threshold variable
-    if min_count < 1 or min_count > len(ids):
+    if not bowtie and (min_count < 1 or min_count > len(ids)):
         r_stop("Error: minimum count must be at least 1 and less than the total number of samples", "\n")
 
     # Read in total number of kmer patterns and the index
@@ -300,12 +335,22 @@ def main():
         r_stop("Error: number of unique kmer indices does not equal the number of patterns", "\n")
 
     # Read in reference and gene look up
-    gene_xpos = mf_get = get_gene_xpos(gene_lookup_file=gene_lookup_file, ref_gb=ref_gb)
-    ref_length = gene_xpos["ref_length"]
-    ref = gene_xpos["ref"]
-    gene_lookup = gene_xpos["gene_lookup"]
-    gene_lookup_pos = gene_xpos["gene_lookup_pos"]
-    del mf_get
+    if bowtie:
+        ref_length = read_ref_length(ref_gb)
+        print("Read 1 item", file=sys.stderr, flush=True)
+        r_cat("Reference genome length:", ref_length, "\n")
+        ref = sequence_functions.reorder_reference_gbk(ref_gb=ref_gb)
+        r_cat("Read in reference genbank file", "\n")
+        import alignmentfunctions
+        lookup_rows = alignmentfunctions.create_gene_lookup(ref, ref_length)
+        gene_lookup = [row[0] for row in lookup_rows]
+        first_id = first_gene_ids(ref, lookup_rows, ref_length)
+    else:
+        gene_xpos = get_gene_xpos(gene_lookup_file=gene_lookup_file, ref_gb=ref_gb)
+        ref_length = gene_xpos["ref_length"]
+        ref = gene_xpos["ref"]
+        gene_lookup = gene_xpos["gene_lookup"]
+        gene_lookup_pos = gene_xpos["gene_lookup_pos"]
 
     # Read in gemma files
     assoc = mf.read_gemma_files(input_dir=gemma_dir, prefix=output_prefix, kmer_type=kmer_type, kmer_length=kmer_length,
@@ -344,7 +389,8 @@ def main():
     n_tests = len(set(tested))
     bonferroni = -math.log10(0.05 / n_tests)
     r_cat("Bonferroni threshold:", bonferroni, "\n")
-    mf.write_summary_json(summary_file=r_paste0(output_dir, output_prefix, "_", kmer_type, kmer_length, ".summary.json"),
+    mf.write_summary_json(summary_file=r_paste0(output_dir, output_prefix, "_", kmer_type, kmer_length,
+                                                ".bowtie2mapping.summary.json" if bowtie else ".summary.json"),
                           n_kmers=len(kmerIndex), n_patterns=nPatterns,
                           n_untested_patterns=sum(1 for r in assoc if r is None),
                           max_neglog10p=float(np.nanmax(neglog10)), minor_allele_threshold=minor_allele_threshold,
@@ -356,11 +402,22 @@ def main():
                kmer_length)
 
     ## Read in alignment results
-    ka = read_kmer_alignment(alignPosFile, alignCountFile, min_count, gene_lookup_pos, gene_lookup, kmerIndex, ref_length)
-    final_kmer_pos_index = ka["final_kmer_pos_index"]
-    final_kmer_pos = ka["final_kmer_pos"]
-    final_kmer_genes = ka["final_kmer_genes"]
-    alignPosPCH = ka["alignPosPCH"]
+    if bowtie:
+        import plotManhattanbowtie
+        km = plotManhattanbowtie.read_bowtie_pos(mappingFile, kmerIndex, ref_length)
+        final_kmer_pos_index = km["final_kmer_pos_index"]
+        final_kmer_pos = km["final_kmer_pos"]
+        lookup_start1 = lookup_rows[0][2]
+        final_kmer_genes = [None if pos > ref_length or pos < lookup_start1 else
+                            (gene_lookup[first_id[int(pos)] - 1] if first_id[int(pos)] > 0 else None)
+                            for pos in final_kmer_pos]
+        r_cat("Assigned genes/IRs to each kmer", "\n")
+    else:
+        ka = read_kmer_alignment(alignPosFile, alignCountFile, min_count, gene_lookup_pos, gene_lookup, kmerIndex,
+                                 ref_length)
+        final_kmer_pos_index = ka["final_kmer_pos_index"]
+        final_kmer_pos = ka["final_kmer_pos"]
+        final_kmer_genes = ka["final_kmer_genes"]
 
     ## Get y position
     fki = np.array([int(v) for v in final_kmer_pos_index]) - 1
@@ -424,9 +481,13 @@ def main():
     ylims_options = [None, 50.0]
 
     for i in range(4):
-        outfilename_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
-                                      "_LMM_kmergenealign_ct", min_count, "_Manhattan_", filecol[i], "_", macormaf,
-                                      ma_threshold_all[i])
+        if bowtie:
+            outfilename_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
+                                          "_LMM_bowtie2mapping_Manhattan_", filecol[i], "_", macormaf, ma_threshold_all[i])
+        else:
+            outfilename_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
+                                          "_LMM_kmergenealign_ct", min_count, "_Manhattan_", filecol[i], "_", macormaf,
+                                          ma_threshold_all[i])
         for ylim in ylims_options:
             with np.errstate(invalid="ignore"):
                 ma_threshold_pass = np.flatnonzero(ma_s >= ma_threshold_all[i])
@@ -449,8 +510,13 @@ def main():
     final_kmer_list = rcompat.r_scan_lines(kmerSeqFile, quiet=True)
 
     r_cat("Writing unaligned significant kmers to file", "\n")
-    output_file_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name, "_", macormaf, "_",
-                                  minor_allele_threshold, "_alignIdent_", nucmerident, "_alignPosMinCount_", min_count)
+    if bowtie:
+        output_file_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name, "_",
+                                      macormaf, "_", minor_allele_threshold, "_bowtie2mapping")
+    else:
+        output_file_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name, "_",
+                                      macormaf, "_", minor_allele_threshold, "_alignIdent_", nucmerident,
+                                      "_alignPosMinCount_", min_count)
     wh_i = [k for k in range(len(final_kmer_pos)) if final_kmer_pos[k] > ref_length]
     mf.write_top_gene_kmers_to_file(wh_i, final_kmer_list, final_kmer_pos_index, assoc, kmerIndex, mac,
                                     output_file_prefix + "_unaligned_kmersandpvals.txt")
@@ -478,7 +544,7 @@ def main():
         ref=ref, ref_length=ref_length, ref_gb=ref_gb, ref_fa=ref_fa, figures_dir=figures_dir,
         output_prefix=output_prefix, ngenes=ngenes, nsamples=nsamples, bonferroni=bonferroni, gene_lookup=gene_lookup,
         oneLetterCodes=alignmentfunctions.oneLetterCodes, kmer_type=kmer_type, kmer_length=kmer_length,
-        blastPath=blastPath, perident=blastident, ref_name=ref_name, alignmenttype="kmergenealign",
+        blastPath=blastPath, perident=blastident, ref_name=ref_name, alignmenttype=alignmenttype,
         override_signif=override_signif, genes_all=genes_all, minor_allele_threshold=minor_allele_threshold,
         macormaf=macormaf)
 
