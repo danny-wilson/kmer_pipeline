@@ -1533,9 +1533,9 @@ draw_qq = function(dd, p) {
 	assoc = matrix(NA_real_, nrow(patterns), 6)
 	assoc[, 2] = patterns$beta
 	assoc[, 6] = patterns$neglog10p
-	minor_allele_threshold = as.numeric(p["minor_allele_threshold"])
+	minor_allele_threshold = as.numeric(p[["minor_allele_threshold"]])
 	for(thr in c(0, minor_allele_threshold)) {
-		plot_QQ(kmerIndex = kmers$kmer_index, assoc = assoc, output_dir = p["figures_dir"], prefix = p["output_prefix"], minor_allele_threshold = thr, macormaf = p["macormaf"], mapatterns = patterns$ma, kmer_type = p["kmer_type"], kmer_length = p["kmer_length"])
+		plot_QQ(kmerIndex = kmers$kmer_index, assoc = assoc, output_dir = p[["figures_dir"]], prefix = p[["output_prefix"]], minor_allele_threshold = thr, macormaf = p[["macormaf"]], mapatterns = patterns$ma, kmer_type = p[["kmer_type"]], kmer_length = as.numeric(p[["kmer_length"]]))
 	}
 }
 
@@ -1555,11 +1555,11 @@ draw_genome_manhattan = function(dd, p) {
 	final_kmer_pos_index = positions$kmer
 	final_kmer_pos = positions$position
 	final_kmer_genes = positions$gene
-	bonferroni = as.numeric(p["bonferroni"])
-	minor_allele_threshold = as.numeric(p["minor_allele_threshold"])
+	bonferroni = as.numeric(p[["bonferroni"]])
+	minor_allele_threshold = as.numeric(p[["minor_allele_threshold"]])
 	macormaf = p[["macormaf"]]
 	pheno_type = p[["pheno_type"]]
-	ref_length = as.numeric(p["ref_length"])
+	ref_length = as.numeric(p[["ref_length"]])
 	annotateGeneFile = if(file.exists(file.path(dd, "annotate_genes.txt"))) file.path(dd, "annotate_genes.txt") else NULL
 
 	## Get y position
@@ -1627,7 +1627,7 @@ draw_genome_manhattan = function(dd, p) {
 	ylims_options = c(NA, 50)
 
 	for(i in seq_along(filecol)){
-		outfilename_prefix = paste0(p["manhattan_stem"], "_Manhattan_", filecol[i],"_", macormaf, ma_threshold_all[i])
+		outfilename_prefix = paste0(p[["manhattan_stem"]], "_Manhattan_", filecol[i],"_", macormaf, ma_threshold_all[i])
 		for(j in 1:length(ylims_options)){
 			if(is.na(ylims_options[j])){
 				outfilename = paste0(outfilename_prefix, ".png")
@@ -1655,14 +1655,14 @@ draw_closeups = function(dd, p) {
 	genes = read_fd(dd, "genes")
 	if(nrow(genes) == 0) return(invisible())
 	ref_gb = read_fd(dd, "features")
-	nsamples = as.numeric(p["nsamples"])
-	bonferroni = as.numeric(p["bonferroni"])
-	minor_allele_threshold = as.numeric(p["minor_allele_threshold"])
+	nsamples = as.numeric(p[["nsamples"]])
+	bonferroni = as.numeric(p[["bonferroni"]])
+	minor_allele_threshold = as.numeric(p[["minor_allele_threshold"]])
 	macormaf = p[["macormaf"]]
 	kmer_type = p[["kmer_type"]]
-	kmer_length = as.numeric(p["kmer_length"])
+	kmer_length = as.numeric(p[["kmer_length"]])
 	ref.name = p[["ref_name"]]
-	ref_length = as.numeric(p["ref_length"])
+	ref_length = as.numeric(p[["ref_length"]])
 	output_prefix = p[["output_prefix"]]
 	figures_dir = p[["figures_dir"]]
 	override_signif = as.logical(p[["override_signif"]])
@@ -1675,11 +1675,11 @@ draw_closeups = function(dd, p) {
 		gp = read_params(gfile)
 		need(gp, c("ref_start_i", "ref_end_i", "length_protein", "correct_frame", "length_correct", "strand"), gfile)
 		seqs = read_fd(dd, paste0("gene_", i, "_sequences"))
-		ref_gene_i = list("ref_start_i" = as.numeric(gp["ref_start_i"]), "ref_end_i" = as.numeric(gp["ref_end_i"]),
+		ref_gene_i = list("ref_start_i" = as.numeric(gp[["ref_start_i"]]), "ref_end_i" = as.numeric(gp[["ref_end_i"]]),
 			"ref_gene_i" = seqs$sequence[seqs$name == "region"],
-			"length_protein" = as.numeric(gp["length_protein"]),
+			"length_protein" = as.numeric(gp[["length_protein"]]),
 			"all_translations" = seqs$sequence[match(paste0("frame", 1:6), seqs$name)],
-			"correct_frame" = as.numeric(gp["correct_frame"]), "length_correct" = as.numeric(gp["length_correct"]))
+			"correct_frame" = as.numeric(gp[["correct_frame"]]), "length_correct" = as.numeric(gp[["length_correct"]]))
 		# run_alignment_nplots_nucleotide() reads the strand from column 5 of the gene look-up
 		gene_lookup = matrix(c(genename_i, i, ref_gene_i$ref_start_i, ref_gene_i$ref_end_i, gp[["strand"]]), nrow = 1)
 		which_kmers_no_result = if(file.exists(file.path(dd, paste0("gene_", i, "_no_result.tsv.gz")))) read_fd(dd, paste0("gene_", i, "_no_result")) else NULL
