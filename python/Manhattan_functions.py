@@ -152,23 +152,35 @@ def assoc_column(assoc, j):
                                                   else math.nan) for r in assoc], dtype=float)
 
 
+def assoc_value(assoc, pat, j):
+    """as.numeric(assoc[, j])[pat] keeping R's distinction: None for NA (untested
+    pattern), nan for NaN (GEMMA's "-nan")."""
+    row = assoc[pat - 1]
+    return None if row is None else rcompat.r_as_numeric(row[j - 1])
+
+
 def write_top_gene_kmers_to_file(wh_i, final_kmer_list, final_kmer_pos_index, assoc, kmerIndex, mac, output_file):
-    beta_all = assoc_column(assoc, 2)
-    neg_all = assoc_column(assoc, 6)
     rows = []
     for w in wh_i:
         k = int(final_kmer_pos_index[w])
         pat = kmerIndex[k - 1]
-        rows.append((final_kmer_list[k - 1], neg_all[pat - 1], beta_all[pat - 1], mac[k - 1]))
-    # Remove kmers which have not been tested for this phenotype
-    rows = [r for r in rows if not math.isnan(r[1])]
+        rows.append((final_kmer_list[k - 1], assoc_value(assoc, pat, 6), assoc_value(assoc, pat, 2), mac[k - 1]))
+    # Remove kmers which have not been tested for this phenotype (is.na: NA or NaN)
+    rows = [r for r in rows if r[1] is not None and not math.isnan(r[1])]
     # Order from most significant to least
     o = rcompat.r_order([r[1] for r in rows], decreasing=True)
     rows = [rows[k] for k in o]
+
+    def text(v):  # as.character() in cbind(): NaN stays "NaN"
+        if isinstance(v, str):
+            return v
+        if isinstance(v, float) and math.isnan(v):
+            return "NaN"
+        return rcompat.r_str(v, 15)
     with open(output_file, "w") as f:
         f.write("kmer\tnegLog10\tbeta\tmac\n")
         for r in rows:
-            f.write("\t".join(rcompat.r_str(v, 15) if not isinstance(v, str) else v for v in r) + "\n")
+            f.write("\t".join(text(v) for v in r) + "\n")
 
 
 def top20genes(gene_names, ma, minor_allele_threshold, ypos, macormaf, output_dir, prefix, min_count, ident_threshold,
