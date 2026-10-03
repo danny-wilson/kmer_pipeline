@@ -3,8 +3,8 @@ Port of Manhattan_functions.R.
 
 R keeps the GEMMA results as a character matrix, so every number read from it
 (beta, -log10 p) is the value R printed with 15 significant digits; the port
-does the same (as_r_text_number). Figures are drawn with matplotlib: they show
-the same data as R's but are not pixel copies (PLAN 5.4)."""
+does the same (as_r_text_number). Figures are drawn by plot_figures.R from the
+figure-data files written here (FigureData; PLAN 5.5)."""
 import math
 import os
 import sys
@@ -14,14 +14,8 @@ import numpy as np
 import rcompat
 from rcompat import r_cat, r_paste0, r_stop
 
-import matplotlib  # noqa: E402
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-
 ### Get colours
 colour_selection = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00"]
-
-CM = 1 / 2.54
 
 
 def as_r_text_number(v):
@@ -82,34 +76,6 @@ def get_genes_to_plot(gene_names, y, gene_conversion, ymax, gene_panel, ref, xad
     ytops = [ymax[0] + ymax[1] / 40, ymax[0] + ymax[1] / 12]
     return [(g, ytops[k % 2], xadjust[k], c, col)
             for k, (g, c, col) in enumerate(zip(top_genes, gene_name_conversion, gene_col))]
-
-
-def gene_span(gene, ref):
-    names = list(ref["name"])
-    starts, ends = list(ref["start"]), list(ref["end"])
-    if ":" not in gene:
-        idx = [k for k, n in enumerate(names) if n == gene]
-        return float(starts[idx[0]]), float(ends[idx[-1]])
-    parts = gene.split(":")
-    i1 = [k for k, n in enumerate(names) if n == parts[0]]
-    i2 = [k for k, n in enumerate(names) if len(parts) > 1 and n == parts[1]]
-    pos1 = float(ends[i1[-1]]) + 1 if i1 else math.nan
-    pos2 = float(starts[i2[0]]) - 1 if i2 else math.nan
-    return pos1, pos2
-
-
-def plot_gene_lines(ax, rows, ref, col="#cecece", gene_name_cex=0.6):
-    """Dotted lines from 0 to each label height, at the middle of each gene, with
-    the gene name at 45 degrees (as plot_gene_lines(rect = FALSE))."""
-    for genes, ytop, xadj, replace_name, name_col in rows:
-        if genes is None:
-            continue
-        pos1, pos2 = gene_span(genes, ref)
-        mid = pos1 + (pos2 - pos1) / 2
-        ax.plot([mid, mid], [0, ytop], linestyle=":", color=col, linewidth=0.6, clip_on=False, zorder=1)
-        label = replace_name if replace_name else genes
-        ax.text(mid + xadj, ytop, label, rotation=45, ha="left", va="bottom", fontsize=7 * gene_name_cex,
-                color=name_col, clip_on=False)
 
 
 def extract_lambda_lognull(datafiles):
@@ -186,97 +152,6 @@ def assoc_column(assoc, j):
                                                   else math.nan) for r in assoc], dtype=float)
 
 
-def plot_QQ(kmerIndex, assoc, output_dir, prefix, minor_allele_threshold, macormaf, mapatterns, kmer_type, kmer_length):
-    uk = rcompat.r_unique(list(kmerIndex))
-    ma_u = np.array([mapatterns[k - 1] for k in uk], dtype=float)
-    with np.errstate(invalid="ignore"):
-        which_kmers = np.flatnonzero(ma_u > 0) if minor_allele_threshold == 0 else \
-            np.flatnonzero(ma_u >= minor_allele_threshold)
-    n = len(which_kmers)
-    qq_x = -np.log10(np.arange(1, n + 1) / n) if n else np.array([])
-    neg = assoc_column(assoc, 6)
-    qq_y = np.array([neg[uk[k] - 1] for k in which_kmers], dtype=float)
-    qq_y = qq_y[rcompat.r_order(qq_y, decreasing=True)] if n else qq_y
-
-    if minor_allele_threshold == 0:
-        file_suffix = "_QQplot_allkmers.png"
-    else:
-        file_suffix = r_paste0("_QQplot_", macormaf, minor_allele_threshold, ".png")
-    fig, ax = plt.subplots(figsize=(12 * CM, 12 * CM))
-    ax.plot(qq_x, qq_y, color="black", linewidth=0.8)
-    lim = [0, max(np.nanmax(qq_x) if n else 1, np.nanmax(qq_y) if n and np.isfinite(qq_y).any() else 1)]
-    ax.plot(lim, lim, color="red", linestyle="--", linewidth=0.8)
-    ax.set_xlabel(r"Null distribution of -log$_{10}$ $\it{p}$ values", fontsize=8)
-    ax.set_ylabel(r"Empirical distribution of -log$_{10}$ $\it{p}$ values", fontsize=8)
-    ax.tick_params(labelsize=7)
-    fig.tight_layout()
-    fig.savefig(output_dir + prefix + "_" + kmer_type + rcompat.r_as_character(kmer_length) + file_suffix, dpi=600)
-    plt.close(fig)
-
-
-def _ramp(c1, c2, t):
-    """colorRamp(c(c1, c2))(t) then rgb(maxColorValue = 256)."""
-    a = np.array(matplotlib.colors.to_rgb(c1)) * 255
-    b = np.array(matplotlib.colors.to_rgb(c2)) * 255
-    out = []
-    for v in t:
-        rgb = a + (b - a) * v
-        out.append("#%02X%02X%02X" % tuple(int(round(x / 256 * 255)) for x in rgb))
-    return out
-
-
-def get_Manhattan_colours(final_kmer_pos_index, assoc_patterns, kmerIndex, colour_selection, ypos, bonferroni,
-                          mafpatterns, pheno_type):
-    n = len(final_kmer_pos_index)
-    ## Colour by whether the kmer has mapped more than once
-    counts = {}
-    for v in final_kmer_pos_index:
-        counts[v] = counts.get(v, 0) + 1
-    multialignCOL = [colour_selection[5] if counts[v] > 1 else "grey50" for v in final_kmer_pos_index]
-    r_cat("Created multialignCOL", "\n")
-
-    beta_all = assoc_column(assoc_patterns, 2)
-    r_cat("Range beta:", np.nanmin(beta_all), np.nanmax(beta_all), "\n")
-    beta = np.array([beta_all[kmerIndex[int(v) - 1] - 1] for v in final_kmer_pos_index], dtype=float)
-    betaCOL = ["grey50"] * len(ypos)
-    if pheno_type == "binary":
-        for k, b in enumerate(beta):
-            if b > 0:
-                betaCOL[k] = colour_selection[5]
-            elif b < 0:
-                betaCOL[k] = colour_selection[4]
-    else:
-        pos = np.flatnonzero(beta > 0)
-        neg = np.flatnonzero(beta < 0)
-        if len(pos):
-            bp = beta[pos]
-            bp = (bp - np.nanmin(bp)) / (np.nanmax(bp) - np.nanmin(bp)) if np.nanmax(bp) > np.nanmin(bp) else bp * np.nan
-            for k, c in zip(pos, _ramp("grey50" if False else "#7F7F7F", colour_selection[5], np.nan_to_num(bp))):
-                betaCOL[k] = c
-        if len(neg):
-            bn = beta[neg]
-            bn = (bn - np.nanmin(bn)) / (np.nanmax(bn) - np.nanmin(bn)) if np.nanmax(bn) > np.nanmin(bn) else bn * np.nan
-            for k, c in zip(neg, _ramp(colour_selection[4], "#7F7F7F", np.nan_to_num(bn))):
-                betaCOL[k] = c
-    with np.errstate(invalid="ignore"):
-        for k in np.flatnonzero(np.asarray(ypos, dtype=float) < bonferroni):
-            betaCOL[k] = "grey50"
-    r_cat("Created betaCOL", "\n")
-
-    maf = np.array([mafpatterns[kmerIndex[int(v) - 1] - 1] for v in final_kmer_pos_index], dtype=float)
-    mafCOL = ["grey50"] * n
-    with np.errstate(invalid="ignore"):
-        for k, m in enumerate(maf):
-            if m < 0.01:
-                mafCOL[k] = colour_selection[5]
-            elif 0.01 <= m < 0.05:
-                mafCOL[k] = colour_selection[4]
-            elif m >= 0.05:
-                mafCOL[k] = colour_selection[2]
-    r_cat("Created mafCOL", "\n")
-    return {"multialignCOL": multialignCOL, "betaCOL": betaCOL, "mafCOL": mafCOL}
-
-
 def write_top_gene_kmers_to_file(wh_i, final_kmer_list, final_kmer_pos_index, assoc, kmerIndex, mac, output_file):
     beta_all = assoc_column(assoc, 2)
     neg_all = assoc_column(assoc, 6)
@@ -319,65 +194,6 @@ def top20genes(gene_names, ma, minor_allele_threshold, ypos, macormaf, output_di
         f.write("".join(g + "\t" + rcompat.r_as_character(p) + "\n" for g, p in zip(top, pvals)))
 
 
-R_GREY50 = "#7F7F7F"
-
-
-def _col(c):
-    return R_GREY50 if c == "grey50" else c
-
-
-def plot_manhattan(outfilename, xpos, ma_threshold_pass, ypos, ylims_i, annotateGeneFile, ref, which_genes_to_annotate_i,
-                   allCOLS, allPCH, i, bonferroni, legendtext, legendcol, legendpch, legendlty, beta, gene_names,
-                   gene_conversion, pheno_type, ref_length, filecol):
-    fig = plt.figure(figsize=(22 * CM, 12 * CM))
-    ax = fig.add_axes([0.08, 0.13, 0.62, 0.7])
-    x = np.asarray(xpos, dtype=float)[ma_threshold_pass]
-    y = np.asarray(ypos, dtype=float)[ma_threshold_pass]
-    cols = [_col(allCOLS[i][k]) for k in ma_threshold_pass]
-    if ylims_i is not None:
-        ax.set_ylim(ylims_i)
-    else:
-        finite = y[np.isfinite(y)]
-        top = finite.max() if len(finite) else 1
-        ax.set_ylim(-0.04 * top, top * 1.04)
-    if len(x):
-        ax.set_xlim(np.nanmin(x) - 0.04 * (np.nanmax(x) - np.nanmin(x)), np.nanmax(x) + 0.04 * (np.nanmax(x) - np.nanmin(x)))
-    lo, hi = ax.get_ylim()
-    ymax = (hi, hi - lo)
-    if annotateGeneFile is not None:
-        annotateGene = rcompat.r_scan_lines(annotateGeneFile, quiet=True)
-        r_cat("Genes/IRs to annotate on the Manhattan plot:", " ".join(annotateGene), "\n")
-        rows = get_genes_to_plot(annotateGene, None, {g: g for g in annotateGene}, ymax, [], ref,
-                                 xadjust=[0.0] * len(annotateGene))
-    else:
-        rows = get_genes_to_plot([gene_names[k] for k in which_genes_to_annotate_i],
-                                 [ypos[k] for k in which_genes_to_annotate_i],
-                                 gene_conversion, ymax, [], ref)
-    plot_gene_lines(ax, rows, ref)
-    ax.scatter(x, y, s=4, facecolors="none", edgecolors=cols, linewidths=0.4, zorder=2)
-    ax.set_xlabel("Position in reference genome (Mb)", fontsize=8)
-    ax.set_ylabel(r"Significance (-log$_{10}$ $\it{p}$) LMM", fontsize=8)
-    ticks = [k * 1e6 for k in range(int(math.floor(ref_length / 1e6)) + 1)]
-    ax.set_xticks(ticks)
-    ax.set_xticklabels([str(k) for k in range(len(ticks))], fontsize=7)
-    ax.tick_params(axis="y", labelsize=7)
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
-    ax.axhline(bonferroni, color="black", linestyle="--", linewidth=0.8)
-    handles, labels = [], []
-    for t, c, p, l in zip(legendtext[i], legendcol[i], legendpch, legendlty):
-        if t == "" or (filecol[i] == "betaCOL" and pheno_type == "continuous" and t in legendtext[i][2:5]):
-            continue
-        if l == 2:
-            handles.append(plt.Line2D([], [], color=c, linestyle="--"))
-        else:
-            handles.append(plt.Line2D([], [], color=_col(c), marker="o" if p == 16 else None, linestyle=""))
-        labels.append(t)
-    fig.legend(handles, labels, loc="upper left", bbox_to_anchor=(0.72, 0.97), fontsize=6, frameon=True)
-    fig.savefig(outfilename, dpi=600)
-    plt.close(fig)
-
-
 def write_summary_json(summary_file, n_kmers, n_patterns, n_untested_patterns, max_neglog10p, minor_allele_threshold,
                        macormaf, n_tests, bonferroni):
     lines = ["{",
@@ -397,3 +213,73 @@ def write_summary_json(summary_file, n_kmers, n_patterns, n_untested_patterns, m
 def get_pheno_type(pheno):
     values = {p for p in pheno if p is not None and not (isinstance(p, float) and math.isnan(p))}
     return "binary" if len(values) == 2 else "continuous"
+
+
+# --------------------------------------------------------------------------
+# Figure data for plot_figures.R (PLAN 5.5)
+# --------------------------------------------------------------------------
+
+FIGURE_DATA_VERSION = "kmer_pipeline figure data v1"
+NA_SENTINEL = "__NA__"
+
+
+def _fd_value(v, typ):
+    if v is None or (isinstance(v, float) and math.isnan(v)):
+        return NA_SENTINEL
+    if typ == "numeric":
+        v = float(v)
+        if math.isinf(v):
+            return "Inf" if v > 0 else "-Inf"
+        return "%.17g" % v  # reads back exactly
+    if typ == "integer":
+        return str(int(v))
+    if typ == "logical":
+        return "TRUE" if v else "FALSE"
+    v = str(v)
+    if "\t" in v or "\n" in v or "\r" in v or v == NA_SENTINEL:
+        r_stop("Error: value ", repr(v), " can't be written to a figure data file")
+    return v
+
+
+class FigureData:
+    """The data behind every figure, written for plot_figures.R into
+    <figures_dir>figure_data/: params.tsv (key, value), tables as gzipped
+    tab-separated files whose first line names the format and whose second line
+    lists the columns as name:type (character, numeric, integer, logical), and
+    expected_figures.txt, the figures R must draw (and no others)."""
+
+    def __init__(self, figures_dir):
+        self.dir = figures_dir + "figure_data/"
+        if not os.path.isdir(self.dir):
+            rcompat.r_dir_create(self.dir)
+        self.params = {}
+        self.expected = []
+
+    def param(self, key, value):
+        if isinstance(value, bool):
+            value = "TRUE" if value else "FALSE"
+        elif isinstance(value, float):
+            value = _fd_value(value, "numeric")
+        elif value is None:
+            value = NA_SENTINEL
+        self.params[key] = str(value)
+
+    def table(self, name, columns, rows):
+        """columns: list of (name, type); rows: iterable of tuples."""
+        import gzip
+        types = [t for _, t in columns]
+        with gzip.open(self.dir + name + ".tsv.gz", "wt", encoding="utf-8") as f:
+            f.write("# " + FIGURE_DATA_VERSION + "\n")
+            f.write("\t".join(n + ":" + t for n, t in columns) + "\n")
+            f.write("".join("\t".join(_fd_value(v, t) for v, t in zip(r, types)) + "\n" for r in rows))
+
+    def expect(self, path):
+        if path not in self.expected:
+            self.expected.append(path)
+
+    def close(self):
+        with open(self.dir + "params.tsv", "w") as f:
+            f.write("# " + FIGURE_DATA_VERSION + "\n")
+            f.write("".join(k + "\t" + v + "\n" for k, v in self.params.items()))
+        with open(self.dir + "expected_figures.txt", "w") as f:
+            f.write("".join(p + "\n" for p in self.expected))

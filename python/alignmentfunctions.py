@@ -3,11 +3,11 @@ k-mers against the gene region, the BLAST result tables, alignment figures in
 sliding windows, per-gene Manhattan plots, and the table of significant k-mers
 per alignment figure. Port of alignmentfunctions.R.
 
-The tables are exact ports. The figures are drawn with matplotlib from the same
-data (the k-mer matrix and its colours, the positions and -log10 p values) but
-are laid out more simply than R's base graphics; they are for visual review
-(PLAN 5.4). R's unseeded sample() for the x positions of unaligned k-mers in
-the gene Manhattan plots is not reproducible (PLAN 5.4) and uses numpy here."""
+The tables are exact ports. The figures are drawn by plot_figures.R (PLAN 5.5)
+from the figure data written here: each gene's processed BLAST tables, the k-mers
+without a result, the reference region and its translations, and the GenBank
+features. The decisions about which figures exist are kept here, as R makes them,
+to list the figures R must draw."""
 import math
 import os
 import sys
@@ -17,11 +17,8 @@ import numpy as np
 import rcompat
 from rcompat import r_cat, r_paste0, r_stop
 
-import matplotlib  # noqa: E402
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-
-CM = 1 / 2.54
+# Figure data for plot_figures.R (set by plot_closeup_alignments)
+FIGURES = None
 
 # oneLetterCodes as alignmentfunctions.R defines it: unknown codons are "X"
 oneLetterCodes = {"Gly": "G", "Ala": "A", "Leu": "L", "Met": "M", "Phe": "F", "Trp": "W", "Lys": "K", "Gln": "Q",
@@ -401,93 +398,8 @@ def get_kmers_noresult(gene_i_results_list, kmers_gene_i, prefix, i, genes_names
 
 
 # --------------------------------------------------------------------------
-# Alignment figures
+# Alignment figures (drawn by plot_figures.R; here, which ones exist)
 # --------------------------------------------------------------------------
-
-
-def build_kmer_matrix(kmers, genestart, ref, kmerpos, snp_num):
-    ncol = len(ref)
-    m = [["-"] * ncol for _ in range(len(kmers) + 1 + snp_num)]
-    m[0] = list(ref)
-    gs = -genestart + 1 if genestart != 0 else 0
-    for i, km in enumerate(kmers):
-        pos = int(kmerpos[i] + gs)
-        L = len(km)
-        if pos + L - 1 >= 1 and pos <= ncol:
-            row = m[i + 1 + snp_num]
-            for k in range(L):
-                p = pos + k
-                if 1 <= p <= ncol:
-                    row[p - 1] = km[k]
-    return m
-
-
-def get_alignment_col(seq, cols, len_col, col_lib):
-    nrow, ncol = len(seq), len(seq[0])
-    col = [["#ffffff" if seq[r][c] == "-" else "#d3d3d3" for c in range(ncol)] for r in range(nrow)]
-    if cols is not None:
-        for i in range(nrow - len_col):
-            r = i + len_col
-            for c in range(ncol):
-                if col[r][c] != "#ffffff":
-                    col[r][c] = cols[i]
-    for c in range(ncol):
-        vals = {seq[r][c] for r in range(nrow) if seq[r][c] != "-"}
-        if len(vals) > 1:
-            for r in range(nrow):
-                col[r][c] = col_lib.get(seq[r][c], "#ffffff")
-    return col
-
-
-def plot_alignment_figure(path, kmerseq, kmerpos, ref, genestart, beta, bonferroni_lim, col_lib, main, xlabels,
-                          legend_items):
-    ref_num = 1
-    snp_num = round((len(kmerseq) + ref_num) * 0.05)
-    m = build_kmer_matrix(kmerseq, genestart, ref, kmerpos, snp_num)
-    kcols = ["#d3d3d3" if b == 0 or b != b else ("#d3d3d3" if b < 0 else "#838383") for b in beta]
-    cols = get_alignment_col(m, kcols, ref_num + snp_num, col_lib)
-    # manhattan.order: k-mer rows reversed so the most significant is at the top
-    order = list(range(ref_num + snp_num)) + list(range(len(m) - 1, ref_num + snp_num - 1, -1))
-    cols = [cols[k] for k in order]
-    ref_cols = cols[0]
-    cols[0] = ["#ffffff"] * len(cols[0])
-    rgb = np.array([[matplotlib.colors.to_rgb(c[:7]) for c in row] for row in cols])
-    fig = plt.figure(figsize=(21 * CM, 18 * CM))
-    ax = fig.add_axes([0.08, 0.06, 0.72, 0.84])
-    ax.imshow(rgb, origin="lower", aspect="auto", interpolation="nearest",
-              extent=(0.5, len(ref) + 0.5, 0.5, len(m) + 0.5))
-    for x in range(1, len(ref)):
-        ax.axvline(x + 0.5, color="white", linewidth=0.15)
-    for y in range(ref_num + snp_num + 1, len(m)):
-        ax.axhline(y + 0.5, color="white", linewidth=0.15)
-    ax.axhline(bonferroni_lim + ref_num + snp_num + 0.5, color="black", linewidth=0.5, linestyle="--")
-    top = len(m) * 0.04 + 0.5
-    for x, c in enumerate(ref_cols):
-        ax.add_patch(matplotlib.patches.Rectangle((x + 0.5, 0.5), 1, top - 0.5, color=c, clip_on=False))
-    ax.text(0.4, (top + 0.5) / 2, "REF", ha="right", va="center", fontsize=7)
-    ax.set_xticks(range(1, len(ref) + 1))
-    ax.set_xticklabels(list(ref), fontsize=3)
-    ax.xaxis.tick_top()
-    ax.set_yticks([])
-    sec = ax.secondary_xaxis(1.03)
-    sec.set_xticks([p for p, _ in xlabels])
-    sec.set_xticklabels([l for _, l in xlabels], fontsize=6)
-    ax.set_ylabel(main, fontsize=7)
-    handles = [plt.Line2D([], [], color=c, marker="s", linestyle="" if ls is None else "--") for _, c, ls in legend_items]
-    fig.legend(handles, [t for t, _, _ in legend_items], loc="upper right", fontsize=6)
-    fig.savefig(path, dpi=600)
-    plt.close(fig)
-
-
-def _axis_labels(start, n, reverse=False):
-    vals = [start - k if reverse else start + k for k in range(n)]
-    return [(k + 1, str(v)) for k, v in enumerate(vals) if v % 10 == 0] or [(k + 1, str(v)) for k, v in enumerate(vals)]
-
-
-def _legend(col_lib):
-    items = [("Gap" if k == "-" else k, c, None) for k, c in col_lib.items()]
-    return items + [("Invariant", "#d3d3d3", None), ("β < 0", "#d3d3d3", None), ("β > 0", "#838383", None),
-                    ("Significance threshold", "black", 2)]
 
 
 def _which_to_align(res, genestart, geneend, macormaf, minor_allele_threshold):
@@ -523,13 +435,8 @@ def plot_alignment_function_nucleotide(genestart, geneend, minor_allele_threshol
     bonferroni_lim = sum(1 for k in wta if neg[k] < bonferroni)
     if not (bonferroni_lim != len(wta) or override_signif):
         return None
-    gene_db_i = [b if b is not None else "NA" for b in rcompat.r_index(ref_fa, rcompat.r_colon(int(genestart), int(geneend)))]
-    path = r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_", gene_name, "_plot_", p, "_pos_",
-                    plot_start_position, "_to_", plot_end_position, maname, "_alignment.png")
-    plot_alignment_figure(path, [pstr(res.col("qseq")[k]) for k in wta], [num(res.col("sstart")[k]) for k in wta], gene_db_i,
-                          genestart, [num(res.col("beta")[k]) for k in wta], bonferroni_lim, col_lib_nuc, main,
-                          _axis_labels(int(plot_start_position), len(gene_db_i), reverse_xaxis_start is not None),
-                          _legend(col_lib_nuc))
+    FIGURES.expect(r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_", gene_name, "_plot_", p,
+                            "_pos_", plot_start_position, "_to_", plot_end_position, maname, "_alignment.png"))
     rows = _out_rows(res, wta, bonferroni, override_signif)
     span = rcompat.r_colon(alignment_start, alignment_end) if reverse_xaxis_start is None else \
         rcompat.r_colon(alignment_end, alignment_start)
@@ -591,12 +498,9 @@ def plot_alignment_function_protein(genestart, geneend, minor_allele_threshold, 
     bonferroni_lim = sum(1 for k in wta if neg[k] < bonferroni)
     if not (bonferroni_lim != len(wta) or override_signif):
         return None
-    gene_db_i = [b if b is not None else "NA" for b in rcompat.r_index(translation, rcompat.r_colon(int(genestart), int(geneend)))]
-    path = r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_", gene_name, "_", correct_or_wrong, "_",
-                    j, "_plot_", p, "_aminoacids_", genestart - x_adjust, "_to_", geneend - x_adjust, maname, "_alignment.png")
-    plot_alignment_figure(path, [pstr(res.col("qseq")[k]) for k in wta], [num(res.col("sstart")[k]) for k in wta], gene_db_i,
-                          genestart, [num(res.col("beta")[k]) for k in wta], bonferroni_lim, col_lib_pro, main,
-                          _axis_labels(int(genestart - x_adjust), len(gene_db_i)), _legend(col_lib_pro))
+    FIGURES.expect(r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_", gene_name, "_",
+                            correct_or_wrong, "_", j, "_plot_", p, "_aminoacids_", genestart - x_adjust, "_to_",
+                            geneend - x_adjust, maname, "_alignment.png"))
     if correct_or_wrong != "correct_frame":
         return None
     rows = _out_rows(res, wta, bonferroni, override_signif)
@@ -631,89 +535,72 @@ def run_alignment_nplots_protein(ref_gene_i, res, nsamples, bonferroni, prefix, 
 # --------------------------------------------------------------------------
 
 
-def _gene_manhattan(path, segments, ypos, cols, bonferroni, ylim_max, title, xlabel):
-    fig, ax = plt.subplots(figsize=(20 * CM, 15 * CM))
-    for (x1, x2), y, c in zip(segments, ypos, cols):
-        ax.plot([x1, x2], [y, y], color=c, linewidth=1.2, solid_capstyle="butt")
-    ax.axhline(bonferroni, color="black", linestyle="--", linewidth=0.8)
-    if ylim_max is not None:
-        ax.set_ylim(0, ylim_max)
-    ax.set_xlabel(xlabel, fontsize=8)
-    ax.set_ylabel(r"Significance (-log$_{10}$ $\it{p}$)", fontsize=8)
-    ax.set_title(title, fontsize=8)
-    ax.tick_params(labelsize=7)
-    fig.tight_layout()
-    fig.savefig(path, dpi=600)
-    plt.close(fig)
-
-
-def _manhattan_data(res, which_kmers_no_result, macormaf, minor_allele_threshold, unaligned_from, kmer_length):
-    xpos = [(num(a), num(b)) for a, b in zip(res.col("sstart"), res.col("send"))]
+def _manhattan_values(res, which_kmers_no_result, macormaf, minor_allele_threshold):
+    """The -log10 p values R plots in a gene's Manhattan plot, and which pass the
+    MAF/MAC threshold. R takes which_kmers_no_result[[macormaf]]: that table has a mac
+    column but no maf column, so with a MAF threshold the k-mers without a BLAST result
+    drop out of the threshold plot."""
     ypos = [num(v) for v in res.col("negLog10")]
-    beta = [num(v) for v in res.col("beta")]
     ma = [num(v) for v in res.col(macormaf)]
-    cols = ["#838383" if b > 0 else "#d3d3d3" for b in beta]
     if which_kmers_no_result is not None:
-        n = len(which_kmers_no_result)
-        rng = np.random.default_rng()
-        xs = rng.permutation(np.linspace(unaligned_from + 50, unaligned_from + 100, n)) if n > 1 else \
-            np.array([unaligned_from + 50.0] * n)
-        xpos += [(float(x), float(x) + kmer_length - 1) for x in xs]
         ypos += [num(v) for v in which_kmers_no_result.col("negLog10")]
-        b2 = [num(v) for v in which_kmers_no_result.col("beta")]
-        cols += ["#D55E00" if b > 0 else "#ffbc87" for b in b2]
-        # R takes which_kmers_no_result[[macormaf]]: the table has a mac column but no maf
-        # column, so with a MAF threshold the unaligned k-mers drop out of the threshold plot
         if macormaf == "mac":
             ma += [num(v) for v in which_kmers_no_result.col("mac")]
     which = [k for k in range(len(ma)) if ma[k] >= minor_allele_threshold]
-    return xpos, ypos, cols, which
+    return ypos, which
 
 
 def run_manhattan_single(res, which_kmers_no_result, prefix_path, gene_name, bonferroni, macormaf, minor_allele_threshold,
-                         unaligned_from, kmer_length, name_part, xlabel):
-    xpos, ypos, cols, which = _manhattan_data(res, which_kmers_no_result, macormaf, minor_allele_threshold, unaligned_from,
-                                              kmer_length)
+                         name_part):
+    """The files R's run_manhattan_single_protein/_nucleotide write: all k-mers and those
+    passing the threshold, each with a ylim 50 version when the maximum exceeds 100."""
+    ypos, which = _manhattan_values(res, which_kmers_no_result, macormaf, minor_allele_threshold)
     for subset, maname in ((list(range(len(ypos))), "_allkmers"), (which, r_paste0("_", macormaf, minor_allele_threshold))):
-        seg = [xpos[k] for k in subset]
         y = [ypos[k] for k in subset]
-        c = [cols[k] for k in subset]
-        if not seg:
+        if not y:
             if name_part:  # protein: R plots only if there are points, and png() then writes no file
                 continue
             r_stop("Error in plot.window(...): need finite 'xlim' values (no k-mers to plot for ", gene_name, ")")
-        _gene_manhattan(prefix_path + "_" + gene_name + name_part + "_Manhattan" + maname + ".png", seg, y, c, bonferroni,
-                        None, gene_name, xlabel)
-        if y and max(y) > 100:
-            _gene_manhattan(prefix_path + "_" + gene_name + name_part + "_Manhattan_ylim50" + maname + ".png", seg, y, c,
-                            bonferroni, 50, gene_name, xlabel)
+        FIGURES.expect(prefix_path + "_" + gene_name + name_part + "_Manhattan" + maname + ".png")
+        if max(y) > 100:
+            FIGURES.expect(prefix_path + "_" + gene_name + name_part + "_Manhattan_ylim50" + maname + ".png")
 
 
-def run_manhattan_allframes(gene_i_results_list, prefix_path, gene_name, which_kmers_no_result, bonferroni,
-                            minor_allele_threshold, macormaf, kmer_length, length_correct):
-    allx, ally, allc, allma = [], [], [], []
-    for res in gene_i_results_list:
-        xs = [(num(a), num(b)) for a, b in zip(res.col("sstart"), res.col("send"))]
-        allx += xs
-        ally += [num(v) for v in res.col("negLog10")]
-        allc += ["#838383" if num(b) > 0 else "#d3d3d3" for b in res.col("beta")]
-        allma += [num(v) for v in res.col(macormaf)]
+def run_manhattan_allframes(gene_i_results_list, prefix_path, gene_name, which_kmers_no_result, minor_allele_threshold,
+                            macormaf):
+    """The files R's run_manhattan_allframes writes (always drawn; ylim 50 versions when
+    plot_allframes_manhattan's maximum exceeds 100)."""
+    yall = [num(v) for res in gene_i_results_list for v in res.col("negLog10")]
+    ythr = [num(v) for res in gene_i_results_list for v, m in zip(res.col("negLog10"), res.col(macormaf))
+            if num(m) >= minor_allele_threshold]
     if which_kmers_no_result is not None:
-        n = len(which_kmers_no_result)
-        xs = np.linspace(length_correct + 50, length_correct + 100, n) if n > 1 else np.array([length_correct + 50.0] * n)
-        allx += [(float(x), float(x) + kmer_length - 1) for x in xs]
-        ally += [num(v) for v in which_kmers_no_result.col("negLog10")]
-        allc += ["#D55E00" if num(b) > 0 else "#ffbc87" for b in which_kmers_no_result.col("beta")]
-        allma += [math.inf] * n
-    which = [k for k in range(len(ally)) if allma[k] >= minor_allele_threshold]
-    for subset, maname in ((list(range(len(ally))), "_allkmers"), (which, r_paste0("_", macormaf, minor_allele_threshold))):
-        y = [ally[k] for k in subset]
-        args = ([allx[k] for k in subset], y, [allc[k] for k in subset], bonferroni)
-        _gene_manhattan(prefix_path + "_" + gene_name + "_allframes_Manhattan" + maname + ".png", *args, None, gene_name,
-                        "Position in gene region (amino acids)")
+        yall += [num(v) for v in which_kmers_no_result.col("negLog10")]
+        if macormaf == "mac":
+            ythr += [num(v) for v, m in zip(which_kmers_no_result.col("negLog10"), which_kmers_no_result.col("mac"))
+                     if num(m) >= minor_allele_threshold]
+    for y, maname in ((yall, "_allkmers"), (ythr, r_paste0("_", macormaf, minor_allele_threshold))):
+        FIGURES.expect(prefix_path + "_" + gene_name + "_allframes_Manhattan" + maname + ".png")
         if y and max(y) > 100:
-            _gene_manhattan(prefix_path + "_" + gene_name + "_allframes_Manhattan_ylim50" + maname + ".png", *args, 50,
-                            gene_name, "Position in gene region (amino acids)")
+            FIGURES.expect(prefix_path + "_" + gene_name + "_allframes_Manhattan_ylim50" + maname + ".png")
+
+
+STRING_COLUMNS = {"kmer", "qseqid", "sseqid", "sacc", "sseq", "qseq", "sstrand", "origkmer"}
+
+
+def write_table_for_r(fd, name, table):
+    """A Table (as R's data frame) for plot_figures.R: strings as character, all else numeric."""
+    cols = [(c, "character" if c in STRING_COLUMNS else "numeric") for c in table.columns]
+    fd.table(name, cols, table.rows)
+
+
+def write_features(fd, ref_gb):
+    """The GenBank features R's gene-arrow plots draw (alignmentfunctions.R:1724)."""
+    import sequence_functions as sf
+    t = sf.read_dna_seg_from_file(ref_gb, tagsToParse=("CDS", "repeat_region", "tRNA", "rRNA", "ncRNA"))
+    numeric = {"start", "end", "strand", "length", "lty", "lwd", "pch", "cex"}
+    cols = [(c, "numeric" if c in numeric else "character") for c in t.columns]
+    fd.table("features", cols, (tuple(None if (isinstance(v, float) and v != v) else v for v in r)
+                                for r in t.astype(object).itertuples(index=False, name=None)))
 
 
 # --------------------------------------------------------------------------
@@ -723,8 +610,15 @@ def run_manhattan_allframes(gene_i_results_list, prefix_path, gene_name, which_k
 
 def plot_closeup_alignments(ref, ref_length, ref_gb, ref_fa, figures_dir, output_prefix, ngenes, nsamples, bonferroni,
                             gene_lookup, oneLetterCodes, kmer_type, kmer_length, blastPath, perident, ref_name,
-                            alignmenttype, genes_all, override_signif, minor_allele_threshold, macormaf, correct_only=True):
+                            alignmenttype, genes_all, override_signif, minor_allele_threshold, macormaf, figure_data,
+                            correct_only=True):
+    """BLAST each top gene's k-mers against its region, write the BLAST tables and the
+    table of significant k-mers per alignment plot, and write the figure data R needs
+    to draw the alignment and gene Manhattan figures."""
+    global FIGURES
     import sequence_functions as sf
+    FIGURES = figure_data
+    write_features(figure_data, ref_gb)
     gene_lookup = create_gene_lookup(ref, ref_length)
     ref_fa_seq = sf.read_reference(ref_fa)
 
@@ -732,6 +626,7 @@ def plot_closeup_alignments(ref, ref_length, ref_gb, ref_fa, figures_dir, output
     genes_names = genes_all["genes_names"]
     out_rows = []
     out_cols = ["gene", "plot", "kmer", "negLog10", "beta", "mac", "maf", "ps"]
+    gene_rows = []
 
     for i in range(1, len(genes_names) + 1):
         genename_i = genes_names[i - 1]
@@ -780,14 +675,31 @@ def plot_closeup_alignments(ref, ref_length, ref_gb, ref_fa, figures_dir, output
                 if (correct_only and j == ref_gene_i["correct_frame"]) or not correct_only:
                     cw = "correct_frame" if j == ref_gene_i["correct_frame"] else "wrong_frame"
                     run_manhattan_single(gene_i_results_list[j - 1], which_kmers_no_result, prefix_path, genes_names[i - 1],
-                                         bonferroni, macormaf, minor_allele_threshold, ref_gene_i["length_correct"],
-                                         kmer_length, "_" + cw + "_" + str(j), "Position (amino acids)")
-            run_manhattan_allframes(gene_i_results_list, prefix_path, genes_names[i - 1], which_kmers_no_result, bonferroni,
-                                    minor_allele_threshold, macormaf, kmer_length, ref_gene_i["length_correct"])
+                                         bonferroni, macormaf, minor_allele_threshold, "_" + cw + "_" + str(j))
+            run_manhattan_allframes(gene_i_results_list, prefix_path, genes_names[i - 1], which_kmers_no_result,
+                                    minor_allele_threshold, macormaf)
         else:
             run_manhattan_single(gene_i_results_list[0], which_kmers_no_result, prefix_path, genes_names[i - 1], bonferroni,
-                                 macormaf, minor_allele_threshold, len(ref_gene_i["ref_gene_i"]), kmer_length, "",
-                                 "Position in gene region (bases)")
+                                 macormaf, minor_allele_threshold, "")
+
+        # Figure data for this gene
+        gene_rows.append((i, genename_i))
+        fd = figure_data
+        with open(fd.dir + "gene_" + str(i) + "_params.tsv", "w") as f:
+            import Manhattan_functions as mf
+            f.write("# " + mf.FIGURE_DATA_VERSION + "\n")
+            for key in ("ref_start_i", "ref_end_i", "length_protein", "correct_frame", "length_correct"):
+                f.write(key + "\t" + mf._fd_value(ref_gene_i[key], "numeric") + "\n")
+            f.write("strand\t" + mf._fd_value(gene_lookup[wh_genelookup][4], "numeric") + "\n")
+        fd.table("gene_" + str(i) + "_sequences", [("name", "character"), ("sequence", "character")],
+                 [("region", ref_gene_i["ref_gene_i"])]
+                 + [("frame" + str(f), t) for f, t in enumerate(ref_gene_i["all_translations"], start=1)])
+        for j, res in enumerate(gene_i_results_list, start=1):
+            write_table_for_r(fd, "gene_" + str(i) + "_res_" + str(j), res)
+        if which_kmers_no_result is not None:
+            write_table_for_r(fd, "gene_" + str(i) + "_no_result", which_kmers_no_result)
+
+    figure_data.table("genes", [("index", "integer"), ("gene", "character")], gene_rows)
 
     Table(out_cols, out_rows).write(r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name, "_",
                                              alignmenttype, "_all_top_genes_significant_kmers_per_alignment_plot.txt"))

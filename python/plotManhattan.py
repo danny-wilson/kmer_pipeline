@@ -248,7 +248,8 @@ def run(args, bowtie):
     software_paths = rcompat.r_read_table(software_file, header=True, sep="\t", quote="")
     names = [rcompat.r_as_character(v) for v in software_paths["name"]]
     paths = [rcompat.r_as_character(v) for v in software_paths["path"]]
-    required_software = ["scriptpath", "genoPlotR", "blast"]
+    # R draws the figures (plot_figures.R, run by Nextflow after this step), so its entry is required
+    required_software = ["scriptpath", "genoPlotR", "blast", "R"]
     if any(r not in names for r in required_software):
         r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
 
@@ -263,6 +264,12 @@ def run(args, bowtie):
     sys.path.insert(0, script_location)
     import Manhattan_functions as mf
     import sequence_functions
+
+    Rscriptpath = software("r") + "script"
+    if not os.path.exists(Rscriptpath):
+        r_stop("Error: Rscript path ", Rscriptpath, " doesn't exist (R draws the figures)", "\n")
+    if not os.path.exists(script_location + "/plot_figures.R"):
+        r_stop("Error: plot_figures.R path doesn't exist - check pipeline script location in the software file", "\n")
 
     blast_dir = software("blast")
     if not os.path.isdir(blast_dir):
@@ -396,10 +403,14 @@ def run(args, bowtie):
                           max_neglog10p=float(np.nanmax(neglog10)), minor_allele_threshold=minor_allele_threshold,
                           macormaf=macormaf, n_tests=n_tests, bonferroni=bonferroni)
 
-    ## Plot QQ plots
-    mf.plot_QQ(kmerIndex, assoc, figures_dir, output_prefix, 0, macormaf, mapatterns, kmer_type, kmer_length)
-    mf.plot_QQ(kmerIndex, assoc, figures_dir, output_prefix, minor_allele_threshold, macormaf, mapatterns, kmer_type,
-               kmer_length)
+    ## Figure data for plot_figures.R (PLAN 5.5): QQ plots
+    fd = mf.FigureData(figures_dir)
+    fd.table("patterns", [("neglog10p", "numeric"), ("beta", "numeric"), ("maf", "numeric"), ("ma", "numeric")],
+             zip(neglog10, beta_patterns, mafpatterns, mapatterns))
+    fd.table("kmers", [("kmer_index", "integer"), ("ma", "numeric")], zip(kmerIndex, ma))
+    stem_qq = figures_dir + output_prefix + "_" + kmer_type + rcompat.r_as_character(kmer_length)
+    for thr in (0.0, minor_allele_threshold):
+        fd.expect(stem_qq + ("_QQplot_allkmers.png" if thr == 0 else r_paste0("_QQplot_", macormaf, thr, ".png")))
 
     ## Read in alignment results
     if bowtie:
@@ -425,11 +436,6 @@ def run(args, bowtie):
     r_cat("Got ypos", "\n")
 
     pheno_type = mf.get_pheno_type(pheno)
-    cols = mf.get_Manhattan_colours(final_kmer_pos_index, assoc, kmerIndex, mf.colour_selection, ypos, bonferroni,
-                                    mafpatterns, pheno_type)
-    multialignCOL, betaCOL, mafCOL = cols["multialignCOL"], cols["betaCOL"], cols["mafCOL"]
-
-    pch_standard = [1.0] * len(final_kmer_pos)
 
     # Top genes are chosen from all kmers, before any subsampling for plotting
     ma_full = ma[fki]
@@ -442,70 +448,35 @@ def run(args, bowtie):
                                 gene_conversion_full, [10, 0], [], ref, ngenes=ngenes)
     topngenes = [r[0] for r in rows]
 
-    # Subsample for faster plotting (R's unseeded sample(): not reproducible, PLAN 5.4)
-    nonna = np.flatnonzero(~np.isnan(ypos))
-    if len(nonna) < 1e6:
-        s = np.arange(len(ypos))
+    ## Figure data: genome-wide Manhattan plots (drawn, coloured and subsampled by plot_figures.R)
+    fd.table("positions", [("kmer", "numeric"), ("position", "numeric"), ("gene", "character")],
+             zip(final_kmer_pos_index, final_kmer_pos, final_kmer_genes))
+    fd.table("reference_cds", [("name", "character"), ("start", "numeric"), ("end", "numeric"), ("strand", "numeric")],
+             zip(ref["name"], ref["start"], ref["end"], ref["strand"]))
+    if annotateGeneFile is not None:
+        with open(fd.dir + "annotate_genes.txt", "w") as f:
+            f.write("".join(g + "\n" for g in rcompat.r_scan_lines(annotateGeneFile, quiet=True)))
+    if bowtie:
+        manhattan_stem = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
+                                  "_LMM_bowtie2mapping")
     else:
-        rng = np.random.default_rng()
-        s = np.array(rcompat.r_unique(list(rng.choice(nonna, 1000000, replace=False))
-                                      + list(np.flatnonzero(ypos > 2))))
-        r_cat("Subsampling kmers below -log10(p)=2 for faster plotting, plotting", len(s), "kmers", "\n")
-
-    xpos = np.asarray(final_kmer_pos, dtype=float)[s]
-    ypos_s = ypos[s]
-    multialignCOL = [multialignCOL[k] for k in s]
-    betaCOL = [betaCOL[k] for k in s]
-    mafCOL = [mafCOL[k] for k in s]
-    ma_s = ma[fki[s]]
-    gene_names = [final_kmer_genes[k] for k in s]
-    pch_standard = [pch_standard[k] for k in s]
-
-    gene_conversion = {g: g for g in gene_names if g is not None}
-
-    filecol = ["alignCOL", "betaCOL", "mafCOL", "mafCOL"]
-    ma_threshold_all = [minor_allele_threshold, minor_allele_threshold, 0.0, minor_allele_threshold]
-    allCOLS = [multialignCOL, betaCOL, mafCOL, mafCOL]
-    allPCH = [pch_standard] * 4
-    cs = mf.colour_selection
-    legendtext0 = ["Bonferroni-corrected", "significance threshold", ""]
-    legendcol0 = ["black", "white", "white"]
-    legendtext = [legendtext0 + ["Multiple alignments", "Single alignments"],
-                  legendtext0 + ["β < 0", "β > 0"],
-                  legendtext0 + ["MAF < 0.01", "0.01 ≤ MAF < 0.05", "MAF ≥ 0.05"],
-                  legendtext0 + ["MAF < 0.01", "0.01 ≤ MAF < 0.05", "MAF ≥ 0.05"]]
-    legendcol = [legendcol0 + [cs[5], "grey50"], legendcol0 + [cs[4], cs[5]],
-                 legendcol0 + [cs[5], cs[4], cs[2], "grey50"], legendcol0 + [cs[5], cs[4], cs[2], "grey50"]]
-    legendpch = [None] * 3 + [16] * 3
-    legendlty = [2] + [None] * 5
-    ylims_options = [None, 50.0]
-
-    for i in range(4):
-        if bowtie:
-            outfilename_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
-                                          "_LMM_bowtie2mapping_Manhattan_", filecol[i], "_", macormaf, ma_threshold_all[i])
-        else:
-            outfilename_prefix = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
-                                          "_LMM_kmergenealign_ct", min_count, "_Manhattan_", filecol[i], "_", macormaf,
-                                          ma_threshold_all[i])
-        for ylim in ylims_options:
-            with np.errstate(invalid="ignore"):
-                ma_threshold_pass = np.flatnonzero(ma_s >= ma_threshold_all[i])
-                if ylim is None:
-                    outfilename = outfilename_prefix + ".png"
-                    ylims_i = None
-                    which_ann = [k for k in range(len(gene_names)) if gene_names[k] is not None and ma_s[k] >= ma_threshold_all[i]]
-                    plot_i = True
-                else:
-                    outfilename = r_paste0(outfilename_prefix, "_ylim", ylim, ".png")
-                    ylims_i = (0.0, ylim)
-                    which_ann = [k for k in range(len(gene_names)) if gene_names[k] is not None and ypos_s[k] <= ylim
-                                 and ma_s[k] >= ma_threshold_all[i]]
-                    plot_i = not (np.nanmax(ypos_s) < ylim + ylim / 2)
-            if plot_i:
-                mf.plot_manhattan(outfilename, xpos, ma_threshold_pass, ypos_s, ylims_i, annotateGeneFile, ref, which_ann,
-                                  allCOLS, allPCH, i, bonferroni, legendtext, legendcol, legendpch, legendlty,
-                                  beta_patterns, gene_names, gene_conversion, pheno_type, ref_length, filecol)
+        manhattan_stem = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name,
+                                  "_LMM_kmergenealign_ct", min_count)
+    for key, value in (("figures_dir", figures_dir), ("output_prefix", output_prefix), ("kmer_type", kmer_type),
+                       ("kmer_length", kmer_length), ("ref_name", ref_name), ("ref_length", float(ref_length)),
+                       ("macormaf", macormaf), ("minor_allele_threshold", float(minor_allele_threshold)),
+                       ("bonferroni", float(bonferroni)), ("pheno_type", pheno_type), ("nsamples", nsamples),
+                       ("override_signif", bool(override_signif)), ("manhattan_stem", manhattan_stem)):
+        fd.param(key, value)
+    # The Manhattan plots R draws: four colourings, and a ylim 50 version when the maximum is at least 75
+    finite = ypos[~np.isnan(ypos)]
+    ylim50 = len(finite) > 0 and not (finite.max() < 50 + 50 / 2)
+    for col, thr in (("alignCOL", minor_allele_threshold), ("betaCOL", minor_allele_threshold), ("mafCOL", 0.0),
+                     ("mafCOL", minor_allele_threshold)):
+        prefix_i = r_paste0(manhattan_stem, "_Manhattan_", col, "_", macormaf, thr)
+        fd.expect(prefix_i + ".png")
+        if ylim50:
+            fd.expect(prefix_i + "_ylim50.png")
 
     final_kmer_list = rcompat.r_scan_lines(kmerSeqFile, quiet=True)
 
@@ -546,7 +517,9 @@ def run(args, bowtie):
         oneLetterCodes=alignmentfunctions.oneLetterCodes, kmer_type=kmer_type, kmer_length=kmer_length,
         blastPath=blastPath, perident=blastident, ref_name=ref_name, alignmenttype=alignmenttype,
         override_signif=override_signif, genes_all=genes_all, minor_allele_threshold=minor_allele_threshold,
-        macormaf=macormaf)
+        macormaf=macormaf, figure_data=fd)
+    fd.close()
+    r_cat("Written figure data for plot_figures.R:", fd.dir, "\n")
 
     r_cat("Finished in", (time.monotonic() - start_time) / 60, "minutes\n")
 

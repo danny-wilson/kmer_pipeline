@@ -697,6 +697,48 @@ else
 	'''
 }
 
+// Step 6, figures: draw the figures in R from the data plotManhattan wrote
+//   One process; runs with Step 6 (skip6)
+process plotFigures {
+input:
+	val ready
+output:
+	val true, emit: done
+shell:
+if(!params.skip6)
+	'''
+	echo "Step 6, figures: Drawing figures in R"
+	ln -sfr $(pwd) !{params.workdir}/plotFigures
+	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFigures.log
+	!{params.container_cmd} Rscript --vanilla !{params.container_script_dir}/Rscript_launcher.R \
+		!{params.container_script_dir}/plot_figures.R \
+		--data-dir !{params.container_analysis_dir}/!{params.kmer_type}kmer!{params.kmer_length}_kmergenealign_figures/figure_data
+	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotFigures.log
+	'''
+else
+	'''
+	echo "Skipping Step 6, figures: Drawing figures in R"
+	'''
+}
+
+// Step 6B, figures: draw the bowtie2-mapping figures in R (nucleotide kmers only)
+process plotFiguresbowtie {
+input:
+	val ready
+output:
+	val true, emit: done
+shell:
+	'''
+	echo "Step 6B, figures: Drawing bowtie2-mapping figures in R"
+	ln -sfr $(pwd) !{params.workdir}/plotFiguresbowtie
+	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log
+	!{params.container_cmd} Rscript --vanilla !{params.container_script_dir}/Rscript_launcher.R \
+		!{params.container_script_dir}/plot_figures.R \
+		--data-dir !{params.container_analysis_dir}/!{params.kmer_type}kmer!{params.kmer_length}_bowtie2mapping_figures/figure_data
+	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log
+	'''
+}
+
 // Step 5B: Run bowtie2 (nucleotide kmers only) -- fast!
 //   One core
 process runbowtie {
@@ -1028,6 +1070,10 @@ workflow {
 		// One core
 		plotManhattan(rungemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
 
+		// Step 6, figures: drawn in R
+		// One core
+		plotFigures(plotManhattan.out.done)
+
 		// Step 5B: Running bowtie2 (nucleotide kmers only)
 		// One core
 		//runbowtie(plotManhattan.out.done)
@@ -1035,10 +1081,11 @@ workflow {
 		// Step 6B: Plotting figures using bowtie2 mapping positions (nucleotide kmers only)
 		// One core
 		//plotManhattanbowtie(runbowtie.out.done)
+		//plotFiguresbowtie(plotManhattanbowtie.out.done)
 		
 		// Step 7: Generate HTML report
 		//   One process
-		genReport(plotManhattan.out.done)
+		genReport(plotFigures.out.done)
 
 		// Step 7B: Generate HTML gene report
 		//   Linear parallelization
@@ -1078,10 +1125,14 @@ workflow {
 		// Step 6: Plotting figures using contig alignment positions
 		// One core
 		plotManhattan(rungemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
-		
+
+		// Step 6, figures: drawn in R
+		// One core
+		plotFigures(plotManhattan.out.done)
+
 		// Step 7: Generate HTML report
 		//   One process
-		genReport(plotManhattan.out.done)
+		genReport(plotFigures.out.done)
 
 		// Step 7B: Generate HTML protein report
 		//   Linear parallelization
