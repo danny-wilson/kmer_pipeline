@@ -43,5 +43,5 @@ ENV PYTHONNOUSERSITE=1
 
 # Set user, home and working directory
 USER jovyan
-ENV HOME /home/jovyan
+ENV HOME=/home/jovyan
 WORKDIR /home/jovyan
