@@ -28,15 +28,14 @@ RUN pip install --no-cache-dir --no-deps \
 	&& fix-permissions "${CONDA_DIR}"
 
 # Replace the pipeline installed in the base image
-COPY . /tmp/kmer_pipeline
+COPY . /usr/share/kmer_pipeline.new
 RUN cd /usr/local/bin \
 	&& rm *.R *.Rscript kmer_pipeline.nf report.js report.css \
-	&& cd /tmp/kmer_pipeline \
+	&& cd /usr/share/kmer_pipeline.new \
 	&& install *.R *.Rscript python/*.py kmer_pipeline.nf report.js report.css /usr/local/bin \
 	&& rm -r *.R *.Rscript python kmer_pipeline.nf report.js report.css \
-	&& cd .. \
 	&& rm -r /usr/share/kmer_pipeline \
-	&& mv kmer_pipeline /usr/share/ \
+	&& mv /usr/share/kmer_pipeline.new /usr/share/kmer_pipeline \
 	&& chmod -R a+rX,go-w /usr/share/kmer_pipeline
 
 # Ignore any Python packages in the user's home directory
