@@ -1,65 +1,46 @@
-FROM jupyter/datascience-notebook:2022-05-31
+# The kmer_pipeline image: the 2022-10-26 image, which provides R, genoPlotR, GEMMA, dsk,
+# bowtie2, BLAST, MUMmer, samtools, Nextflow 22.04.5 and the compiled C++ tools (unchanged
+# since then), with the pipeline scripts replaced from this commit and Biopython and pytest
+# added. The base image is amd64 (x86-64) only. Build from a clean checkout of a release tag:
+#   docker buildx build --platform linux/amd64 --build-arg VERSION=YYYY-MM-DD \
+#     -t dannywilson/kmer_pipeline:YYYY-MM-DD .
+# The Dockerfile that built the base image is in this repository at tag 2022-10-26.
+FROM dannywilson/kmer_pipeline:2022-10-26@sha256:d38900db59b92128dc7fb1118d71482452b37361253fc7348af72bf425bfb7ad
+ARG VERSION
 LABEL app="kmer_pipeline"
 LABEL description="Pipeline for kmer (oligo)-based genome-wide association studies"
 LABEL maintainer="Daniel Wilson"
-LABEL version="2022-10-26"
+LABEL version="${VERSION}"
 
 # Set user and working directory
 USER root
 WORKDIR /tmp
 
-# Install packages
-RUN apt-get update --fix-missing && apt-get -yqq install -f \
-	bowtie2=2.3.5.1-6build1 \
-	default-jdk=2:1.11-72 \
-	g++=4:9.3.0-1ubuntu2 \
-	libatlas-base-dev=3.10.3-8ubuntu7 \
-	libgsl-dev=2.5+dfsg-6build1 \
-	make=4.2.1-1.2 \
-	mummer=3.23+dfsg-4build1 \
-	ncbi-blast+=2.9.0-2 \
-	zlib1g-dev=1:1.2.11.dfsg-2ubuntu1.5 \
-	&& rm -rf /var/lib/apt/lists/*
+# Install the Python packages missing from the base image, without upgrading any it has
+RUN pip install --no-cache-dir --no-deps \
+	biopython==1.83 \
+	pytest==7.4.4 \
+	pluggy==1.5.0 \
+	iniconfig==2.0.0 \
+	tomli==2.0.1 \
+	exceptiongroup==1.2.2 \
+	&& pip check \
+	&& fix-permissions "${CONDA_DIR}"
 
-# Install samtools with conda
-RUN conda install -c bioconda -y \
-	samtools=1.15.1
-
-# Install dsk from precompiled binary
-RUN wget https://github.com/GATB/dsk/releases/download/v2.3.3/dsk-v2.3.3-bin-Linux.tar.gz \
-	&& tar -xvzf dsk-v2.3.3-bin-Linux.tar.gz \
-	&& install dsk-v2.3.3-bin-Linux/bin/* /usr/local/bin/
-
-# Install gemma0.93b from source
-RUN wget https://github.com/danny-wilson/gemma0.93b/archive/refs/tags/v0.1.tar.gz \
-	&& tar -xvzf v0.1.tar.gz \
-	&& cd gemma0.93b-0.1 \
-	&& mkdir bin \
-	&& make \
-	&& install bin/gemma /usr/local/bin
-
-# Install R package genoPlotR and dependency (version control using remotes)
-RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))" \
-	&& R -e "remotes::install_version('ade4', version = '1.7-19', upgrade = FALSE, repos='https://cloud.r-project.org')" \
-	&& R -e "remotes::install_version('genoPlotR', version = '0.8.11', upgrade = FALSE, repos='https://cloud.r-project.org')"
-
-# Install kmer_pipeline
-RUN wget -O kmer_pipeline.tgz https://github.com/danny-wilson/kmer_pipeline/archive/refs/tags/2022-10-26.tar.gz \
-	&& mkdir kmer_pipeline \
-	&& tar -xvzf kmer_pipeline.tgz --directory kmer_pipeline --strip-components 1 \
-	&& cd kmer_pipeline \
-	&& make \
-	&& mkdir /usr/bin/kmer_pipeline \
-	&& ls \
-	&& install *.R *.Rscript *.nf report.js report.css kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern /usr/local/bin \
-	&& rm *.R *.Rscript *.nf report.js report.css kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern \
+# Replace the pipeline installed in the base image
+COPY . /tmp/kmer_pipeline
+RUN cd /usr/local/bin \
+	&& rm *.R *.Rscript kmer_pipeline.nf report.js report.css \
+	&& cd /tmp/kmer_pipeline \
+	&& install *.R *.Rscript python/*.py kmer_pipeline.nf report.js report.css /usr/local/bin \
+	&& rm -r *.R *.Rscript python kmer_pipeline.nf report.js report.css \
 	&& cd .. \
-	&& mv kmer_pipeline /usr/share/
+	&& rm -r /usr/share/kmer_pipeline \
+	&& mv kmer_pipeline /usr/share/ \
+	&& chmod -R a+rX,go-w /usr/share/kmer_pipeline
 
-# Install Nextflow
-RUN wget -O nextflow https://github.com/nextflow-io/nextflow/releases/download/v22.04.5/nextflow-22.04.5-all \
-	&& chmod a+x nextflow \
-	&& mv nextflow /usr/local/bin/
+# Ignore any Python packages in the user's home directory
+ENV PYTHONNOUSERSITE=1
 
 # Set user, home and working directory
 USER jovyan
