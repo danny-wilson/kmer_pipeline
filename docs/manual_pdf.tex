@@ -1,0 +1,8 @@
+% LaTeX additions for the PDF manual (build_manual_pdf.sh)
+% Code blocks wrap long lines instead of running off the page
+\usepackage{fvextra}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\},fontsize=\small}
+% Long inline code (file names with underscores) and URLs may break across lines
+\usepackage[htt]{hyphenat}
+\usepackage{xurl}
+\setlength{\emergencystretch}{3em}

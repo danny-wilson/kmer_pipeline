@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+
+# PDF manual, built by docs/build_manual_pdf.sh and attached to each GitHub Release
+kmer_pipeline_manual.pdf
