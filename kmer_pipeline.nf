@@ -208,8 +208,8 @@ if(!params.skip1)
 	'''
 	echo "Step 1: Counting kmers"
 	echo "sampid: !{sampid}"
-	ln -sfr $(pwd) !{params.workdir}/countkmers.!{sampid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/countkmers.!{sampid}.log
+	ln -sfr $(pwd) !{params.workdir}/countkmers.!{sampid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/countkmers.!{sampid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/countkmers.!{sampid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/countkmers.!{sampid}.log
 	!{params.container_cmd} !{params.container_script_dir}/countkmers.py \
 		--task-id !{sampid} \
 		--id-file !{params.container_id_file} \
@@ -251,8 +251,8 @@ if(!params.skip1 | !params.skip2)
 	echo "kmercounts: !{kmercounts}"
 	echo "kmertotals: !{kmertotals}"
 	echo "kmers_filepaths: !{kmers_filepaths}"
-	ln -sfr $(pwd) !{params.workdir}/filecheck_countkmers
-	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_countkmers.log
+	ln -sfr $(pwd) !{params.workdir}/filecheck_countkmers 2>/dev/null || ln -sf $(pwd) !{params.workdir}/filecheck_countkmers
+	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_countkmers.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/filecheck_countkmers.log
 	'''
 else
 	'''
@@ -291,8 +291,8 @@ if(!params.skip1 | !params.skip2)
 	echo "kmertotals: !{kmertotals}"
 	echo "reading_frames: !{reading_frames}"
 	echo "kmers_filepaths: !{kmers_filepaths}"
-	ln -sfr $(pwd) !{params.workdir}/filecheck_countkmers_protein
-	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_countkmers_protein.log
+	ln -sfr $(pwd) !{params.workdir}/filecheck_countkmers_protein 2>/dev/null || ln -sf $(pwd) !{params.workdir}/filecheck_countkmers_protein
+	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_countkmers_protein.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/filecheck_countkmers_protein.log
 	'''
 else
 	'''
@@ -314,8 +314,8 @@ if(!params.skip2)
 	'''
 	echo "Step 2: Creating unique kmer list"
 	echo "taskid: !{taskid}"
-	ln -sfr $(pwd) !{params.workdir}/createfullkmerlist.!{taskid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/createfullkmerlist.!{taskid}.log
+	ln -sfr $(pwd) !{params.workdir}/createfullkmerlist.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/createfullkmerlist.!{taskid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/createfullkmerlist.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/createfullkmerlist.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/createfullkmerlist.py \
 		--task-id !{taskid} \
 		--n !{params.n} \
@@ -349,8 +349,8 @@ if(!params.skip2 | !params.skip3)
 	'''
 	echo "Fchk 2: Creating unique kmer list"
 	echo "kmermerge: !{kmermerge}"
-	ln -sfr $(pwd) !{params.workdir}/filecheck_createfullkmerlist
-	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_createfullkmerlist.log
+	ln -sfr $(pwd) !{params.workdir}/filecheck_createfullkmerlist 2>/dev/null || ln -sf $(pwd) !{params.workdir}/filecheck_createfullkmerlist
+	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_createfullkmerlist.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/filecheck_createfullkmerlist.log
 	'''
 else
 	'''
@@ -371,8 +371,8 @@ shell:
 if(!params.skip3)
 	'''
 	echo "Step 3: Creating kmer presence/absence patterns and kinship matrix"
-	ln -sfr $(pwd) !{params.workdir}/stringlist2patternandkinship.!{taskid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/stringlist2patternandkinship.!{taskid}.log
+	ln -sfr $(pwd) !{params.workdir}/stringlist2patternandkinship.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/stringlist2patternandkinship.!{taskid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/stringlist2patternandkinship.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/stringlist2patternandkinship.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/stringlist2patternandkinship.py \
 		--task-id !{taskid} \
 		--p !{params.p} \
@@ -422,8 +422,8 @@ if(!params.skip3 | !params.skip4)
 	echo "patternKeySize: !{patternKeySize}"
 	echo "kinship: !{kinship}"
 	echo "kinshipWeight: !{kinshipWeight}"
-	ln -sfr $(pwd) !{params.workdir}/filecheck_stringlist2patternandkinship
-	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_stringlist2patternandkinship.log
+	ln -sfr $(pwd) !{params.workdir}/filecheck_stringlist2patternandkinship 2>/dev/null || ln -sf $(pwd) !{params.workdir}/filecheck_stringlist2patternandkinship
+	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_stringlist2patternandkinship.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/filecheck_stringlist2patternandkinship.log
 	'''
 else
 	'''
@@ -446,8 +446,8 @@ shell:
 if(!params.skip4 && params.container_covariate_file=="")
 	'''
 	echo "Step 4: Running GEMMA"
-	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
+	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/rungemma.!{taskid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/rungemma.py \
 		--task-id !{taskid} \
 		--p !{params.p} \
@@ -458,13 +458,13 @@ if(!params.skip4 && params.container_covariate_file=="")
 		--kmertype !{params.kmer_type} \
 		--kmer-length !{params.kmer_length} \
 		--software-file !{params.container_software_file}
-	cp --remove-destination $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
+	rm -f !{params.logdir}/rungemma.!{taskid}.log && cp $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	'''
 else if(!params.skip4 && params.container_covariate_file!="")
 	'''
 	echo "Step 4: Running GEMMA"
-	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
+	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/rungemma.!{taskid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/rungemma.py \
 		--task-id !{taskid} \
 		--p !{params.p} \
@@ -476,7 +476,7 @@ else if(!params.skip4 && params.container_covariate_file!="")
 		--kmer-length !{params.kmer_length} \
 		--software-file !{params.container_software_file} \
 		--covariate-file !{params.container_covariate_file}
-	cp --remove-destination $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
+	rm -f !{params.logdir}/rungemma.!{taskid}.log && cp $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	'''
 else
 	'''
@@ -547,8 +547,8 @@ if(!params.skip4 | !params.skip5)
 	echo "assoc: !{assoc}"
 	echo "pval: !{pval}"
 	echo "log: !{log}"
-	ln -sfr $(pwd) !{params.workdir}/filecheck_rungemma
-	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_rungemma.log
+	ln -sfr $(pwd) !{params.workdir}/filecheck_rungemma 2>/dev/null || ln -sf $(pwd) !{params.workdir}/filecheck_rungemma
+	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_rungemma.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/filecheck_rungemma.log
 	'''
 else
 	'''
@@ -569,8 +569,8 @@ shell:
 if(!params.skip5)
 	'''
 	echo "Step 5: Running contig alignment"
-	ln -sfr $(pwd) !{params.workdir}/kmercontigalign.!{taskid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/kmercontigalign.!{taskid}.log
+	ln -sfr $(pwd) !{params.workdir}/kmercontigalign.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/kmercontigalign.!{taskid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/kmercontigalign.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/kmercontigalign.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/kmercontigalignonly.py \
 		--task-id !{taskid} \
 		--n !{params.n} \
@@ -604,8 +604,8 @@ shell:
 if(!params.skip5)
 	'''
 	echo "Step 5A: Merging contig alignments"
-	ln -sfr $(pwd) !{params.workdir}/kmercontigalignmerge.!{taskid}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/kmercontigalignmerge.!{taskid}.log
+	ln -sfr $(pwd) !{params.workdir}/kmercontigalignmerge.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/kmercontigalignmerge.!{taskid}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/kmercontigalignmerge.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/kmercontigalignmerge.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/kmercontigalignmerge.py \
 		--task-id !{taskid} \
 		--n !{params.n} \
@@ -647,8 +647,8 @@ if(!params.skip5 | !params.skip6)
 	echo "Fchk 5: Running contig alignment"
 	echo "geneIdNameLookup: !{geneIdNameLookup}"
 	echo "kmerListGeneIDs: !{kmerListGeneIDs}"
-	ln -sfr $(pwd) !{params.workdir}/filecheck_kmercontigalign
-	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_kmercontigalign.log
+	ln -sfr $(pwd) !{params.workdir}/filecheck_kmercontigalign 2>/dev/null || ln -sf $(pwd) !{params.workdir}/filecheck_kmercontigalign
+	ln -sfr $(pwd)/.command.log !{params.logdir}/filecheck_kmercontigalign.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/filecheck_kmercontigalign.log
 	'''
 else
 	'''
@@ -668,8 +668,8 @@ shell:
 if(!params.skip6)
 	'''
 	echo "Step 6: Plotting figures using contig alignment positions"
-	ln -sfr $(pwd) !{params.workdir}/plotManhattan
-	ln -sfr $(pwd)/.command.log !{params.logdir}/plotManhattan.log
+	ln -sfr $(pwd) !{params.workdir}/plotManhattan 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotManhattan
+	ln -sfr $(pwd)/.command.log !{params.logdir}/plotManhattan.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/plotManhattan.log
 	!{params.container_cmd} !{params.container_script_dir}/plotManhattan.py \
 		--output-prefix !{params.output_prefix} \
 		--analysis-dir !{params.container_analysis_dir} \
@@ -686,7 +686,7 @@ if(!params.skip6)
 		--software-file !{params.container_software_file} \
 		--blastident !{params.blastident} \
 		--ngenes !{params.ntopgenes}
-	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotManhattan.log
+	rm -f !{params.logdir}/plotManhattan.log && cp $(pwd)/.command.log !{params.logdir}/plotManhattan.log
 	'''
 	/* Temporarily removed since default values cannot be explicitly specified:\
 	--annotate-gene-file !{params.annotateGeneFile} \
@@ -708,12 +708,12 @@ shell:
 if(!params.skip6)
 	'''
 	echo "Step 6, figures: Drawing figures in R"
-	ln -sfr $(pwd) !{params.workdir}/plotFigures
-	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFigures.log
+	ln -sfr $(pwd) !{params.workdir}/plotFigures 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotFigures
+	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFigures.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/plotFigures.log
 	!{params.container_cmd} Rscript --vanilla !{params.container_script_dir}/Rscript_launcher.R \
 		!{params.container_script_dir}/plot_figures.R \
 		--data-dir !{params.container_analysis_dir}/!{params.kmer_type}kmer!{params.kmer_length}_kmergenealign_figures/figure_data
-	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotFigures.log
+	rm -f !{params.logdir}/plotFigures.log && cp $(pwd)/.command.log !{params.logdir}/plotFigures.log
 	'''
 else
 	'''
@@ -730,12 +730,12 @@ output:
 shell:
 	'''
 	echo "Step 6B, figures: Drawing bowtie2-mapping figures in R"
-	ln -sfr $(pwd) !{params.workdir}/plotFiguresbowtie
-	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log
+	ln -sfr $(pwd) !{params.workdir}/plotFiguresbowtie 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotFiguresbowtie
+	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log
 	!{params.container_cmd} Rscript --vanilla !{params.container_script_dir}/Rscript_launcher.R \
 		!{params.container_script_dir}/plot_figures.R \
 		--data-dir !{params.container_analysis_dir}/!{params.kmer_type}kmer!{params.kmer_length}_bowtie2mapping_figures/figure_data
-	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log
+	rm -f !{params.logdir}/plotFiguresbowtie.log && cp $(pwd)/.command.log !{params.logdir}/plotFiguresbowtie.log
 	'''
 }
 
@@ -749,8 +749,8 @@ output:
 shell:
 	'''
 	echo "Step 5B: Running bowtie2 (nucleotide kmers only)"
-	ln -sfr $(pwd) !{params.workdir}/runbowtie
-	ln -sfr $(pwd)/.command.log !{params.logdir}/runbowtie.log
+	ln -sfr $(pwd) !{params.workdir}/runbowtie 2>/dev/null || ln -sf $(pwd) !{params.workdir}/runbowtie
+	ln -sfr $(pwd)/.command.log !{params.logdir}/runbowtie.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/runbowtie.log
 	!{params.container_cmd} !{params.container_script_dir}/runbowtie.py \
 		--output-prefix !{params.output_prefix} \
 		--analysis-dir !{params.container_analysis_dir} \
@@ -774,8 +774,8 @@ output:
 shell:
 	'''
 	echo "Step 6B: Plotting figures using bowtie2 mapping positions (nucleotide kmers only)"
-	ln -sfr $(pwd) !{params.workdir}/plotManhattanbowtie
-	ln -sfr $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
+	ln -sfr $(pwd) !{params.workdir}/plotManhattanbowtie 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotManhattanbowtie
+	ln -sfr $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
 	!{params.container_cmd} !{params.container_script_dir}/plotManhattanbowtie.py \
 		--output-prefix !{params.output_prefix} \
 		--analysis-dir !{params.container_analysis_dir} \
@@ -790,7 +790,7 @@ shell:
 		--software-file !{params.container_software_file} \
 		--blastident !{params.blastident} \
 		--ngenes !{params.ntopgenes}
-	cp --remove-destination $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
+	rm -f !{params.logdir}/plotManhattanbowtie.log && cp $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
 	'''
 	/* Temporarily removed since default values cannot be explicitly specified \
 	!{params.annotateGeneFile} \
@@ -808,8 +808,8 @@ shell:
 if(!params.skip7)
 	'''
 	echo "Step 7: Generating HTML report"
-	ln -sfr $(pwd) !{params.workdir}/genReport
-	ln -sfr $(pwd)/.command.log !{params.logdir}/genReport.log
+	ln -sfr $(pwd) !{params.workdir}/genReport 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genReport
+	ln -sfr $(pwd)/.command.log !{params.logdir}/genReport.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genReport.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-report.py \
 		--prefix !{params.output_prefix} \
 		--anatype !{params.kmer_type} \
@@ -842,8 +842,8 @@ shell:
 if(!params.skip7)
 	'''
 	echo "Step 7B: Generating HTML gene report"
-	ln -sfr $(pwd) !{params.workdir}/genGeneReport.!{hitnum}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/genGeneReport.!{hitnum}.log
+	ln -sfr $(pwd) !{params.workdir}/genGeneReport.!{hitnum} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genGeneReport.!{hitnum}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/genGeneReport.!{hitnum}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genGeneReport.!{hitnum}.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-gene-report.py \
 		--hit-num !{hitnum} \
 		--prefix !{params.output_prefix} \
@@ -876,8 +876,8 @@ shell:
 if(!params.skip7)
 	'''
 	echo "Step 7B: Generating HTML protein report"
-	ln -sfr $(pwd) !{params.workdir}/genProteinReport.!{hitnum}
-	ln -sfr $(pwd)/.command.log !{params.logdir}/genProteinReport.!{hitnum}.log
+	ln -sfr $(pwd) !{params.workdir}/genProteinReport.!{hitnum} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genProteinReport.!{hitnum}
+	ln -sfr $(pwd)/.command.log !{params.logdir}/genProteinReport.!{hitnum}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genProteinReport.!{hitnum}.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-protein-report.py \
 		--hit-num !{hitnum} \
 		--prefix !{params.output_prefix} \
@@ -909,8 +909,8 @@ shell:
 if(!params.skip7)
 	'''
 	echo "Step 7C: Generating HTML unmapped report"
-	ln -sfr $(pwd) !{params.workdir}/genUnmappedReport
-	ln -sfr $(pwd)/.command.log !{params.logdir}/genUnmappedReport.log
+	ln -sfr $(pwd) !{params.workdir}/genUnmappedReport 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genUnmappedReport
+	ln -sfr $(pwd)/.command.log !{params.logdir}/genUnmappedReport.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genUnmappedReport.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-unmapped-report.py \
 		--prefix !{params.output_prefix} \
 		--anatype !{params.kmer_type} \
