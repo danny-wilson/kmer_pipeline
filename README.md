@@ -4,7 +4,7 @@ Pipeline for kmer (oligo)-based genome-wide association studies
 Implementing methods described in
 
 **Genome-wide association studies of global *Mycobacterium tuberculosis* resistance to thirteen antimicrobials in 10,228 genomes**
-The CRyPTIC Consortium (2021)
+The CRyPTIC Consortium (2022)
 *PLOS Biology* 20: e3001755 ([article](https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.3001755))
 
 **Identifying lineage effects when controlling for population structure improves power in bacterial association studies.**
@@ -20,9 +20,11 @@ This project was supported by the [Wellcome Trust](https://wellcome.org), the [R
 ## Dependencies
 The pipeline utilizes software including [GEMMA](https://github.com/genetics-statistics/GEMMA), [DSK](https://github.com/GATB/dsk), [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi), [MUMmer](http://mummer.sourceforge.net), [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml), [Samtools](http://www.htslib.org), the [GNU Scientific Library](https://www.gnu.org/software/gsl/), the [Automatically Tuned Linear Algebra Software](http://math-atlas.sourceforge.net)
 
+The workflow scripts are written in [Python](https://www.python.org), using [NumPy](https://numpy.org), [pandas](https://pandas.pydata.org), [SciPy](https://scipy.org), [Biopython](https://biopython.org) and [Jinja](https://jinja.palletsprojects.com); the figures are drawn in [R](https://www.r-project.org).
+
 The container implements a [Nextflow](https://www.nextflow.io) pipeline which runs on top of [Apache Groovy](https://groovy-lang.org) and [Java](https://www.java.com).
 
-Original code and scripts were also written in [R](https://www.r-project.org) and [C++](https://isocpp.org), using the [genoPlotR library](https://cran.r-project.org/web/packages/genoPlotR/index.html) and the [zstr library](https://github.com/mateidavid/zstr), a C++ wrapper for the [zlib library](https://github.com/madler/zlib). C++ code was compiled with the [GNU Compiler Collection](https://gcc.gnu.org).
+Original code and scripts were also written in [R](https://www.r-project.org) (ported to Python in release 2026-10-04) and [C++](https://isocpp.org), using the [genoPlotR library](https://cran.r-project.org/web/packages/genoPlotR/index.html) and the [zstr library](https://github.com/mateidavid/zstr), a C++ wrapper for the [zlib library](https://github.com/madler/zlib). C++ code was compiled with the [GNU Compiler Collection](https://gcc.gnu.org).
 
 The container was written using [Docker](https://www.docker.com) and based on the [Jupyter Data Science Notebook](https://jupyter-docker-stacks.readthedocs.io/en/latest/index.html).
 
@@ -32,14 +34,16 @@ The zstr headers are licensed under the MIT license. The myutils headers are lic
 ## Installation
 To download a prebuilt [Docker](https://www.docker.com) image
 
-    docker pull dannywilson/kmer_pipeline:2022-10-26
+    docker pull dannywilson/kmer_pipeline:2026-10-04
+
+The image is built for x86-64 (amd64) Linux. On a Mac with Apple Silicon, Docker runs it under emulation: first type `export DOCKER_DEFAULT_PLATFORM=linux/amd64` in the same terminal, or the pipeline stops at its first step.
 
 To build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) container
 
-    singularity pull -F docker://dannywilson/kmer_pipeline:2022-10-26
+    singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-04
 
 ## Running the Nextflow pipeline
-For instructions on running the Nextflow pipeline, including the *Mycobacterium tuberculosis* example, download [the manual](https://github.com/danny-wilson/kmer_pipeline/raw/main/docs/kmer_pipeline_nf.pdf).
+For instructions on running the Nextflow pipeline, including the *Mycobacterium tuberculosis* example, see [the manual](docs/manual.md), also available [as a PDF](https://github.com/danny-wilson/kmer_pipeline/releases/latest/download/kmer_pipeline_manual.pdf).
 
 ## Running the Jupyter Data Science Notebook
 To launch as a Jupyter Data Science Notebook using Docker
