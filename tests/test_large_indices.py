@@ -131,3 +131,16 @@ def test_read_gemma_files_with_a_nan_row(tmp_path):
                                                  kmer_length=5, nPatterns=2)
     nl = Manhattan_functions.assoc_column(assoc, 6)
     assert nl[0] > 0 and nl[1] != nl[1]
+
+
+def test_read_gemma_files_rejects_overlapping_batches(tmp_path):
+    """N1: results of runs with different numbers of tasks must not be mixed."""
+    out = tmp_path / "output"
+    out.mkdir()
+    header = "chr\trs\tps\tn_miss\tbeta\tse\tl_remle\tl_mle\tp_wald\tp_lrt\tp_score\tlogl_H1\n"
+    for beg, end in ((1, 4), (5, 8), (1, 8)):
+        rows = "".join(f"-9\t{k}\t-9\t0\t0.5\t0.1\t1\t1\t0.01\t0.02\t0.03\t-10\n" for k in range(beg, end + 1))
+        (out / f"pre_protein5.{beg}-{end}.assoc.txt.gz").write_bytes(gzip.compress((header + rows).encode()))
+    with pytest.raises(rcompat.RError, match="exactly once"):
+        Manhattan_functions.read_gemma_files(input_dir=str(out) + "/", prefix="pre", kmer_type="protein",
+                                             kmer_length=5, nPatterns=8)

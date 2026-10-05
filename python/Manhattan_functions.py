@@ -107,10 +107,16 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     file_end = [rcompat.parse_index(s.split("-")[1]) for s in file_range]
     if max(file_end) != nPatterns:
         r_stop("Error: max gemma pattern index does not equal total number of patterns", "\n")
-    covered = set()
-    for b, e in zip(file_beg, file_end):
-        covered.update(rcompat.r_colon(b, e))
-    if any(k not in covered for k in range(1, int(nPatterns) + 1)):
+    # N1: the batches must cover patterns 1..n exactly once (results of another run with a
+    # different number of tasks would overlap them)
+    expected = 1
+    for b, e in sorted(zip(file_beg, file_end)):
+        if b != expected:
+            r_stop("Error: the GEMMA result files in ", input_dir, " do not cover the patterns exactly once (",
+                   ", ".join(str(x) + "-" + str(y) for x, y in sorted(zip(file_beg, file_end))),
+                   "): remove the results of earlier runs (rerun step 4 with overwrite = true)", "\n")
+        expected = e + 1
+    if expected != int(nPatterns) + 1:
         r_stop("Error: not all patterns are present in gemma files", "\n")
     files = [files[k] for k in rcompat.r_order(file_beg)]
 
