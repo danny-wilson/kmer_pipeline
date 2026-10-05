@@ -376,6 +376,16 @@ def r_str(v, digits):
     return str(v)
 
 
+def parse_index(tok):
+    """A count or index read back from a file or file name. Written as plain integers
+    since Phase 4 (D1a); older outputs wrote round values as R did ("1e+05"), so any
+    number with an integer value is accepted. Returns an int; ValueError otherwise."""
+    v = float(tok)
+    if not v.is_integer():
+        raise ValueError(f"not an integer: {tok!r}")
+    return int(v)
+
+
 def r_as_character(v):
     """R's as.character() for one value (15 significant digits for doubles)."""
     return r_str(v, 15)

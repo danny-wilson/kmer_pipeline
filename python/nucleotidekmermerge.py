@@ -109,7 +109,7 @@ def main():
             r_cat("Creating temp file:", outfile, "\n")
             outfile_completed = r_paste0(output_dir, output_prefix, ".nucleotide", kmer_length, ".j.", i, ".", t,
                                          ".completed.txt")
-            beg = float(b * (t - 1) + 1)
+            beg = b * (t - 1) + 1
             end = min(b * t, n)
             r_cat("Beg:", beg, "End:", end, "\n")
             if end < beg:

@@ -96,8 +96,8 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     stem = r_paste0(input_dir, prefix, "_", kmer_type, kmer_length)
     files = rcompat.r_system_intern("ls " + stem + "*-*.assoc.txt.gz")
     file_range = [f.replace(stem + ".", "").replace(".assoc.txt.gz", "") for f in files]
-    file_beg = [int(s.split("-")[0]) for s in file_range]
-    file_end = [int(s.split("-")[1]) for s in file_range]
+    file_beg = [rcompat.parse_index(s.split("-")[0]) for s in file_range]  # also "1e+05" (D1a)
+    file_end = [rcompat.parse_index(s.split("-")[1]) for s in file_range]
     if max(file_end) != nPatterns:
         r_stop("Error: max gemma pattern index does not equal total number of patterns", "\n")
     covered = set()

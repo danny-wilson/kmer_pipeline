@@ -154,7 +154,7 @@ def main():
         return
 
     # Create a temporary bimbam file from the unique patterns
-    beg = float(b * (t - 1) + 1)
+    beg = b * (t - 1) + 1  # integers, written as plain integers (D1a)
     end = min(b * t, n)
     if end < beg:
         r_stop("Problem with input arguments, please check")
@@ -162,9 +162,9 @@ def main():
     genofile = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, ".", beg, "-", end, ".bimbam.txt")
     # No directory for output file as gemma will always put files in subdirectory 'output'
     outfile_prefix = r_paste0(output_prefix, "_", kmertype, kmerlen, ".", beg, "-", end, "")
-    # write(t(cbind(beg:end, 1, 0)), ncol = 3, sep = "\t"): a double matrix, written by cat (7 digits)
+    # Pattern index (GEMMA's rs), then the two allele columns; indices as plain integers (D1a)
     with open(genofile_prefix, "w") as f:
-        f.write("".join(rcompat.r_str(float(k), 7) + "\t1\t0\n" for k in rcompat.r_colon(int(beg), end)))
+        f.write("".join("%d\t1\t0\n" % k for k in rcompat.r_colon(beg, end)))
     rcompat.r_system(r_paste0("zcat ", keyfile, " | head -n ", end, " | tail -n ", end - beg + 1,
                               " | sed 's/./&\t/g' | paste ", genofile_prefix, " /dev/stdin > ", genofile))
 

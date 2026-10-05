@@ -96,11 +96,12 @@ def create_pattern_batch(fullkmerlistfile, p, t, stringlist2patternpath, kmerlis
 
 
 def get_kmer_batch_numbers(n, p):
-    """Rows (beg, end) of k-mer numbers for each of p tasks. cbind() of R's double
-    beg and integer end gives a double matrix, so both are floats."""
+    """Rows (beg, end) of k-mer numbers for each of p tasks, as integers, so they are
+    written as plain integers in file names and commands (D1a; R wrote 100000 as "1e+05",
+    which head -n rejects)."""
     # Number of kmers (batch size) per process
     b = math.ceil(n / p)
-    return [(float((t - 1) * b + 1), float(min(t * b, n))) for t in range(1, int(p) + 1)]
+    return [((t - 1) * b + 1, min(t * b, n)) for t in range(1, int(p) + 1)]
 
 
 def merge_pattern_batches_parameters(nkmersbatch, p, t, output_dir, output_prefix, kmertype, kmerlen):
@@ -155,7 +156,7 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
             outfile_patternKeySize = batches_dir + outfile_prefix + ".patternKeySize.txt"
             outfile_patternIndex = batches_dir + outfile_prefix + ".patternIndex.txt.gz"
             outfile_completed = batches_dir + outfile_prefix + ".patternbatch.completed.txt"
-            beg = float(b * (t - 1) + 1)
+            beg = b * (t - 1) + 1
             end = min(b * t, n)
             if end < beg:
                 r_stop("Problem with input arguments, please check")
@@ -340,9 +341,9 @@ def create_kinship_batch(batch_prefix, batches_dir, nkmersbatch, patterncountspa
     if size_is_zero(size_of(rcompat.r_system_intern("ls -l " + batches_dir + batch_prefix + ".kinship.txt.gz | cut -d ' ' -f5"))):
         r_stop(batches_dir + batch_prefix + " kinship matrix file empty", "\n")
 
-    # Output kinship matrix weight (i.e. total count): write() of an R double
+    # Output kinship matrix weight (i.e. total count), a plain integer (D1a)
     with open(batches_dir + batch_prefix + ".kinshipWeight.txt", "w") as f:
-        f.write(rcompat.r_str(nkmersbatch[1] - nkmersbatch[0] + 1, 7) + "\n")
+        f.write("%d\n" % (nkmersbatch[1] - nkmersbatch[0] + 1))
     # Check kinship weight file not empty
     if size_is_zero(size_of(rcompat.r_system_intern("ls -l " + batches_dir + batch_prefix + ".kinshipWeight.txt | cut -d ' ' -f5"))):
         r_stop(batches_dir + batch_prefix + " kinship weight file empty", "\n")
@@ -383,7 +384,7 @@ def scan_integers(path):
             out.append(None)
             continue
         try:
-            out.append(int(tok))
+            out.append(rcompat.parse_index(tok))  # also reads "1e+05" from older runs (D1a)
         except ValueError:
             r_stop("scan() expected 'an integer', got '", tok, "'")
     return out
@@ -435,7 +436,7 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
             kinship_weight = 0
             # Define input/output files
             outfile_prefix = r_paste0(batches_dir, prefix, "_", kmertype, kmerlen, ".kinshipmerge.j.", i, ".", t)
-            beg = float(b * (t - 1) + 1)
+            beg = b * (t - 1) + 1
             end = min(b * t, n)
             if end < beg:
                 r_stop("Problem with input arguments, please check")

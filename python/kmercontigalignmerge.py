@@ -18,14 +18,14 @@ from rcompat import r_cat, r_paste0, r_stop
 
 
 def get_count_batch_parameters(p, b, n):
-    """Rows (beg, end) for each task. cbind() of R's double beg and integer end
-    gives a double matrix, so both are floats."""
-    return [(float((t - 1) * b + 1), float(min(t * b, n))) for t in range(1, int(p) + 1)]
+    """Rows (beg, end) for each task, as integers, written as plain integers (D1a)."""
+    return [((t - 1) * b + 1, min(t * b, n)) for t in range(1, int(p) + 1)]
 
 
 def format_count(v):
-    """cat() of a count (an R double)."""
-    if v == v and 0 <= v < 100000 and v == int(v):
+    """A count: plain integer when it has an integer value (D1a; R's cat() wrote
+    100000 as "1e+05"), otherwise as R's cat()."""
+    if v == v and v == int(v):
         return str(int(v))
     return rcompat.r_str(v, 7)
 
@@ -170,7 +170,7 @@ def main():
             # First round: merge source files
             outfile = r_paste0(stem, ".j.", i, ".", t, ".txt")
             outfile_completed = r_paste0(stem, ".j.", i, ".", t, ".completed.txt")
-            beg = float(b * (t - 1) + 1)
+            beg = b * (t - 1) + 1
             end = min(b * t, n)
             r_cat("Beg:", beg, " End:", end, "\n")
             if end < beg:
