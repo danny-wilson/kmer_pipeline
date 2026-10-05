@@ -1,0 +1,208 @@
+"""preflight.py: overwrite checks, out-of-date outputs, reuse checks, -resume and parameters."""
+import json
+import os
+import socket
+
+import pytest
+
+from conftest import run_script
+
+import inventory
+
+PREFIX, TYPE, K = "tb20", "nucleotide", 31
+P = f"{PREFIX}_{TYPE}{K}"
+GENOMES = ["702", "725", "791"]
+
+# One file per step, as a run leaves them
+STEP_FILES = {
+    1: [f"{TYPE}kmer{K}/702.kmer{K}.txt.gz", f"{P}_kmers_filepaths.txt"],
+    2: [f"{P}.kmermerge.txt.gz"],
+    3: [f"{P}.patternmerge.patternKey.txt.gz", f"{TYPE}kmer{K}_patternbatches/{P}.1-9.patternKey.txt.gz"],
+    4: [f"{TYPE}kmer{K}_gemma/output/{P}.1-9.assoc.txt.gz"],
+    5: [f"{TYPE}kmer{K}_kmergenealign/{P}_NC_000962.3_kmergenecombination_filepaths.txt",
+        f"{P}.NC_000962.3_t90.kmeralignmerge.txt.gz"],
+    6: [f"{P}.summary.json", f"{TYPE}kmer{K}_kmergenealign_figures/figure_data/params.tsv"],
+    7: [f"{P}.report.html", f"{P}.report_rpoB.html", "report.css"],
+}
+
+
+def make_run(analysis, steps=range(1, 8), genomes=GENOMES):
+    for s in steps:
+        for f in STEP_FILES[s]:
+            path = analysis / f
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("x\n")
+    if 1 in steps:
+        (analysis / f"{P}_kmers_filepaths.txt").write_text(
+            "".join(f"/home/jovyan/a/{TYPE}kmer{K}/{g}.kmer{K}.txt.gz\n" for g in genomes))
+
+
+def id_file(tmp_path, genomes=GENOMES):
+    path = tmp_path / "id_file.txt"
+    path.write_text("id\tpaths\tpheno\n" + "".join(f"{g}\t/dev/null\t1\n" for g in genomes))
+    return str(path)
+
+
+def preflight(tmp_path, analysis, run_steps=range(1, 8), overwrite=False, resume=False, session="s1",
+              user_params=(), params=None, inputs=None, ids=None, finish=None):
+    args = ["--analysis-dir", str(analysis), "--output-prefix", PREFIX, "--kmer-type", TYPE, "--kmer-length", str(K),
+            "--session-id", session, "--run-steps", ",".join(map(str, run_steps)),
+            "--overwrite", str(overwrite).lower(), "--resume", str(resume).lower(), "--pid", "999999999",
+            "--user-params", ",".join(user_params), "--params-json", json.dumps(params or {"kmer_min_count": 1}),
+            "--input-files", json.dumps(inputs or {}), "--id-file", ids or id_file(tmp_path)]
+    if finish:
+        args += ["--finish", finish]
+    result = run_script("preflight.py", *args)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def remaining(analysis):
+    return sorted(os.path.relpath(os.path.join(r, n), analysis) for r, _, ns in os.walk(analysis) for n in ns)
+
+
+def test_fresh_analysis_dir(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    out = preflight(tmp_path, analysis)
+    assert out["errors"] == [] and out["deleted"] == []
+    manifest = json.loads((analysis / f"{P}.run_manifest.json").read_text())
+    assert manifest["status"] == "running" and sorted(manifest["steps"]) == [str(s) for s in range(1, 8)]
+
+
+def test_rerun_stops_by_default(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    before = remaining(analysis)
+    out = preflight(tmp_path, analysis)
+    assert len(out["errors"]) == 1 and "overwrite = true" in out["errors"][0]
+    assert remaining(analysis) == before
+
+
+def test_overwrite_deletes_the_steps_that_run(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    out = preflight(tmp_path, analysis, overwrite=True)
+    assert out["errors"] == []
+    assert sorted(out["deleted"]) == sorted(f for s in range(1, 8) for f in STEP_FILES[s])
+    left = remaining(analysis)
+    assert left[-1] == f"{P}.run_manifest.json" and len(left) == 2
+    assert left[0].startswith(f"log.{P}/overwrite_deleted_")
+    assert sorted((analysis / left[0]).read_text().split()) == sorted(out["deleted"])
+
+
+def test_phenotype_rerun_keeps_the_alignments(tmp_path):
+    """P108: steps 4, 6 and 7 rerun; steps 1-3 and 5 are kept (step 5 does not read step 4)."""
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    out = preflight(tmp_path, analysis, run_steps=[4, 6, 7], overwrite=True)
+    assert out["errors"] == []
+    assert sorted(out["deleted"]) == sorted(STEP_FILES[4] + STEP_FILES[6] + STEP_FILES[7])
+    for s in (1, 2, 3, 5):
+        for f in STEP_FILES[s]:
+            assert (analysis / f).exists()
+
+
+def test_out_of_date_outputs_of_skipped_steps_are_deleted(tmp_path):
+    """Q5: rerunning step 6 alone also deletes step 7's reports, which it makes out of date."""
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    out = preflight(tmp_path, analysis, run_steps=[6], overwrite=True)
+    assert sorted(out["deleted"]) == sorted(STEP_FILES[6] + STEP_FILES[7])
+
+
+def test_reading_out_of_date_outputs_is_an_error(tmp_path):
+    """Rerunning step 3 but skipping step 4, while step 6 runs, would use stale GEMMA results."""
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    out = preflight(tmp_path, analysis, run_steps=[3, 6, 7], overwrite=True)
+    assert any("step 6 would read the outputs of step 4" in e for e in out["errors"])
+    assert out["deleted"] == [] and (analysis / STEP_FILES[3][0]).exists()
+
+
+def test_symbolic_links_are_removed_not_followed(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis, steps=[1, 2, 3])
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep\n")
+    os.symlink(target, analysis / f"{TYPE}kmer{K}_gemma")
+    out = preflight(tmp_path, analysis, run_steps=[4], overwrite=True)
+    assert out["errors"] == []
+    assert not os.path.lexists(analysis / f"{TYPE}kmer{K}_gemma") and (target / "keep.txt").exists()
+
+
+def test_other_analyses_files_are_left_alone(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    other = analysis / "other_protein11.kmermerge.txt.gz"
+    other.write_text("x\n")
+    preflight(tmp_path, analysis, overwrite=True)
+    assert other.exists()
+
+
+def test_genomes_must_match_step1(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis, steps=[1, 2, 3])
+    out = preflight(tmp_path, analysis, run_steps=[4, 5, 6, 7], ids=id_file(tmp_path, ["725", "702", "791"]))
+    assert any("their order" in e for e in out["errors"])
+    out = preflight(tmp_path, analysis, run_steps=[4, 5, 6, 7], ids=id_file(tmp_path, GENOMES))
+    assert not any("their order" in e for e in out["errors"])
+
+
+def test_reused_step3_made_with_another_kmer_min_count(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    preflight(tmp_path, analysis, params={"kmer_min_count": 1})  # manifest of a full run
+    make_run(analysis)
+    preflight(tmp_path, analysis, finish="finished")
+    out = preflight(tmp_path, analysis, run_steps=[4, 6, 7], overwrite=True, params={"kmer_min_count": 2})
+    assert any("kmer_min_count" in e for e in out["errors"])
+
+
+def test_unknown_parameters(tmp_path):
+    out = preflight(tmp_path, tmp_path / "a", user_params=["kmerMinCount", "kmer-min-count", "queue", "maxp"])
+    assert sum("did you mean 'kmer_min_count'" in e for e in out["errors"]) == 2
+    assert any("'queue' is not used" in w for w in out["warnings"])
+
+
+def test_resume(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    preflight(tmp_path, analysis, session="s1")
+    make_run(analysis)
+    assert preflight(tmp_path, analysis, resume=True, session="s1")["errors"] == []
+    assert "another run" in preflight(tmp_path, analysis, resume=True, session="s2")["errors"][0]
+    changed = preflight(tmp_path, analysis, resume=True, session="s1", params={"kmer_min_count": 3})
+    assert "kmer_min_count" in changed["errors"][0]
+    assert "cannot be used with -resume" in preflight(tmp_path, analysis, resume=True, overwrite=True)["errors"][0]
+    assert all((analysis / f).exists() for s in range(1, 8) for f in STEP_FILES[s])
+
+
+def test_a_live_run_blocks_overwrite(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    make_run(analysis)
+    (analysis / f"{P}.run_manifest.json").write_text(json.dumps(
+        {"status": "running", "host": socket.gethostname(), "pid": os.getpid(), "session": "s0", "steps": {}}))
+    out = preflight(tmp_path, analysis, overwrite=True)
+    assert "may still be running" in out["errors"][0] and out["deleted"] == []
+
+
+def test_finish(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    preflight(tmp_path, analysis, session="s1")
+    preflight(tmp_path, analysis, session="s1", finish="finished")
+    assert json.loads((analysis / f"{P}.run_manifest.json").read_text())["status"] == "finished"
+
+
+def test_every_workflow_parameter_is_known():
+    import preflight as pf
+    from test_parameters import NF
+    if NF is None:
+        pytest.skip("needs kmer_pipeline.nf")
+    import re
+    used = set(re.findall(r"params\.([A-Za-z_0-9]+)", open(NF).read())) - {"containsKey", "keySet", "container"}
+    assert used <= pf.KNOWN_PARAMS, used - pf.KNOWN_PARAMS
+
+
+def test_inventory_downstream():
+    assert inventory.downstream([4]) == {6, 7}
+    assert inventory.downstream([2]) == {3, 4, 5, 6, 7}
+    assert inventory.downstream([5]) == {6, 7}

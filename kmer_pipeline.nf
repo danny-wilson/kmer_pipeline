@@ -6,6 +6,11 @@ import java.nio.file.Files
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
+// The parameters the user set (config files and command line), before any default is assigned
+USER_KEYS = new TreeSet(params.keySet())
 
 def user2containerPath(base_dir, user_path, container_base_dir) {
 	// Throws an error if user_path is not in the subdirectory tree of base_dir
@@ -43,12 +48,9 @@ def deployment() {
 	if(!Files.exists(Paths.get(params.ref_fa))) throw new Exception("ref_fa ${params.ref_fa} does not exist")
 	if(!Files.exists(Paths.get(params.ref_gb))) throw new Exception("ref_gb ${params.ref_gb} does not exist")
 
-	// Create analysis, work and log directories if they do not already exist
+	// Analysis, work and log directories (created by deployment_write(), after the checks)
 	params.workdir = params.analysis_dir + "/work." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
 	params.logdir = params.analysis_dir + "/log." + params.output_prefix + "_" + params.kmer_type + params.kmer_length
-	Files.createDirectories(Paths.get(params.analysis_dir))
-	Files.createDirectories(Paths.get(params.workdir))
-	Files.createDirectories(Paths.get(params.logdir))
 
 	// Read main input file
 	id_list = read_id_file()
@@ -71,7 +73,8 @@ def deployment() {
 	// Write the new id_list
 	userfs_container_id_file = params.analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".container_id_file.txt"
 	params.container_id_file = user2containerPath(base_dir, userfs_container_id_file, params.container_mount)
-	write_container_id_file(id_list, userfs_container_id_file)
+	params.container_user_id_file = user2containerPath(base_dir, params.id_file, params.container_mount)
+	DEPLOYMENT_FILES = [id_list: id_list, container_id_file: userfs_container_id_file]
 
 	// Convert user-specified software_file from user file system to container file system
 	assert !binding.hasVariable('params.default_software_file')  // Do not allow override !
@@ -111,6 +114,61 @@ def deployment() {
 // *** Assume the software_file itself is in the user file system ***
 // *** BUT all paths in software_file are in the container file system ***
 // *** EXCEPT for the default value which is interpreted as in the container file system ***
+// The files and folders deployment() would have written, written once the checks have passed
+def deployment_write() {
+	Files.createDirectories(Paths.get(params.analysis_dir))
+	Files.createDirectories(Paths.get(params.workdir))
+	Files.createDirectories(Paths.get(params.logdir))
+	write_container_id_file(DEPLOYMENT_FILES.id_list, DEPLOYMENT_FILES.container_id_file)
+	create_analysis_file()
+}
+
+// A true/false parameter: a Boolean, or the text true or false in any case
+def parse_bool(name, value) {
+	if(value instanceof Boolean) return value
+	def v = value.toString().trim().toLowerCase()
+	if(v == "true") return true
+	if(v == "false") return false
+	throw new Exception("${name} must be true or false, not '${value}'")
+}
+
+// Run preflight.py in the container: parameter, overwrite, reuse and -resume checks (and, with
+// overwrite = true, removal of the outputs of an earlier run). Stops the workflow on any error.
+// With "--finish", "finished" or "failed", records the end of the run in the run manifest.
+def preflight(List extra = []) {
+	def run_steps = (1..7).findAll { !SKIP[it] }.join(",")
+	def result_params = [kmer_type: params.kmer_type, kmer_length: params.kmer_length.toString(),
+		kmer_min_count: params.kmer_min_count.toString(), plot_min_genomes: params.plot_min_genomes.toString(),
+		minor_allele_threshold: params.minor_allele_threshold.toString(), nucmerident: params.nucmerident.toString(),
+		ntopgenes: params.ntopgenes.toString(), blastident: params.blastident.toString(), maxp: params.maxp.toString(),
+		output_prefix: params.output_prefix, run_steps: run_steps]
+	def input_files = [id_file: params.container_user_id_file, covariate_file: params.container_covariate_file,
+		ref_fa: params.container_ref_fa, ref_gb: params.container_ref_gb]
+	def cmd = params.container_cmd.tokenize() + ["${params.container_script_dir}/preflight.py".toString(),
+		"--analysis-dir", params.container_analysis_dir, "--output-prefix", params.output_prefix,
+		"--kmer-type", params.kmer_type, "--kmer-length", params.kmer_length.toString(),
+		"--session-id", workflow.sessionId.toString(), "--run-steps", run_steps,
+		"--overwrite", OVERWRITE.toString(), "--resume", workflow.resume.toString(),
+		"--pid", ProcessHandle.current().pid().toString(), "--user-params", USER_KEYS.join(","),
+		"--params-json", JsonOutput.toJson(result_params), "--input-files", JsonOutput.toJson(input_files),
+		"--id-file", params.container_user_id_file] + extra
+	def proc = cmd.execute()
+	def sout = new StringBuilder(), serr = new StringBuilder()
+	proc.waitForProcessOutput(sout, serr)
+	if(serr.toString().trim()) println serr.toString().trim()
+	if(proc.exitValue() != 0) throw new Exception("preflight.py failed (exit status ${proc.exitValue()})")
+	def result = new JsonSlurper().parseText(sout.toString().trim().readLines().last())
+	result.warnings.each { println "Warning: ${it}" }
+	if(result.deleted) {
+		println "Deleted ${result.deleted.size()} files of an earlier run (overwrite = true), for example:"
+		result.deleted.take(20).each { println "  ${it}" }
+	}
+	if(result.errors) {
+		result.errors.each { println "Error: ${it}" }
+		throw new Exception("stopped before running anything: see the errors above")
+	}
+}
+
 def read_container_script_dir() {
 	// By default the software file is stored within the container - next line avoids reading it from outside the container
 	if(params.software_file.toString().toLowerCase()==params.default_software_file) return params.default_script_dir
@@ -204,7 +262,7 @@ output:
 	val true, emit: done
 	val sampid
 shell:
-if(!params.skip1)
+if(!SKIP[1])
 	'''
 	echo "Step 1: Counting kmers"
 	echo "sampid: !{sampid}"
@@ -244,7 +302,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip1 | !params.skip2)
+if(!SKIP[1] | !SKIP[2])
 	'''
 	echo "Fchk 1: Counting kmers"
 	echo "max_sampid: !{max_sampid}"
@@ -283,7 +341,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip1 | !params.skip2)
+if(!SKIP[1] | !SKIP[2])
 	'''
 	echo "Fchk 1: Counting kmers (proteins)"
 	echo "max_sampid: !{max_sampid}"
@@ -310,7 +368,7 @@ output:
 	val true, emit: done
 	val taskid
 shell:
-if(!params.skip2)
+if(!SKIP[2])
 	'''
 	echo "Step 2: Creating unique kmer list"
 	echo "taskid: !{taskid}"
@@ -346,7 +404,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip2 | !params.skip3)
+if(!SKIP[2] | !SKIP[3])
 	'''
 	echo "Fchk 2: Creating unique kmer list"
 	echo "kmermerge: !{kmermerge}"
@@ -369,7 +427,7 @@ output:
 	val true, emit: done
 	val taskid
 shell:
-if(!params.skip3)
+if(!SKIP[3])
 	'''
 	echo "Step 3: Creating kmer presence/absence patterns and kinship matrix"
 	ln -sfr $(pwd) !{params.workdir}/stringlist2patternandkinship.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/stringlist2patternandkinship.!{taskid}
@@ -415,7 +473,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip3 | !params.skip4)
+if(!SKIP[3] | !SKIP[4])
 	'''
 	echo "Fchk 3: Creating kmer presence/absence patterns and kinship matrix"
 	echo "patternKey: !{patternKey}"
@@ -445,7 +503,7 @@ output:
 	val true, emit: done
 	val taskid
 shell:
-if(!params.skip4 && params.container_covariate_file=="")
+if(!SKIP[4] && params.container_covariate_file=="")
 	'''
 	echo "Step 4: Running GEMMA"
 	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/rungemma.!{taskid}
@@ -462,7 +520,7 @@ if(!params.skip4 && params.container_covariate_file=="")
 		--software-file !{params.container_software_file}
 	rm -f !{params.logdir}/rungemma.!{taskid}.log && cp $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	'''
-else if(!params.skip4 && params.container_covariate_file!="")
+else if(!SKIP[4] && params.container_covariate_file!="")
 	'''
 	echo "Step 4: Running GEMMA"
 	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/rungemma.!{taskid}
@@ -543,7 +601,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip4 | !params.skip5)
+if(!SKIP[4] | !SKIP[5])
 	'''
 	echo "Fchk 4: Running GEMMA"
 	echo "assoc: !{assoc}"
@@ -568,7 +626,7 @@ output:
 	val true, emit: done
 	val taskid
 shell:
-if(!params.skip5)
+if(!SKIP[5])
 	'''
 	echo "Step 5: Running contig alignment"
 	ln -sfr $(pwd) !{params.workdir}/kmercontigalign.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/kmercontigalign.!{taskid}
@@ -603,7 +661,7 @@ output:
 	val true, emit: done
 	val taskid
 shell:
-if(!params.skip5)
+if(!SKIP[5])
 	'''
 	echo "Step 5A: Merging contig alignments"
 	ln -sfr $(pwd) !{params.workdir}/kmercontigalignmerge.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/kmercontigalignmerge.!{taskid}
@@ -645,7 +703,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip5 | !params.skip6)
+if(!SKIP[5] | !SKIP[6])
 	'''
 	echo "Fchk 5: Running contig alignment"
 	echo "geneIdNameLookup: !{geneIdNameLookup}"
@@ -668,7 +726,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip6)
+if(!SKIP[6])
 	'''
 	echo "Step 6: Plotting figures using contig alignment positions"
 	ln -sfr $(pwd) !{params.workdir}/plotManhattan 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotManhattan
@@ -708,7 +766,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip6)
+if(!SKIP[6])
 	'''
 	echo "Step 6, figures: Drawing figures in R"
 	ln -sfr $(pwd) !{params.workdir}/plotFigures 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotFigures
@@ -808,7 +866,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip7)
+if(!SKIP[7])
 	'''
 	echo "Step 7: Generating HTML report"
 	ln -sfr $(pwd) !{params.workdir}/genReport 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genReport
@@ -842,7 +900,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip7)
+if(!SKIP[7])
 	'''
 	echo "Step 7B: Generating HTML gene report"
 	ln -sfr $(pwd) !{params.workdir}/genGeneReport.!{hitnum} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genGeneReport.!{hitnum}
@@ -876,7 +934,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip7)
+if(!SKIP[7])
 	'''
 	echo "Step 7B: Generating HTML protein report"
 	ln -sfr $(pwd) !{params.workdir}/genProteinReport.!{hitnum} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genProteinReport.!{hitnum}
@@ -909,7 +967,7 @@ input:
 output:
 	val true, emit: done
 shell:
-if(!params.skip7)
+if(!SKIP[7])
 	'''
 	echo "Step 7C: Generating HTML unmapped report"
 	ln -sfr $(pwd) !{params.workdir}/genUnmappedReport 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genUnmappedReport
@@ -1007,27 +1065,19 @@ println 'software_file:           ' + params.software_file
 println ''
 // Workflow parameters
 println 'Workflow parameters'
-params.skip1 = false
-println 'skip1:                   ' + params.skip1
-params.skip2 = false
-println 'skip2:                   ' + params.skip2
-params.skip3 = false
-println 'skip3:                   ' + params.skip3
-params.skip4 = false
-println 'skip4:                   ' + params.skip4
-params.skip5 = false
-println 'skip5:                   ' + params.skip5
-params.skip6 = false
-println 'skip6:                   ' + params.skip6
-params.skip7 = false
-println 'skip7:                   ' + params.skip7
+// skip1-7 and overwrite, as Booleans used everywhere below (Nextflow keeps a user's value as given,
+// so a quoted "false" stays text: each is converted once here)
+SKIP = [:]
+(1..7).each { k -> SKIP[k] = parse_bool("skip${k}", params.containsKey("skip${k}".toString()) ? params["skip${k}".toString()] : false) }
+(1..7).each { k -> println "skip${k}:                   " + SKIP[k] }
+OVERWRITE = parse_bool("overwrite", params.containsKey('overwrite') ? params.overwrite : false)
+println 'overwrite:               ' + OVERWRITE
 println ''
 // Implied parameters constructed from explicit parameters. Can be overridden by specifying them in nextflow.config
 println 'Implied parameters'
 params.container_script_dir = read_container_script_dir()
 println 'container_script_dir:    ' + params.container_script_dir
 params.analysis_file = params.analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".analysis_file.txt"
-create_analysis_file()
 println 'analysis_file:           ' + params.analysis_file
 params.container_analysis_file = params.container_analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".analysis_file.txt"
 println 'container_analysis_file: ' + params.container_analysis_file
@@ -1049,6 +1099,11 @@ println 'container_ref_fa:        ' + params.container_ref_fa
 println 'container_ref_gb:        ' + params.container_ref_gb
 println 'container_logdir:        ' + params.container_logdir
 println 'workdir:                 ' + params.workdir
+println ''
+// Checks before anything is written; then the workflow's own files
+preflight()
+deployment_write()
+println ''
 assert !binding.hasVariable('params.n')  // Do not allow override !
 params.n = get_n()
 println 'n:                       ' + params.n
@@ -1056,6 +1111,15 @@ params.p = (int)Math.max(1, Math.min(Math.ceil(params.n/2), params.maxp))
 println 'p:                       ' + params.p
 params.p5 = (int)Math.max(1, Math.min(Math.ceil(params.n/5), params.maxp))
 println 'p5:                      ' + params.p5
+
+// Record in the run manifest whether the run finished
+workflow.onComplete {
+	try {
+		preflight(["--finish", workflow.success ? "finished" : "failed"])
+	} catch(Exception e) {
+		println "Warning: could not record the end of the run in the run manifest: ${e.message}"
+	}
+}
 
 workflow {
 	if(params.kmer_type.toString().toLowerCase()=="nucleotide") {
