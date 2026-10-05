@@ -123,6 +123,33 @@ def deployment_write() {
 	create_analysis_file()
 }
 
+// D5: every assembly in id_file exists, can be read, and starts as a FASTA file (gzipped or not).
+// Checked here, on the user's file system, where the paths in id_file are.
+def check_assemblies(id_list) {
+	def problems = []
+	id_list['paths'].eachWithIndex { path, k ->
+		def f = new File(path)
+		if(!f.exists()) problems << "${id_list['id'][k]}: ${path} does not exist"
+		else if(!f.canRead()) problems << "${id_list['id'][k]}: ${path} cannot be read"
+		else if(f.length() == 0) problems << "${id_list['id'][k]}: ${path} is empty"
+		else {
+			try {
+				def stream = f.newInputStream()
+				if(path.endsWith(".gz")) stream = new java.util.zip.GZIPInputStream(stream)
+				def first = -1
+				try {
+					while((first = stream.read()) != -1 && Character.isWhitespace(first as char)) {}
+				} finally { stream.close() }
+				if(first != ('>' as char) as int) problems << "${id_list['id'][k]}: ${path} is not a FASTA file (it should start with >)"
+			} catch(Exception e) {
+				problems << "${id_list['id'][k]}: ${path} cannot be read (${e.message})"
+			}
+		}
+	}
+	if(problems.size() > 20) problems = problems.take(20) + ["and ${problems.size() - 20} more assembly problems"]
+	return problems.collect { "assembly ${it}".toString() }
+}
+
 // A true/false parameter: a Boolean, or the text true or false in any case
 def parse_bool(name, value) {
 	if(value instanceof Boolean) return value
@@ -136,6 +163,13 @@ def parse_bool(name, value) {
 // overwrite = true, removal of the outputs of an earlier run). Stops the workflow on any error.
 // With "--finish", "finished" or "failed", records the end of the run in the run manifest.
 def preflight(List extra = []) {
+	if(!extra) {  // assemblies first: preflight.py may delete files (overwrite = true)
+		def problems = check_assemblies(DEPLOYMENT_FILES.id_list)
+		if(problems) {
+			problems.each { println "Error: ${it}" }
+			throw new Exception("stopped before running anything: see the errors above")
+		}
+	}
 	def run_steps = (1..7).findAll { !SKIP[it] }.join(",")
 	def result_params = [kmer_type: params.kmer_type, kmer_length: params.kmer_length.toString(),
 		kmer_min_count: params.kmer_min_count.toString(), plot_min_genomes: params.plot_min_genomes.toString(),
@@ -151,7 +185,7 @@ def preflight(List extra = []) {
 		"--overwrite", OVERWRITE.toString(), "--resume", workflow.resume.toString(),
 		"--pid", ProcessHandle.current().pid().toString(), "--user-params", USER_KEYS.join(","),
 		"--params-json", JsonOutput.toJson(result_params), "--input-files", JsonOutput.toJson(input_files),
-		"--id-file", params.container_user_id_file] + extra
+		"--id-file", params.container_user_id_file, "--covariate-file", params.container_covariate_file] + extra
 	def proc = cmd.execute()
 	def sout = new StringBuilder(), serr = new StringBuilder()
 	proc.waitForProcessOutput(sout, serr)

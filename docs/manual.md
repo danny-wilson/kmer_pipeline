@@ -1044,6 +1044,12 @@ Tips:
   logs are stored alongside the analysis output.
 - Keep `nextflow.config` in the base_dir for future reference. Avoid overriding parameters on the
   command line for the same reason.
+- **Checks before running**: the inputs are checked before anything runs, and every problem is
+  listed at once: the `id_file` header and IDs (unique, and still distinct when read as numbers),
+  that each assembly exists and is a FASTA file, and, when step 4, 6 or 7 runs, the phenotypes
+  (numbers, `TRUE`/`FALSE`, or `NA`) and covariates, and that the model can be fitted to the
+  genomes with a phenotype. Steps 1-3 and 5 do not use the phenotype, so they can be run with
+  every phenotype `NA`.
 - **Rerunning an analysis**: before anything runs, the pipeline checks `analysis_dir`. If a
   step that is about to run finds its own outputs from an earlier run there, it stops and lists
   them, so results are never overwritten or mixed by accident. Set `overwrite = true` to delete

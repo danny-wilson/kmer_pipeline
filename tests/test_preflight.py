@@ -39,17 +39,17 @@ def make_run(analysis, steps=range(1, 8), genomes=GENOMES):
 
 def id_file(tmp_path, genomes=GENOMES):
     path = tmp_path / "id_file.txt"
-    path.write_text("id\tpaths\tpheno\n" + "".join(f"{g}\t/dev/null\t1\n" for g in genomes))
+    path.write_text("id\tpaths\tpheno\n" + "".join(f"{g}\t/dev/null\t{k + 1}\n" for k, g in enumerate(genomes)))
     return str(path)
 
 
 def preflight(tmp_path, analysis, run_steps=range(1, 8), overwrite=False, resume=False, session="s1",
-              user_params=(), params=None, inputs=None, ids=None, finish=None):
+              user_params=(), params=None, inputs=None, ids=None, finish=None, covs=""):
     args = ["--analysis-dir", str(analysis), "--output-prefix", PREFIX, "--kmer-type", TYPE, "--kmer-length", str(K),
             "--session-id", session, "--run-steps", ",".join(map(str, run_steps)),
             "--overwrite", str(overwrite).lower(), "--resume", str(resume).lower(), "--pid", "999999999",
             "--user-params", ",".join(user_params), "--params-json", json.dumps(params or {"kmer_min_count": 1}),
-            "--input-files", json.dumps(inputs or {}), "--id-file", ids or id_file(tmp_path)]
+            "--input-files", json.dumps(inputs or {}), "--id-file", ids or id_file(tmp_path), "--covariate-file", covs]
     if finish:
         args += ["--finish", finish]
     result = run_script("preflight.py", *args)
@@ -206,3 +206,79 @@ def test_inventory_downstream():
     assert inventory.downstream([4]) == {6, 7}
     assert inventory.downstream([2]) == {3, 4, 5, 6, 7}
     assert inventory.downstream([5]) == {6, 7}
+
+
+def raw_id_file(tmp_path, rows, header="id\tpaths\tpheno"):
+    path = tmp_path / "ids_raw.txt"
+    path.write_text(header + "\n" + "".join("\t".join(r) + "\n" for r in rows))
+    return str(path)
+
+
+def genomes(phenos, ids=None):
+    ids = ids or [f"G{k}" for k in range(len(phenos))]
+    return [[i, "/dev/null", p] for i, p in zip(ids, phenos)]
+
+
+CONT = ["1.2", "-0.5", "3", "2.2", "0.1", "NA", "4", "1"]
+
+
+def check(tmp_path, rows, run_steps=range(1, 8), header="id\tpaths\tpheno", covs=""):
+    out = preflight(tmp_path, tmp_path / "a", run_steps=run_steps, ids=raw_id_file(tmp_path, rows, header), covs=covs)
+    return out["errors"], out["warnings"]
+
+
+def test_valid_inputs(tmp_path):
+    assert check(tmp_path, genomes(CONT)) == ([], [])
+    tf = ["TRUE", "FALSE"] * 12  # read as 1/0, as the scripts do
+    assert check(tmp_path, genomes(tf))[0] == []
+
+
+def test_id_file_header(tmp_path):
+    errors, _ = check(tmp_path, genomes(CONT), header="ID\tpaths\tpheno")
+    assert "lower case" in errors[0]
+
+
+def test_ids(tmp_path):
+    errors, _ = check(tmp_path, genomes(CONT, ["a", "b", "a", "c/d", "e", "f", "g", "h"]))
+    assert any("duplicate IDs" in e for e in errors) and any("cannot contain /" in e for e in errors)
+    errors, _ = check(tmp_path, genomes(CONT, ["1.1", "1.10", "3", "4", "5", "6", "7", "8"]))
+    assert any("makes them equal" in e for e in errors)
+    errors, warnings = check(tmp_path, genomes(CONT, ["007", "8", "9", "10", "11", "12", "13", "14"]))
+    assert errors == [] and any("007 -> 7" in w for w in warnings)
+
+
+def test_phenotypes(tmp_path):
+    errors, _ = check(tmp_path, genomes(["1", "R", "1,5", "2", "3", "4", "NA", ""]))
+    assert any("'R'" in e and "'1,5'" in e for e in errors)
+    errors, _ = check(tmp_path, genomes(["1", "Inf", "2", "3", "4", "5"]))
+    assert any("infinite" in e for e in errors)
+    _, warnings = check(tmp_path, genomes(["1", "-9", "2", "3", "4", "5"]))
+    assert any("-9" in w for w in warnings)
+    errors, _ = check(tmp_path, genomes(["2"] * 6 + ["NA"]))
+    assert any("same phenotype" in e for e in errors)
+
+
+def test_phenotypes_not_checked_for_steps_1_to_3(tmp_path):
+    """Steps 1-3 (and 5) do not use the phenotype: all NA is fine (precomputing)."""
+    assert check(tmp_path, genomes(["NA"] * 8), run_steps=[1, 2, 3, 5])[0] == []
+    assert check(tmp_path, genomes(["NA"] * 8), run_steps=[1, 2, 3, 4])[0] != []
+
+
+def test_small_binary_group(tmp_path):
+    _, warnings = check(tmp_path, genomes(["1"] * 3 + ["0"] * 20))
+    assert any("only 3 genomes in the smaller group" in w for w in warnings)
+
+
+def test_covariates(tmp_path):
+    def cov(rows):
+        path = tmp_path / "cov.txt"
+        path.write_text("".join("\t".join(r) + "\n" for r in rows))
+        return str(path)
+    rows = genomes(CONT)
+    assert check(tmp_path, rows, covs=cov([["1", str(k * 0.3 % 1)] for k in range(8)]))[0] == []
+    errors, _ = check(tmp_path, rows, covs=cov([["1", "0.5"]] * 7))
+    assert "7 rows but id_file has 8" in errors[0]
+    errors, _ = check(tmp_path, rows, covs=cov([["2", str(k)] for k in range(8)]))
+    assert "first column" in errors[0]
+    errors, _ = check(tmp_path, rows, covs=cov([["1", "0.5"]] * 8))
+    assert any("linearly dependent" in e for e in errors)

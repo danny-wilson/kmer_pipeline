@@ -20,6 +20,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import math
 import os
 import re
 import socket
@@ -111,6 +112,92 @@ def genomes_of_id_file(id_file):
     return [rcompat.r_as_character(i) for i in table["id"]]
 
 
+def validate_inputs(id_file, covariate_file, run_steps, errors, warnings):
+    """D5: the inputs the scripts will read, checked as they read them. Phenotypes and covariates
+    are checked only if a step that uses them (4, 6 or 7) runs: steps 1-3 and 5 do not."""
+    try:
+        with open(id_file, encoding="utf-8", errors="replace") as fh:
+            raw = [line.rstrip("\n").rstrip("\r").split("\t") for line in fh if line.strip()]
+    except OSError as e:
+        errors.append(f"id_file cannot be read: {e}")
+        return
+    if not raw or raw[0] != ["id", "paths", "pheno"]:
+        found = "\t".join(raw[0]) if raw else "nothing"
+        errors.append(f"id_file must start with the header line id<tab>paths<tab>pheno (lower case), not {found!r}")
+        return
+    rows = raw[1:]
+    bad = [k + 2 for k, r in enumerate(rows) if len(r) != 3]
+    if bad:
+        errors.append(f"id_file lines with other than 3 tab-separated columns: {summarise([str(b) for b in bad])}")
+        return
+    raw_ids = [r[0] for r in rows]
+    empty = [k + 2 for k, i in enumerate(raw_ids) if not i.strip()]
+    if empty:
+        errors.append(f"id_file has empty IDs on lines {summarise([str(e) for e in empty])}")
+    seps = [i for i in raw_ids if "/" in i or "\\" in i]
+    if seps:
+        errors.append("IDs name files, so they cannot contain / or \\: " + summarise(seps))
+    dup = sorted({i for i in raw_ids if raw_ids.count(i) > 1})
+    if dup:
+        errors.append("duplicate IDs in id_file: " + summarise(dup))
+    try:
+        ids = genomes_of_id_file(id_file)
+    except Exception as e:  # what the scripts would fail on
+        errors.append(f"id_file cannot be read as the scripts read it: {e}")
+        return
+    if not dup:
+        changed = [(r, c) for r, c in zip(raw_ids, ids) if r != c]
+        conv_dup = sorted({c for c in ids if ids.count(c) > 1})
+        if conv_dup:
+            errors.append("the scripts read these IDs as numbers, which makes them equal: "
+                          + summarise([f"{r} -> {c}" for r, c in changed if c in conv_dup])
+                          + "; make the IDs distinct as text, e.g. with a letter")
+        elif changed:
+            warnings.append("the scripts read the IDs as numbers, so some are written differently in file names: "
+                            + summarise([f"{r} -> {c}" for r, c in changed]))
+    if not any(s in run_steps for s in (4, 6, 7)):
+        return
+    table = rcompat.r_read_table(id_file, header=True, sep="\t")
+    pheno = [rcompat.r_as_numeric_value(v) for v in table["pheno"]]
+    text = [r[2].strip() for r in rows]
+    not_numbers = [f"line {k + 2}: {t!r}" for k, (t, v) in enumerate(zip(text, pheno))
+                   if v is None and t not in ("NA", "")]
+    if not_numbers:
+        errors.append("phenotypes must be numbers, TRUE/FALSE, or NA for a missing value: "
+                      + summarise(not_numbers))
+    infinite = [f"line {k + 2}" for k, v in enumerate(pheno)
+                if isinstance(v, float) and math.isinf(v)]
+    if infinite:
+        errors.append("infinite phenotypes: " + summarise(infinite))
+    if any(t == "-9" for t in text):
+        warnings.append("some phenotypes are -9: GEMMA analyses -9 as a value; use NA for a missing phenotype")
+    import prepare_gemma
+    covariates = []
+    if covariate_file:
+        try:
+            covariates = prepare_gemma.read_covariates(covariate_file)
+        except Exception as e:
+            errors.append(f"covariate file cannot be read: {e}")
+            return
+        if len(covariates) != len(pheno):
+            errors.append(f"the covariate file has {len(covariates)} rows but id_file has {len(pheno)} genomes")
+            return
+        if any(not row or row[0] != 1 for row in covariates):
+            errors.append("the first column of the covariate file must be 1 on every row (the intercept)")
+    if errors:
+        return
+    analysed = prepare_gemma.analysed_set(pheno, covariates)
+    errors.extend(prepare_gemma.check_analysed(pheno, analysed, covariates))
+    values = sorted({v for v, a in zip(pheno, analysed) if a})
+    if len(values) == 2:
+        n_lo = sum(1 for v, a in zip(pheno, analysed) if a and v == values[0])
+        n_hi = sum(1 for v, a in zip(pheno, analysed) if a and v == values[1])
+        if min(n_lo, n_hi) < 10:
+            warnings.append(f"binary phenotype with only {min(n_lo, n_hi)} genomes in the smaller group "
+                            f"({n_hi} with {values[1]:g}, {n_lo} with {values[0]:g}): the LMM's p-values are "
+                            "poorly calibrated for so few")
+
+
 def live_run(manifest):
     """A description of the run the manifest records as still running, or None."""
     if not manifest or manifest.get("status") != "running":
@@ -160,6 +247,8 @@ def check(args):
     manifest = read_manifest(manifest_path)
 
     check_params([p for p in args.user_params.split(",") if p], errors, warnings)
+    if args.id_file:
+        validate_inputs(args.id_file, args.covariate_file or None, run_steps, errors, warnings)
     resume = args.resume == "true"
     overwrite = args.overwrite == "true"
 
@@ -290,6 +379,7 @@ def main():
     parser.add_argument("--params-json", default="{}", help="result-affecting parameters (JSON)")
     parser.add_argument("--input-files", default="{}", help="input files to checksum (JSON name: path)")
     parser.add_argument("--id-file", default="")
+    parser.add_argument("--covariate-file", default="")
     parser.add_argument("--finish", default=None, help="record the end of the run: finished or failed")
     args = parser.parse_args()
     result = finish(args) if args.finish else check(args)
