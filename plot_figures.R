@@ -196,7 +196,7 @@ plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = N
 		ends = c(records$start[-1] - 1, ref_length)
 		len = ends - records$start + 1
 		show = if(nrow(records) <= 20) rep(TRUE, nrow(records)) else len >= sort(len, decreasing = TRUE)[20]
-		mtext(records$name[show], side = 3, line = 0.1, at = ((records$start + ends) / 2)[show], cex = 0.5)
+		mtext(records$name[show], side = 1, line = 1.6, at = ((records$start + ends) / 2)[show], cex = 0.6, font = 3, col = "grey40")
 	}
 	abline(h = bonferroni, col = "black", lty = 2)
 	par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)

@@ -405,11 +405,11 @@ def remove(*paths):
 
 
 def gzip_file(path):
-    """gzip path: path.gz replaces path; an existing path.gz is an error, as with gzip."""
+    """gzip -f path: path.gz replaces path, and an existing path.gz is replaced. (gzip refused to
+    overwrite it, so a task Nextflow reran under -resume stopped at its own earlier output; the
+    protection against mixing runs is preflight's overwrite check.)"""
     import gzip
     import shutil
-    if os.path.exists(path + ".gz"):
-        raise RuntimeError(f"command exited with status 2: gzip {path} ({path}.gz already exists)")
     with open(path, "rb") as src, gzip.open(path + ".gz.tmp", "wb") as dst:
         shutil.copyfileobj(src, dst, 1 << 20)
     os.replace(path + ".gz.tmp", path + ".gz")

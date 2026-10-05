@@ -25,9 +25,9 @@ def test_gzip_file(tmp_path):
     f.write_text("x\ny\n")
     rcompat.gzip_file(str(f))
     assert not f.exists() and gzip.open(str(f) + ".gz", "rt").read() == "x\ny\n"
-    f.write_text("again\n")
-    with pytest.raises(RuntimeError, match="already exists"):  # as gzip
-        rcompat.gzip_file(str(f))
+    f.write_text("again\n")  # a rerun task (-resume) replaces its own earlier output
+    rcompat.gzip_file(str(f))
+    assert not f.exists() and gzip.open(str(f) + ".gz", "rt").read() == "again\n"
 
 
 def test_counts(tmp_path):
