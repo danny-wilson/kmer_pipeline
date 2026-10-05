@@ -250,6 +250,8 @@ def test_ids(tmp_path):
 def test_phenotypes(tmp_path):
     errors, _ = check(tmp_path, genomes(["1", "R", "1,5", "2", "3", "4", "NA", ""]))
     assert any("'R'" in e and "'1,5'" in e for e in errors)
+    errors, warnings = check(tmp_path, genomes(["1", "NaN", "2", "3", "4", "5"]))  # worked before: missing
+    assert errors == [] and any("NaN" in w for w in warnings)
     errors, _ = check(tmp_path, genomes(["1", "Inf", "2", "3", "4", "5"]))
     assert any("infinite" in e for e in errors)
     _, warnings = check(tmp_path, genomes(["1", "-9", "2", "3", "4", "5"]))

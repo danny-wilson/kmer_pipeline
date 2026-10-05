@@ -191,7 +191,10 @@ def validate_inputs(id_file, covariate_file, run_steps, errors, warnings, pheno_
         pheno = [rcompat.r_as_numeric_value(v) for v in table["pheno"]]
         text = [r[2].strip() for r in rows]
         where = {i: f"line {k + 2}" for k, i in enumerate(raw_ids)}
-    not_numbers = [f"{where[i]}: {t!r}" for i, t, v in zip(raw_ids, text, pheno) if v is None and t not in ("NA", "")]
+    not_numbers = [f"{where[i]}: {t!r}" for i, t, v in zip(raw_ids, text, pheno) if v is None and t not in ("NA", "")
+                   and t.lower() != "nan"]
+    if any(t.lower() == "nan" for t in text):  # worked before, as a missing value
+        warnings.append("some phenotypes are NaN: they are treated as missing, like NA")
     if not_numbers:
         errors.append("phenotypes must be numbers, TRUE/FALSE, or NA for a missing value: "
                       + summarise(not_numbers))
