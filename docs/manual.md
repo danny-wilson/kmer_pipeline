@@ -1981,4 +1981,6 @@ The Python modules are imported by the scripts (`rcompat.py` reproduces R's beha
 outputs depend on it). `plot_figures.R` draws the figures, run by `Rscript_launcher.R`, which
 reports the file and line of any error. `nucleotidekmermerge.py`, `proteinkmermerge.py` and
 `pattern2presencecount.py` are called by other scripts rather than by `kmer_pipeline.nf`
-directly; `kmercontigalign.py` (step 5 with the merge of step 5A) is not called by the pipeline.
+directly; `kmercontigalign.py` (step 5 with the merge of step 5A) is not called by the pipeline. The R
+versions of the workflow scripts, which these Python scripts replaced, are in the release tagged
+`2026-10-04` and its image.

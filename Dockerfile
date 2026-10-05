@@ -27,11 +27,12 @@ RUN pip install --no-cache-dir --no-deps \
 
 # Replace the pipeline installed in the base image
 COPY . /usr/share/kmer_pipeline.new
+# (the base image's R workflow scripts are removed: only the two R files below remain)
 RUN cd /usr/local/bin \
-	&& rm *.R *.Rscript kmer_pipeline.nf report.js report.css \
+	&& rm -f *.R *.Rscript kmer_pipeline.nf report.js report.css \
 	&& cd /usr/share/kmer_pipeline.new \
-	&& install *.R *.Rscript python/*.py kmer_pipeline.nf report.js report.css /usr/local/bin \
-	&& rm -r *.R *.Rscript python kmer_pipeline.nf report.js report.css \
+	&& install plot_figures.R Rscript_launcher.R python/*.py kmer_pipeline.nf report.js report.css /usr/local/bin \
+	&& rm -r plot_figures.R Rscript_launcher.R python kmer_pipeline.nf report.js report.css \
 	&& rm -r /usr/share/kmer_pipeline \
 	&& mv /usr/share/kmer_pipeline.new /usr/share/kmer_pipeline \
 	&& chmod -R a+rX,go-w /usr/share/kmer_pipeline
