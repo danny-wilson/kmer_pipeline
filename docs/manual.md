@@ -1194,6 +1194,8 @@ Parameters with default values do not need to be specified in `nextflow.config`.
 | `ref_fa` | File path on the user file system for the reference fasta file. |
 | `ref_gb` | File path on the user file system for the reference genbank file. |
 
+The reference may have several records, for example a chromosome and plasmids, or the contigs of a draft assembly. The FASTA and GenBank files must then have the same records in the same order, with the same lengths (a record named differently in the two files only gives a warning). The records are laid end to end in that order, so positions in the outputs run through the first record, then the second, and so on, and the genome-wide Manhattan plots mark where each record starts. Intergenic regions stay within a record; the region after a record's last gene runs round to the base before its first gene, as for a single circular chromosome. A gene name found in more than one record is given as `name@record`. The reference is named after its first record in file names. The main report gives each region's record. (The bowtie2 branch supports only one record.)
+
 | Deployment | |
 |---|---|
 | `maxp` | Maximum parallelization. The value should reflect the constraints imposed by the compute environment. |
