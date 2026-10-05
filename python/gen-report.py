@@ -168,14 +168,14 @@ def main():
         n_nan = int(float(summary["n_patterns_nan"]))
         groups = ""
         if summary.get("pheno_type") == "binary" and "n_cases" in summary:
-            groups = (" (" + summary["n_cases"] + " with phenotype " + summary["case_value"] + " and "
-                      + summary["n_controls"] + " with phenotype " + summary["control_value"] + ")")
+            groups = (": " + summary["n_cases"] + " with phenotype " + summary["case_value"] + " and "
+                      + summary["n_controls"] + " with phenotype " + summary["control_value"])
         html_body = NL.join([
             html_body,
             "  <h2>Genomes and patterns analysed</h2>",
             "  <p>Of the " + summary["n_genomes"] + " genomes, " + summary["n_genomes_analysed"] + " were analysed"
-            + groups + " (genomes are analysed if they have a phenotype and, when covariates are used, a value for"
-            + " every covariate).",
+            + groups + ". Genomes are analysed if they have a phenotype and, when covariates are used, a value for"
+            + " every covariate.",
             "  GEMMA tested " + str(total_npatterns - n_untested - n_nan) + " of the " + str(total_npatterns)
             + " phylopatterns; " + str(n_untested) + " were not tested because they do not vary among the analysed"
             + " genomes" + (", and " + str(n_nan) + " could not be fitted (no result)" if n_nan else "") + ".</p>",
