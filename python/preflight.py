@@ -321,10 +321,9 @@ def check(args):
                           f"{args.session_id}), but {args.analysis_dir} holds the outputs of another run "
                           f"(session {manifest.get('session')})")
         else:
-            changed = sorted(k for k in set(params) | set(manifest.get("params", {}))
-                             if params.get(k) != manifest.get("params", {}).get(k))
-            changed += sorted(k for k in set(inputs) | set(manifest.get("inputs", {}))
-                              if inputs.get(k) != manifest.get("inputs", {}).get(k))
+            old_params, old_inputs = manifest.get("params", {}), manifest.get("inputs", {})
+            changed = [k for k in sorted({**old_params, **params}) if params.get(k) != old_params.get(k)]
+            changed += [k for k in sorted({**old_inputs, **inputs}) if inputs.get(k) != old_inputs.get(k)]
             if changed:
                 errors.append("-resume only continues an interrupted run with the same inputs; changed since "
                               "that run: " + ", ".join(changed) + ". Run without -resume (with overwrite = true "
