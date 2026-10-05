@@ -93,7 +93,8 @@ def main():
         gemma_libraries_path = [pth for nm, pth in zip(names, paths) if nm.lower() == "gemma_libraries"][0]
         if not os.path.isdir(gemma_libraries_path):
             r_stop("Error: directory for GEMMA libraries does not exist", "\n")
-        gemmapath = "export LD_LIBRARY_PATH=LD_LIBRARY_PATH:" + gemma_libraries_path + "; " + gemmapath
+        # N3: keep the existing library path (R's original dropped the $)
+        gemmapath = "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + gemma_libraries_path + "; " + gemmapath
 
     # Report variables
     r_cat("#############################################", "\n")
