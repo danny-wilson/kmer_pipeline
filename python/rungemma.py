@@ -11,6 +11,14 @@ import rcompat
 from rcompat import r_cat, r_paste0, r_stop
 
 
+def gemma_phenotype_text(v):
+    """A phenotype as written to GEMMA's phenotype file (D3): finite values at full precision,
+    anything else (missing, NaN, infinite) as NA. R wrote 7 significant digits."""
+    if v is None or not math.isfinite(v):
+        return "NA"
+    return "%.17g" % v
+
+
 def main():
     rcompat.script_setup(__file__)
     start_time = time.monotonic()
@@ -141,8 +149,7 @@ def main():
     pheno = [rcompat.r_as_numeric_value(v) for v in id_table["pheno"]]
     phenofile = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, "_gemma_formatted_phenotype_process", t, ".txt")
     r_cat("Writing phenotype to gemma formatted file:", phenofile, "\n")
-    # cat(pheno, sep = "\n"): 7 significant digits, NA as "NA"
-    rcompat.r_cat_lines(["NA" if v is None else rcompat.r_str(v, 7) for v in pheno], phenofile)
+    rcompat.r_cat_lines([gemma_phenotype_text(v) for v in pheno], phenofile)
 
     # Compute other variables
     b = math.ceil(n / p)
