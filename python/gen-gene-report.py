@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 import rcompat
+import report_assets
 from rcompat import r_s3 as s3
 
 NL = "\n"
@@ -96,7 +97,7 @@ def run(args, protein):
     HIT_NUM = rcompat.r_as_integer(args.hit_num)
     PREFIX, ANATYPE, K, REFNAME, REF_GB = args.prefix, args.anatype, args.k, args.refname, args.ref_gb
     MAF, ALIGNIDENT, MINCOUNT = args.maf, args.alignident, args.mincount
-    SRC, PWD, LOGDIR = args.srcdir, args.outdir, args.logdir
+    SRC, PWD, LOGDIR = os.path.abspath(args.srcdir), args.outdir, args.logdir
     MACORMAF = "maf" if gr.r_lt(MAF, "1") else "mac"
     FIGDIR = ANATYPE + "kmer" + K + "_kmergenealign_figures/"
 
@@ -123,14 +124,14 @@ def run(args, protein):
         genes_html = ["<i>" + g + "</i>" for g in genes]
 
     html_head = NL.join(["<!DOCTYPE html>", "<html>", "<head>", "  <title>Kmer GWAS report:  " + gene + " </title>",
-                         "  <link rel='stylesheet' href='report.css'>", NL])
+                         report_assets.head_style(SRC), NL])
     html_body = NL.join([
         "</head>", "<body>", "  <h1>Kmer GWAS report: " + gene_html + " </h1>",
         "  <div><p class='timestamp'><code>Prefix: " + PREFIX + "; KmerType: " + ANATYPE + "; K:",
         "  " + K + "; ReferenceGenome: " + REFNAME + "; " + is_maf_text3 + ": " + MAF + "; MinCount:",
         "  " + MINCOUNT + "; AlignIdent: " + ALIGNIDENT + "; ReportTimeStamp:",
         "  " + time.ctime() + ".</code></p></div>", NL])
-    html_foot = NL.join(["<script src='report.js'></script>", "</body>", "</html>", ""])
+    html_foot = NL.join([report_assets.foot_script(SRC), "</body>", "</html>", ""])
 
     gbk = sequence_functions.read_dna_seg_from_file(REF_GB, tagsToParse=("CDS",))
     with rcompat.r_open(REF_GB) as f:
@@ -396,9 +397,9 @@ def earle_slideshow(html_body, files_maf, files_maf0, blast_html, is_maf_text3):
     for i in range(n):
         lines += ['    <div class="mySlides fade">',
                   '      <div class="numbertext">' + str(i + 1) + ' / ' + str(n) + '</div>',
-                  '      <img src="' + files_maf[i] + '" class="center toggled" style="width:80%">',
-                  '      <img src="' + (files_maf0[i] if i < len(files_maf0) else "NA") + '" class="center untoggled" '
-                  'style="width:80%">',
+                  '      ' + report_assets.img(files_maf[i], 'class="center toggled" style="width:80%"'),
+                  '      ' + report_assets.img(files_maf0[i] if i < len(files_maf0) else None,
+                                               'class="center untoggled" style="width:80%"'),
                   blast_html[i],
                   '      <div class="text toggled"></div>',
                   '      <div class="text untoggled"></div>',

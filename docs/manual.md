@@ -1759,7 +1759,7 @@ This script is run as part of the main pipeline but can be run separately.
 
 | Output |
 |---|
-| `report.css`, `report.js` and a file ending `.report.html`, containing the kmer GWAS report summary. |
+| A file ending `.report.html`, containing the kmer GWAS report summary. Each report is a single, self-contained file: its style, script and figures are inside it, so it can be moved, sent or opened on its own, including inside JupyterLab. Without its script (in JupyterLab, until the report is trusted with "Trust HTML") every figure is shown one after another instead of as a slide show; links to the gene reports open them from the same folder. |
 
 Usage:
 

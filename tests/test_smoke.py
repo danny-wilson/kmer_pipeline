@@ -6,7 +6,7 @@ import pytest
 
 from conftest import SCRIPTS_DIR, run_script
 
-MODULES = ["rcompat", "sequence_functions", "alignmentfunctions", "Manhattan_functions", "inventory", "reference"]
+MODULES = ["rcompat", "sequence_functions", "alignmentfunctions", "Manhattan_functions", "inventory", "reference", "report_assets"]
 SCRIPTS = sorted(f for f in os.listdir(SCRIPTS_DIR)
                  if f.endswith(".py") and f[:-3] not in MODULES)
 

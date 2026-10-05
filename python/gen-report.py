@@ -5,11 +5,11 @@ so the report is the same apart from its time stamp."""
 import argparse
 import math
 import os
-import shutil
 import sys
 import time
 
 import rcompat
+import report_assets
 from rcompat import r_s3 as s3
 
 NL = "\n"
@@ -58,7 +58,7 @@ def main():
 
     PREFIX, ANATYPE, K, REFNAME, REF_GB = args.prefix, args.anatype, args.k, args.refname, args.ref_gb
     MAF, ALIGNIDENT, MINCOUNT, NGENES = args.maf, args.alignident, args.mincount, args.ngenes
-    SRC, PWD, LOGDIR = args.srcdir, args.outdir, args.logdir
+    SRC, PWD, LOGDIR = os.path.abspath(args.srcdir), args.outdir, args.logdir
     MACORMAF = "maf" if r_lt(MAF, "1") else "mac"  # R compares the text of MAF with 1
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -72,8 +72,6 @@ def main():
     is_maf_text3 = "MAF" if is_maf else "MAC"
 
     # Copy (overwrite if necessary) the CSS stylesheet and JavaScript code
-    for f in ("report.css", "report.js"):
-        shutil.copyfile(SRC + "/" + f, PWD + "/" + f)
 
     outfile_prefix = PREFIX + "_" + ANATYPE + K + "."
     outfile_html = outfile_prefix + "report.html"
@@ -96,14 +94,14 @@ def main():
     os.chdir(PWD)
 
     html_head = NL.join(["<!DOCTYPE html>", "<html>", "<head>", "  <title>Kmer GWAS report</title>",
-                         "  <link rel='stylesheet' href='report.css'>", NL])
+                         report_assets.head_style(SRC), NL])
     html_body = NL.join([
         "</head>", "<body>", "  <h1>Kmer GWAS report</h1>",
         "  <div><p class='timestamp'><code>Prefix: " + PREFIX + "; KmerType: " + ANATYPE + "; K:",
         "  " + K + "; ReferenceGenome: " + REFNAME + "; " + is_maf_text3 + ": " + MAF + "; MinCount:",
         "  " + MINCOUNT + "; AlignIdent: " + ALIGNIDENT + "; ReportTimeStamp:",
         "  " + time.ctime() + ".</code></p></div>", NL])
-    html_foot = NL.join(["<script src='report.js'></script>", "</body>", "</html>", ""])
+    html_foot = NL.join([report_assets.foot_script(SRC), "</body>", "</html>", ""])
 
     # Genbank file
     gbk = sequence_functions.read_dna_seg_from_file(REF_GB, tagsToParse=("CDS",))
@@ -327,7 +325,7 @@ def slideshow(html_body, filenames, descriptions, img_style, close=True):
     for i, (f, d) in enumerate(zip(filenames, descriptions), start=1):
         lines += ['    <div class="mySlides fade">',
                   '      <div class="numbertext">' + str(i) + ' / ' + str(n) + '</div>',
-                  '      <img src="' + f + '" class="center"' + img_style + '>',
+                  '      ' + report_assets.img(f, 'class="center"' + img_style),
                   '      <div class="text">' + d + '</div>',
                   '    </div>']
     lines += ['    <a class="prev" onclick="plusSlides(-1,this)">&#10094;</a>',

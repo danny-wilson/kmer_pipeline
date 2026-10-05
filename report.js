@@ -45,13 +45,10 @@ function showSlides(n, slideShow) {
 }
 function showToggled() {
 	let toggler = document.getElementById("toggler");
+	if(!toggler) return;  // reports without a toggle
 	let checked = document.getElementsByClassName("toggled");
 	let unchecked = document.getElementsByClassName("untoggled");
-	if(toggler.checked) {
-		for(i=0;i<checked.length;i++) checked[i].style.display = "block";
-		for(i=0;i<unchecked.length;i++) unchecked[i].style.display = "none";
-	} else {
-		for(i=0;i<checked.length;i++) unchecked[i].style.display = "block";
-		for(i=0;i<unchecked.length;i++) checked[i].style.display = "none";
-	}
+	let i;
+	for(i=0;i<checked.length;i++) checked[i].style.display = toggler.checked ? "block" : "none";
+	for(i=0;i<unchecked.length;i++) unchecked[i].style.display = toggler.checked ? "none" : "block";
 }
