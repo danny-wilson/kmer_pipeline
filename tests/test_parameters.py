@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 
 import pytest
 
@@ -16,7 +17,9 @@ def nextflow_runs():
     if NF is None or shutil.which("nextflow") is None:
         return False
     try:
-        return subprocess.run(["nextflow", "-version"], capture_output=True, timeout=120).returncode == 0
+        # run in a temporary folder: the launcher leaves nxf-tmp.* files in its working directory
+        with tempfile.TemporaryDirectory() as d:
+            return subprocess.run(["nextflow", "-version"], cwd=d, capture_output=True, timeout=120).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
