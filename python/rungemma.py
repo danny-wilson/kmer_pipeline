@@ -192,11 +192,12 @@ def main():
         if os.path.lexists(f):
             os.remove(f)
 
-    # Extract LRT p-value from column 10 and compress results
+    # The LRT p-value (column 10) of each tested pattern, labelled by its index (rs, column 2;
+    # N2: GEMMA leaves out patterns that don't vary among the analysed genomes)
     assoc_file = gemma_dir + "output/" + outfile_prefix + ".assoc.txt"
     log_file = gemma_dir + "output/" + outfile_prefix + ".log.txt"
     pval_file = gemma_dir + "output/" + outfile_prefix + ".pval.txt.gz"
-    rcompat.r_system("cut -f10 " + assoc_file + " | tail -n +2 | gzip -c > " + pval_file)
+    rcompat.r_system("cut -f2,10 " + assoc_file + " | gzip -c > " + pval_file)
     rcompat.r_system("gzip " + assoc_file)
     rcompat.r_system("gzip " + log_file)
 
