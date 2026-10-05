@@ -1044,8 +1044,13 @@ Tips:
   logs are stored alongside the analysis output.
 - Keep `nextflow.config` in the base_dir for future reference. Avoid overriding parameters on the
   command line for the same reason.
-- **Run a clean analysis**: remove everything in analysis_dir and the Nextflow work directory
-  before launching.
+- **Rerunning an analysis**: before anything runs, the pipeline checks `analysis_dir`. If a
+  step that is about to run finds its own outputs from an earlier run there, it stops and lists
+  them, so results are never overwritten or mixed by accident. Set `overwrite = true` to delete
+  them (and the outputs of later skipped steps, which would be out of date) and run again; the
+  deleted files are listed in the `log.*` folder. To keep an earlier analysis, use a new
+  `analysis_dir`. An `analysis_dir` holds one analysis per kmer type and length. Unknown
+  parameter names are reported, and misspelt ones stop the run.
 - Test your setup works beforehand by analysing the example data.
 - If a step fails, its log in the `log.*` subdirectory of analysis_dir ends with the error and,
   for the Python scripts, the file and line where it occurred.
@@ -1228,7 +1233,8 @@ Parameters with default values do not need to be specified in `nextflow.config`.
 
 | Workflow parameters | |
 |---|---|
-| `skip1` ... `skip7` | [false] Skip the specified step of the pipeline if true. `skip6` also skips drawing the step 6 figures. |
+| `skip1` ... `skip7` | [false] Skip the specified step of the pipeline if true (`true` or `false`, in any case). `skip6` also skips drawing the step 6 figures. A step cannot be skipped if a step before it runs and a step after it needs its outputs, which would be out of date. |
+| `overwrite` | [false] Whether a run may replace the outputs of an earlier run of the same steps in `analysis_dir` (see Running Nextflow). |
 
 `kmer_pipeline.nf` also outputs to screen a list of implied parameters, constructed automatically
 from the parameters detailed above. While some of these could be overridden for debugging
