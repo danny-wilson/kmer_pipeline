@@ -657,9 +657,13 @@ run_manhattan_single_protein = function(which_kmers_no_result = NULL, res = NULL
 	}
 	beta_col = rep("#d3d3d3", length(beta)); beta_col[which(beta>0)] = "#838383"
 	
-	# Change colour of unaligned to red rather than their beta colour
-	beta_col[(nrow(res)+1):length(beta_col)][which(beta_col[(nrow(res)+1):length(beta_col)]=="#d3d3d3")] = "#ffbc87"
-	beta_col[(nrow(res)+1):length(beta_col)][which(beta_col[(nrow(res)+1):length(beta_col)]=="#838383")] = "#D55E00"
+	# Change colour of unaligned to red rather than their beta colour (D2: only if there are
+	# unaligned k-mers; otherwise (n+1):n would recolour the last aligned k-mer)
+	if(length(beta_col) > nrow(res)){
+		unaligned = (nrow(res)+1):length(beta_col)
+		beta_col[unaligned][which(beta_col[unaligned]=="#d3d3d3")] = "#ffbc87"
+		beta_col[unaligned][which(beta_col[unaligned]=="#838383")] = "#D55E00"
+	}
 	
 	prefix = paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name)
 	
