@@ -58,16 +58,11 @@ def deployment() {
 	// Convert io files from user file system to container file system
 	base_dir = Paths.get(params.base_dir)
 	params.container_analysis_dir = user2containerPath(base_dir, params.analysis_dir, params.container_mount)
-	params.container_pheno_file = ""
-	if(params.pheno_file!="") {
-		if(!Files.exists(Paths.get(params.pheno_file))) throw new Exception("pheno_file ${params.pheno_file} does not exist")
-		params.container_pheno_file = user2containerPath(base_dir, params.pheno_file, params.container_mount)
-	}
-	params.container_precomputed_dir = ""
-	if(params.precomputed_dir!="") {
-		if(!Files.isDirectory(Paths.get(params.precomputed_dir))) throw new Exception("precomputed_dir ${params.precomputed_dir} is not a folder")
-		params.container_precomputed_dir = user2containerPath(base_dir, params.precomputed_dir, params.container_mount)
-	}
+	// Each param is assigned once: Nextflow ignores later assignments to a param
+	if(params.pheno_file!="" && !Files.exists(Paths.get(params.pheno_file))) throw new Exception("pheno_file ${params.pheno_file} does not exist")
+	params.container_pheno_file = params.pheno_file=="" ? "" : user2containerPath(base_dir, params.pheno_file, params.container_mount)
+	if(params.precomputed_dir!="" && !Files.isDirectory(Paths.get(params.precomputed_dir))) throw new Exception("precomputed_dir ${params.precomputed_dir} is not a folder")
+	params.container_precomputed_dir = params.precomputed_dir=="" ? "" : user2containerPath(base_dir, params.precomputed_dir, params.container_mount)
 	if(params.covariate_file=="") {
 		params.container_covariate_file = ""
 	} else {
