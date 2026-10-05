@@ -89,6 +89,13 @@ def get_loglik(LH1, lognull):
     return 2 * (LH1 - rcompat.r_as_numeric(lognull))
 
 
+def r_range_text(values):
+    """min and max as R's cat(min(x), max(x)) prints them: NA NA if any value is NA (None)."""
+    if not values or any(v is None or v != v for v in values):
+        return ["NA", "NA"]
+    return [min(values), max(values)]
+
+
 def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     """The GEMMA results for every pattern, in pattern order: a list of rows
     [rs, beta, se, p_lrt, logl_H1, negLog10] of strings (None for untested
@@ -134,8 +141,10 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     r_cat("Number of untested patterns:", sum(1 for k in range(1, int(nPatterns) + 1) if float(k) not in tested), "\n")
     pv = [rcompat.r_as_numeric(r[3]) for r in assoc]
     nl = [rcompat.r_as_numeric(r[5]) for r in assoc]
-    r_cat("GEMMA range of pvalues:", min(pv), max(pv), "\n")
-    r_cat("GEMMA range of -log10(pvalues):", min(nl), max(nl), "\n")
+    # As R's min() and max(): NA if any value is NA (N10: GEMMA writes -nan for a pattern it
+    # cannot fit, e.g. one collinear with the covariates among the analysed genomes)
+    r_cat("GEMMA range of pvalues:", r_range_text(pv), "\n")
+    r_cat("GEMMA range of -log10(pvalues):", r_range_text(nl), "\n")
 
     # Match gemma results to patterns
     by_rs = {}

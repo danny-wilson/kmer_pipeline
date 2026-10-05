@@ -114,3 +114,20 @@ def test_read_gemma_files_written_by_earlier_releases(tmp_path):
                                                  kmer_length=5, nPatterns=200000)
     assert assoc[99999][0] == "1e+05" and assoc[199999][0] == "2e+05"
     assert all(row is not None for row in assoc)
+
+
+def test_read_gemma_files_with_a_nan_row(tmp_path):
+    """N10: a pattern GEMMA cannot fit gives -nan; it is kept (as NaN), not a crash."""
+    out = tmp_path / "output"
+    out.mkdir()
+    header = "chr\trs\tps\tn_miss\tbeta\tse\tl_remle\tl_mle\tp_wald\tp_lrt\tp_score\tlogl_H1\n"
+    rows = ("-9\t1\t-9\t0\t0.75\t3.6\t279\t585\t0.83\t0.86\t0.87\t-75.05\n"
+            "-9\t2\t-9\t0\t-nan\t-nan\t1e+05\t1e+05\tnan\t-nan\tnan\t-nan\n")
+    (out / "pre_protein5.1-2.assoc.txt.gz").write_bytes(gzip.compress((header + rows).encode()))
+    log = [f"## line {k}" for k in range(20)]
+    log[12], log[16] = "## lambda = 1", "## log-likelihood under the null = -75.0673"
+    (out / "pre_protein5.1-2.log.txt.gz").write_bytes(gzip.compress(("\n".join(log) + "\n").encode()))
+    assoc = Manhattan_functions.read_gemma_files(input_dir=str(out) + "/", prefix="pre", kmer_type="protein",
+                                                 kmer_length=5, nPatterns=2)
+    nl = Manhattan_functions.assoc_column(assoc, 6)
+    assert nl[0] > 0 and nl[1] != nl[1]
