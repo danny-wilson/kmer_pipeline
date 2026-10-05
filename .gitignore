@@ -33,3 +33,5 @@
 
 # PDF manual, built by docs/build_manual_pdf.sh and attached to each GitHub Release
 kmer_pipeline_manual.pdf
+__pycache__/
+.pytest_cache/
