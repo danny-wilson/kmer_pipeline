@@ -16,6 +16,7 @@ Paths are built by string concatenation, as R's paste0 does; os.path.join would
 remove the "//" that R keeps.
 """
 import math
+import os
 import re
 import subprocess
 import sys
@@ -374,6 +375,111 @@ def r_str(v, digits):
             return "NA"  # R's NA_real_; NaN proper is rare in this pipeline
         return r_format_num(v, digits)
     return str(v)
+
+
+# File operations that replace shell commands (D8). They behave as the commands did where the
+# pipeline relied on it (rm and gzip fail on a missing file, gzip refuses to replace a .gz),
+# stream large files, and need no external tools. sort and the zcat | head | tail pipelines that
+# select batches of large files stay external commands (P84).
+
+def file_size_lines(path):
+    """What ls -l path | cut -d ' ' -f5 was used for: [size as text], or [] if path is missing."""
+    try:
+        return [str(os.path.getsize(path))]
+    except OSError:
+        return []
+
+
+def touch(path):
+    with open(path, "a"):
+        os.utime(path, None)
+
+
+def remove(*paths):
+    """rm: every path must exist."""
+    for path in paths:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            raise RuntimeError(f"command exited with status 1: rm {path} (no such file)")
+
+
+def gzip_file(path):
+    """gzip path: path.gz replaces path; an existing path.gz is an error, as with gzip."""
+    import gzip
+    import shutil
+    if os.path.exists(path + ".gz"):
+        raise RuntimeError(f"command exited with status 2: gzip {path} ({path}.gz already exists)")
+    with open(path, "rb") as src, gzip.open(path + ".gz.tmp", "wb") as dst:
+        shutil.copyfileobj(src, dst, 1 << 20)
+    os.replace(path + ".gz.tmp", path + ".gz")
+    os.remove(path)
+
+
+def _open_text(path):
+    import gzip
+    return gzip.open(path, "rt", errors="surrogateescape") if path.endswith(".gz") else \
+        open(path, errors="surrogateescape")
+
+
+def count_lines(path):
+    """wc -l of path, or of its decompressed content for a .gz file (newline characters)."""
+    import gzip
+    opener = gzip.open if path.endswith(".gz") else open
+    n = 0
+    with opener(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            n += block.count(b"\n")
+    return n
+
+
+def count_bytes(path):
+    """wc -c of path's decompressed content (zcat path | wc -c): 0 if path is missing."""
+    import gzip
+    if not os.path.exists(path):
+        return 0
+    n = 0
+    with gzip.open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            n += len(block)
+    return n
+
+
+def cut_fields(path, fields):
+    """cut -f with 1-based fields of a tab-separated (optionally gzipped) file: the lines, each
+    with the selected fields joined by tabs, as a generator."""
+    with _open_text(path) as fh:
+        for line in fh:
+            parts = line.rstrip("\n").split("\t")
+            yield "\t".join(parts[f - 1] for f in fields if f <= len(parts))
+
+
+def write_gz_lines(path, lines):
+    """Write lines (each followed by a newline) gzipped, through a temporary name."""
+    import gzip
+    with gzip.open(path + ".tmp", "wt", errors="surrogateescape") as fh:
+        for line in lines:
+            fh.write(line + "\n")
+    os.replace(path + ".tmp", path)
+
+
+def move(src, dst):
+    """mv src dst (one file)."""
+    import shutil
+    shutil.move(src, dst)
+
+
+def copy(src, dst):
+    """cp src dst (one file)."""
+    import shutil
+    shutil.copyfile(src, dst)
+
+
+def ls(pattern):
+    """The paths matching a shell glob, sorted as R's dir() sorts them (what ls printed was
+    only used as a set, or sorted again, but keep a defined order)."""
+    import glob
+    return sorted(glob.glob(pattern))
 
 
 # Waiting for files written by other tasks (N7): every polling loop stops after the same time,

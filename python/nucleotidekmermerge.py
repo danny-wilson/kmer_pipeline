@@ -19,19 +19,16 @@ from rcompat import r_cat, r_paste0, r_stop
 
 def create_final_file(outfile, output_dir, output_prefix, kmer_length):
     # Check outfile isn't empty
-    outfile_size = rcompat.r_system_intern("ls -l " + outfile + " | cut -d ' ' -f5")
+    outfile_size = rcompat.file_size_lines(outfile)
     if outfile_size == ["0"]:
         r_stop(outfile, " file is empty", "\n")
-    cmd = "mv " + outfile + " " + r_paste0(output_dir, output_prefix, "_nucleotide", kmer_length, ".kmermerge.txt")
-    rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-    cmd = "gzip " + r_paste0(output_dir, output_prefix, "_nucleotide", kmer_length, ".kmermerge.txt")
-    rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
+    rcompat.move(outfile, r_paste0(output_dir, output_prefix, "_nucleotide", kmer_length, ".kmermerge.txt"))
+    rcompat.gzip_file(r_paste0(output_dir, output_prefix, "_nucleotide", kmer_length, ".kmermerge.txt"))
 
     # Remove all completed files
     completed_files = rcompat.r_dir(output_dir, glob=r_paste0(output_prefix, ".nucleotide", kmer_length, "*.completed.txt"),
                                     full_names=True)
-    cmd = " ".join(["rm", " ".join(completed_files)])
-    rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
+    rcompat.remove(*completed_files)
 
 
 ###################################################################################################
@@ -119,7 +116,7 @@ def main():
                 r_stop("Problem with input arguments, please check")
             infiles = rcompat.r_index(kmerpaths, rcompat.r_colon(int(beg), end))
             infiles = ["NA" if f is None else f for f in infiles]
-            infiles_size = [float(rcompat.r_system_intern("zcat " + x + " | wc -c")[0]) for x in infiles]
+            infiles_size = [float(rcompat.count_bytes(x)) for x in infiles]
             if not all(os.path.exists(f) for f in infiles) or not all(s > 0 for s in infiles_size):
                 r_stop("Could not find files or files empty", " ".join(infiles))
 
@@ -137,7 +134,7 @@ def main():
                 cmd = ("LC_ALL=C sort -um " + tmpinfiles[0] + " " + tmpinfiles[1]
                        + "".join(" | LC_ALL=C sort -um - " + f for f in tmpinfiles[2:]) + " > " + outfile)
             rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-            rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+            rcompat.touch(outfile_completed)
 
             # Remove the temporary input files
             for f in tmpinfiles:
@@ -168,7 +165,7 @@ def main():
                     r_stop("Could not find files", "".join(infiles_completed), rcompat.wait_message())
                 time.sleep(60)
 
-            infiles_size = [float(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")[0]) for x in infiles]
+            infiles_size = [float(rcompat.file_size_lines(x)[0]) for x in infiles]
             if any(s == 0 for s in infiles_size):
                 r_stop("One or more file size is zero ", "".join(infiles), "\n")
 
@@ -182,9 +179,8 @@ def main():
             rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
             # If length of infiles is one, it has been moved and doesn't exist. If more than one, delete the temp files.
             if len(infiles) > 1:
-                cmd = " ".join(["rm", " ".join(infiles)])
-                rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-            rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+                rcompat.remove(*infiles)
+            rcompat.touch(outfile_completed)
     if t == p:
         ## Copy final file to end location
         create_final_file(outfile=outfile, output_dir=output_dir, output_prefix=output_prefix, kmer_length=kmer_length)

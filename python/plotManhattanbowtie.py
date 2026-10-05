@@ -17,8 +17,8 @@ import plotManhattan  # noqa: E402
 def read_bowtie_pos(mappingFile, kmerIndex, ref_length):
     """Positions of the mapped k-mers (SAM column 4) and their indices (column 1,
     0-based), followed by the unmapped k-mers placed beyond the genome."""
-    bowtie_pos = [float(x) for x in rcompat.r_system_intern("zcat " + mappingFile + " | cut -f4")]
-    bowtie_index = [float(x) + 1 for x in rcompat.r_system_intern("zcat " + mappingFile + " | cut -f1")]
+    bowtie_pos = [float(x) for x in rcompat.cut_fields(mappingFile, (4,))]
+    bowtie_index = [float(x) + 1 for x in rcompat.cut_fields(mappingFile, (1,))]
     present = set(bowtie_index)
     missing = [float(k) for k in range(1, len(kmerIndex) + 1) if float(k) not in present]
     if not missing:  # R only defines the results when some k-mers are unmapped

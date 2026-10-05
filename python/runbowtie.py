@@ -114,8 +114,8 @@ def main():
                                            samtools_filter, ".bowtie2map.txt")
     rcompat.r_system(samtoolspath + " view -q " + rcompat.r_as_character(samtools_filter) + " -S " + bowtie_outfile
                      + " > " + samtools_outputfile)
-    rcompat.r_system("gzip " + samtools_outputfile)
-    rcompat.r_system("gzip " + bowtie_outfile)
+    rcompat.gzip_file(samtools_outputfile)
+    rcompat.gzip_file(bowtie_outfile)
 
     r_cat("Completed in", (time.monotonic() - start_time) / 60, "minutes\n")
 

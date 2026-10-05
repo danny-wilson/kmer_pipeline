@@ -102,7 +102,7 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     [rs, beta, se, p_lrt, logl_H1, negLog10] of strings (None for untested
     patterns), as R's character matrix."""
     stem = r_paste0(input_dir, prefix, "_", kmer_type, kmer_length)
-    files = rcompat.r_system_intern("ls " + stem + "*-*.assoc.txt.gz")
+    files = rcompat.ls(stem + "*-*.assoc.txt.gz")
     file_range = [f.replace(stem + ".", "").replace(".assoc.txt.gz", "") for f in files]
     file_beg = [rcompat.parse_index(s.split("-")[0]) for s in file_range]  # also "1e+05" (D1a)
     file_end = [rcompat.parse_index(s.split("-")[1]) for s in file_range]
@@ -124,7 +124,7 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
     assoc = []
     header = None
     for f in files:
-        lines = rcompat.r_pipe("zcat " + f + " | cut -f2,5,6,10,12").split("\n")
+        lines = list(rcompat.cut_fields(f, (2, 5, 6, 10, 12)))
         if lines and lines[-1] == "":
             lines.pop()
         if header is None:
@@ -135,7 +135,7 @@ def read_gemma_files(input_dir, prefix, kmer_type, kmer_length, nPatterns):
                 r_stop("Error in matrix(gemma.i, ncol = 5): GEMMA line with ", len(fields), " fields in ", f)
             assoc.append(fields)
 
-    gemma_log_file = rcompat.r_system_intern("ls " + stem + ".1-*.log.txt.gz")
+    gemma_log_file = rcompat.ls(stem + ".1-*.log.txt.gz")
     l0 = extract_lambda_lognull(gemma_log_file[0])["lognull"]
 
     D = np.array([get_loglik(rcompat.r_as_numeric(r[4]), l0) for r in assoc], dtype=float)

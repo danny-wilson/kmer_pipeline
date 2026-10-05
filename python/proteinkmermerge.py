@@ -24,7 +24,7 @@ def sort_final_file(output_dir, output_prefix, sort_strings, kmer_length):
     with open(kmer_output_file, "w") as f:  # write.table of cbind(kmers, 1)
         f.write("".join(k + "\t1\n" for k in kmers))
     # Gzip file
-    rcompat.r_system("gzip " + kmer_output_file)
+    rcompat.gzip_file(kmer_output_file)
     # Run sort strings
     kmer_output_file_gz = kmer_output_file + ".gz"
     final_kmer_txt_gz = r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.sorted.wdummycount.txt.gz")
@@ -32,7 +32,7 @@ def sort_final_file(output_dir, output_prefix, sort_strings, kmer_length):
     rcompat.r_system(sortCommand)
     # Remove column of dummy counts
     final_kmer_txt_gz_sorted = r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.txt.gz")
-    rcompat.r_system("zcat " + final_kmer_txt_gz + " | cut -f1 | gzip -c > " + final_kmer_txt_gz_sorted)
+    rcompat.write_gz_lines(final_kmer_txt_gz_sorted, rcompat.cut_fields(final_kmer_txt_gz, (1,)))
     # Tests
     kmers_new = rcompat.r_system_intern("zcat " + final_kmer_txt_gz_sorted)
     if len(kmers) != len(kmers_new):
@@ -42,27 +42,24 @@ def sort_final_file(output_dir, output_prefix, sort_strings, kmer_length):
     if kmers != kmers_new:
         r_stop("Error: issue when sorting the final kmer file, the kmers are not in the same order", "\n")
     # Remove temp dummy count files
-    rcompat.r_system("rm " + kmer_output_file_gz)
-    rcompat.r_system("rm " + final_kmer_txt_gz)
+    rcompat.remove(kmer_output_file_gz)
+    rcompat.remove(final_kmer_txt_gz)
     # Remove the unsorted file
-    rcompat.r_system("rm " + r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.unsorted.txt.gz"))
+    rcompat.remove(r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.unsorted.txt.gz"))
 
 
 def create_final_file(outfile, output_dir, output_prefix, kmer_length):
     # Check outfile isn't empty
-    outfile_size = rcompat.r_system_intern("ls -l " + outfile + " | cut -d ' ' -f5")
+    outfile_size = rcompat.file_size_lines(outfile)
     if outfile_size == ["0"]:
         r_stop(outfile, " file is empty", "\n")
-    cmd = "mv " + outfile + " " + r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.unsorted.txt")
-    rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-    cmd = "gzip " + r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.unsorted.txt")
-    rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
+    rcompat.move(outfile, r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.unsorted.txt"))
+    rcompat.gzip_file(r_paste0(output_dir, output_prefix, "_protein", kmer_length, ".kmermerge.unsorted.txt"))
 
     # Remove all completed files
-    completed_files = rcompat.r_system_intern("ls " + r_paste0(output_dir, output_prefix, ".protein", kmer_length,
+    completed_files = rcompat.ls(r_paste0(output_dir, output_prefix, ".protein", kmer_length,
                                                                 "*.completed.txt"))
-    cmd = " ".join(["rm", " ".join(completed_files)])
-    rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
+    rcompat.remove(*completed_files)
 
 
 def dedupe(outfile):
@@ -179,7 +176,7 @@ def main():
                 r_stop("Problem with input arguments, please check")
             ids = ["NA" if s is None else s for s in rcompat.r_index(sample_id, rcompat.r_colon(int(beg), end))]
             infiles = [r_paste0(input_dir, s, ".kmer", kmer_length, ".txt.gz") for s in ids]
-            infiles_size = [float(rcompat.r_system_intern("zcat " + x + " | wc -c")[0]) for x in infiles]
+            infiles_size = [float(rcompat.count_bytes(x)) for x in infiles]
             if not all(os.path.exists(f) for f in infiles) or not all(s > 0 for s in infiles_size):
                 r_stop("Could not find files or files empty ", " ".join(infiles))
 
@@ -194,7 +191,7 @@ def main():
             rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
             if len(infiles) > 1:
                 dedupe(outfile)
-            rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+            rcompat.touch(outfile_completed)
         else:
             # Subsequent rounds: merge merged files
             te = math.ceil(t / (b ** (i - 1))) * int(b ** (i - 1))
@@ -220,7 +217,7 @@ def main():
                     r_stop("Could not find files", "".join(infiles_completed), rcompat.wait_message())
                 time.sleep(60)
 
-            infiles_size = [float(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")[0]) for x in infiles]
+            infiles_size = [float(rcompat.file_size_lines(x)[0]) for x in infiles]
             if any(s == 0 for s in infiles_size):
                 r_stop("One or more file size is zero ", "".join(infiles), "\n")
 
@@ -236,9 +233,8 @@ def main():
                 dedupe(outfile)
             # If length of infiles is one, it has been moved and doesn't exist. If more than one, delete the temp files.
             if len(infiles) > 1:
-                cmd = " ".join(["rm", " ".join(infiles)])
-                rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-            rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+                rcompat.remove(*infiles)
+            rcompat.touch(outfile_completed)
     if t == p:
         ## Copy final file to end location
         create_final_file(outfile=outfile, output_dir=output_dir, output_prefix=output_prefix, kmer_length=kmer_length)

@@ -815,9 +815,9 @@ def run(script_path, description, merge_hook=None):
         r_cat("\n")
         rcompat.r_system(sortCommand)
         # Remove the temporary files
-        rcompat.r_system("rm " + outfile)
-        rcompat.r_system("rm " + query + ".delta")
-        rcompat.r_system("rm " + temp_fa)
+        rcompat.remove(outfile)
+        rcompat.remove(query + ".delta")
+        rcompat.remove(temp_fa)
         if any(v is None for v in length_contig_no_match):
             unaligned = None
         else:
@@ -836,7 +836,7 @@ def run(script_path, description, merge_hook=None):
         # Create completed file
         outfile_completed = r_paste0(contigalign_dir, prefix, "_", kmer_type, kmer_length, "_", id_i,
                                      ".kmercontigalign.completed.txt")
-        rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+        rcompat.touch(outfile_completed)
 
         r_cat("Finished aligning contigs to the reference genome for process", i, "\n")
 

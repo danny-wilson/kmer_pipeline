@@ -245,7 +245,7 @@ def _blast_table(blast_output_file, ncol, perident, kmers_gene_i, nsamples, extr
 def get_top_genes(input_dir, prefix, ngenes, nsamples, bonferroni, ref_name, kmer_type=None, kmer_length=None):
     """The top-gene k-mer files written by plotManhattan, in gene order, and the
     gene names. Not called (plot_closeup_alignments is given them), as in R."""
-    genes = rcompat.r_system_intern("ls " + r_paste0(input_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name,
+    genes = rcompat.ls(r_paste0(input_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name,
                                                      "*topgene_*kmersandpvals.txt"))
     order = [float(g.split("/")[-1].split("topgene_")[1].split("_")[0]) for g in genes]
     genes = [genes[k] for k in rcompat.r_order(order)]
@@ -273,10 +273,10 @@ def process_blast_protein(prefix, i, kmers_gene_i, genes_names, j, blastPath, co
     processed = r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_top_gene_", i, "_",
                          genes_names[i - 1], "_", j, "_", correct_or_wrong, "_blast_results.txt")
     t.write(processed)
-    rcompat.r_system("rm " + ref_trans_file)
+    rcompat.remove(ref_trans_file)
     if j == 6:
-        rcompat.r_system("rm " + kmer_sequence_file)
-    rcompat.r_system("rm " + blast_output_file)
+        rcompat.remove(kmer_sequence_file)
+    rcompat.remove(blast_output_file)
     return processed
 
 
@@ -296,9 +296,9 @@ def process_blast_nucleotide(blastPath, prefix, kmer_type, kmer_length, i, perid
     processed = r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_top_gene_", i, "_",
                          genes_names[i - 1], "_blast_results.txt")
     t.write(processed)
-    rcompat.r_system("rm " + ref_file)
-    rcompat.r_system("rm " + kmer_sequence_file)
-    rcompat.r_system("rm " + blast_output_file)
+    rcompat.remove(ref_file)
+    rcompat.remove(kmer_sequence_file)
+    rcompat.remove(blast_output_file)
     return processed
 
 

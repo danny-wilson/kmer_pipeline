@@ -88,8 +88,7 @@ def main():
 
     # Sanity check covariate file
     if covariate_file is not None:
-        nsamples = [x for x in rcompat.r_system_intern("wc -l " + id_file)[0].split(" ") if x != ""]
-        nsamples = float(nsamples[0]) - 1
+        nsamples = float(rcompat.count_lines(id_file)) - 1
         covariates = rcompat.r_read_table(covariate_file, header=False, sep="\t")
         if not all(rcompat.r_as_numeric_value(v) == 1 for v in covariates.iloc[:, 0]):
             r_stop("Error: first column of covariate file must be a column of 1s for the intercept", "\n")
@@ -226,9 +225,9 @@ def main():
     assoc_file = gemma_dir + "output/" + outfile_prefix + ".assoc.txt"
     log_file = gemma_dir + "output/" + outfile_prefix + ".log.txt"
     pval_file = gemma_dir + "output/" + outfile_prefix + ".pval.txt.gz"
-    rcompat.r_system("cut -f2,10 " + assoc_file + " | gzip -c > " + pval_file)
-    rcompat.r_system("gzip " + assoc_file)
-    rcompat.r_system("gzip " + log_file)
+    rcompat.write_gz_lines(pval_file, rcompat.cut_fields(assoc_file, (2, 10)))
+    rcompat.gzip_file(assoc_file)
+    rcompat.gzip_file(log_file)
 
     r_cat("Finished in", (time.monotonic() - start_time) / 60, "minutes\n")
 

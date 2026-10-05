@@ -45,7 +45,7 @@ def count_protein_kmers(fastaFile, writeToFile=False, kmerLen=31, kmerDir=None, 
         # R writes table() order; the file is sorted by sort_strings next, so the order here does not matter
         with open(final_kmer_file, "w") as f:
             f.write("".join(f"{km}\t{n}\n" for km, n in kmers.items()))
-        rcompat.r_system("gzip " + final_kmer_file)
+        rcompat.gzip_file(final_kmer_file)
         return final_kmer_file + ".gz"
     # Or return counted kmer sequences
     else:
@@ -77,14 +77,14 @@ def nucleotide_kmer_counting(output_dir, kmerlength, dsk_path, dsk2ascii_path, c
     # Sort the kmers
     rcompat.r_system("sort -k 1 " + sample_id + ".kmer" + k + "_unsorted.txt > " + sample_id + ".kmer" + k + ".txt")
     # Write the number of kmers to file
-    nKmers = float(rcompat.r_system_intern("wc -l " + sample_id + ".kmer" + k + ".txt")[0].split(" ")[0])
+    nKmers = float(rcompat.count_lines(sample_id + ".kmer" + k + ".txt"))
     rcompat.r_cat_lines([rcompat.r_paste_collapse(["Total", rcompat.r_as_character(nKmers)], "\t")],
                         sample_id + ".kmer" + k + ".total.txt")
     # Gzip the sorted kmer file
-    rcompat.r_system("gzip " + sample_id + ".kmer" + k + ".txt")
+    rcompat.gzip_file(sample_id + ".kmer" + k + ".txt")
     # Remove intermediate files
-    rcompat.r_system("rm " + sample_id + ".h5")
-    rcompat.r_system("rm " + sample_id + ".kmer" + k + "_unsorted.txt")
+    rcompat.remove(sample_id + ".h5")
+    rcompat.remove(sample_id + ".kmer" + k + "_unsorted.txt")
     kmerfile = kmer_dir + sample_id + ".kmer" + k
     r_cat("Counted nucleotide kmers length " + k + " for sample ID " + sample_id + ". Output files: "
           + kmerfile + ".txt.gz " + kmerfile + ".total.txt", "\n")
@@ -102,9 +102,9 @@ def protein_kmer_counting(output_dir, kmerlength, translated_contigs_path, sampl
     sorted_kmerfile = kmer_dir + sample_id + ".kmer" + k + ".txt.gz"
     sortCommand = " ".join([sort_strings, kmerfile_unsorted, "| gzip -c >", sorted_kmerfile])
     rcompat.r_system(sortCommand)
-    rcompat.r_system("rm " + kmerfile_unsorted)
+    rcompat.remove(kmerfile_unsorted)
     # Write the number of kmers to file
-    nKmers = float(rcompat.r_system_intern("zcat " + sorted_kmerfile + " | wc -l")[0].split(" ")[0])
+    nKmers = float(rcompat.count_lines(sorted_kmerfile))
     rcompat.r_cat_lines([rcompat.r_paste_collapse(["Total", rcompat.r_as_character(nKmers)], "\t")],
                         kmer_dir + sample_id + ".kmer" + k + ".total.txt")
     r_cat("Counted protein kmers length " + k + " for sample ID " + sample_id + ". Output file: " + sorted_kmerfile, "\n")

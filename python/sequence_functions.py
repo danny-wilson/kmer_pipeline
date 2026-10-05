@@ -160,7 +160,7 @@ def translate_6_frames(contig_path, id, outDir, oneLetterCodes, revcompl):
     for frame in range(1, 7):
         write_proteins_to_file(contig_names_final, frame, rf[frame - 1], id, append=frame > 1, outDir=outDir)
     final_file = get_output_file(outDir, id)
-    rcompat.r_system("gzip " + final_file)
+    rcompat.gzip_file(final_file)
     return final_file + ".gz"
 
 

@@ -181,7 +181,7 @@ def main():
 
             infiles = ["NA" if f is None else f for f in rcompat.r_index(input_files, rcompat.r_colon(int(beg), end))]
 
-            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
+            infiles_size = [size_of(rcompat.file_size_lines(x)) for x in infiles]
 
             if not all(os.path.exists(f) for f in infiles) or not r_all_positive(infiles_size):
                 r_stop("Could not find files or files empty ", " ".join(infiles))
@@ -195,7 +195,7 @@ def main():
                        + "".join(" | sort -u - <(zcat " + f + " | cut -f1)" for f in infiles[2:]) + " > " + outfile)
             rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
 
-            rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+            rcompat.touch(outfile_completed)
         else:
             # Subsequent rounds: merge merged files
             te = math.ceil(t / (b ** (i - 1))) * int(b ** (i - 1))
@@ -217,7 +217,7 @@ def main():
                     r_stop("Could not find files ", " ".join(infiles_completed), rcompat.wait_message())
                 time.sleep(60)
 
-            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
+            infiles_size = [size_of(rcompat.file_size_lines(x)) for x in infiles]
             if r_any_zero(infiles_size):
                 r_stop("One or more file size is zero ", "".join(infiles), "\n")
 
@@ -231,19 +231,17 @@ def main():
             rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
             # If length of infiles is one, it has been moved and doesn't exist. If more than one, delete the temp files.
             if len(infiles) > 1:
-                cmd = " ".join(["rm", " ".join(infiles)])
-                rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-            rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+                rcompat.remove(*infiles)
+            rcompat.touch(outfile_completed)
     if t == p:
         # Check outfile isn't empty
-        outfile_size = rcompat.r_system_intern("ls -l " + outfile + " | cut -d ' ' -f5")
+        outfile_size = rcompat.file_size_lines(outfile)
         if outfile_size == ["0"]:
             r_stop(outfile, " file is empty", "\n")
 
         final_kmer_txt_gz = r_paste0(output_dir, out_prefix, "_", kmer_type, kmer_length, ".", ref_name, "_t",
                                      ident_threshold, ".kmeralignmerge.txt.gz")
-        nKmersFinal = rcompat.r_system_intern("cat " + outfile + " | wc -l")
-        dummycount = ["1"] * int(nKmersFinal[0])
+        dummycount = ["1"] * rcompat.count_lines(outfile)
         dummycountfile = stem + "_dummycount.txt"
         r_cat("Written dummy count", "\n")
         rcompat.r_cat_lines(dummycount, dummycountfile)
@@ -258,16 +256,15 @@ def main():
         r_cat(sortCommand, "\n")
 
         # Remove all completed files
-        completed_files = rcompat.r_system_intern("ls " + stem + "*.j*.completed.txt")
-        completed_files = completed_files + rcompat.r_system_intern("ls " + stem + "*.kmercontigalign.completed.txt")
-        cmd = " ".join(["rm", " ".join(completed_files)])
-        rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
-        rcompat.r_system("rm " + outfile)
-        rcompat.r_system("rm " + stem + "_dummycount.txt")
-        rcompat.r_system("rm " + stem + "_kmeralignmerge_dummycount.txt")
+        completed_files = rcompat.ls(stem + "*.j*.completed.txt")
+        completed_files = completed_files + rcompat.ls(stem + "*.kmercontigalign.completed.txt")
+        rcompat.remove(*completed_files)
+        rcompat.remove(outfile)
+        rcompat.remove(stem + "_dummycount.txt")
+        rcompat.remove(stem + "_kmeralignmerge_dummycount.txt")
         # Write file for final file being completed
         outfile_completed = r_paste0(stem, ".", ref_name, "_t", ident_threshold, ".final.kmeralignmerge.completed.txt")
-        rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+        rcompat.touch(outfile_completed)
 
     r_cat("Process finished for kmeralignmerge", "\n")
     # Get counts for kmer/gene combinations
@@ -286,7 +283,7 @@ def main():
 
     # Read kmers
     # Total number of kmers
-    n = rcompat.r_as_integer(rcompat.r_pipe("zcat " + infile + " | wc -l").split()[0])
+    n = rcompat.count_lines(infile)
     if n < 1:
         r_stop("No kmer/gene combinations found in", infile)
     # Number of kmers (batch size) per process
@@ -305,17 +302,16 @@ def main():
     cmd = rcompat.r_paste(stringlist2countpath, kmersublistfile, input_files_path, out_prefix_counts, 0.0, 1.0)
     rcompat.r_system(cmd)
 
-    cmd = rcompat.r_paste("rm", kmersublistfile)
-    rcompat.r_system(cmd)
+    rcompat.remove(kmersublistfile)
 
     # Check that files have been created and are not empty
     outfiles = [out_prefix_counts + ".count.txt.gz"]
-    outfiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in outfiles]
+    outfiles_size = [size_of(rcompat.file_size_lines(x)) for x in outfiles]
     if r_any_zero(outfiles_size):
         r_stop("One or more JOB_INDEX ", t, " ", out_prefix_counts, " kmer align count files are empty")
     # Write file for final file being completed
     outfile_completed = out_prefix_counts + ".count.completed.txt"
-    rcompat.r_system2("/bin/bash", "-c 'touch " + outfile_completed + "'")
+    rcompat.touch(outfile_completed)
 
     # Merge files and remove intermediate files
     if t == p:
@@ -342,11 +338,10 @@ def main():
                                     ident_threshold, ".kmeralignmerge.count.txt")
         with open(final_count_file, "w") as fh:
             fh.write("".join(("NA" if v != v else format_count(v)) + "\n" for v in count) if count else "\n")
-        rcompat.r_system("gzip " + final_count_file)
+        rcompat.gzip_file(final_count_file)
         # Delete intermediate count files
         r_cat("Deleting intermediate files", "\n")
-        cmd = " ".join(["rm", " ".join(alignCountFiles + alignCountCompletedFiles + [infile_completed])])
-        rcompat.r_system2("/bin/bash", "-c '" + cmd + "'")
+        rcompat.remove(*(alignCountFiles + alignCountCompletedFiles + [infile_completed]))
 
     r_cat("Finished in", (time.monotonic() - start_time) / 60, "minutes\n")
 
