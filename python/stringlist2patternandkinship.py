@@ -445,27 +445,16 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
             infiles_completed = ["NA" if f is None else f + ".kinship.completed.txt"
                                  for f in rcompat.r_index(output_prefix_batches, idx)]
             nattempts = 0
-            # Check input files exist and are not empty. As in R, the sizes are
-            # measured once, before waiting.
-            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
-            while True:
-                missing = not all(os.path.exists(f) for f in infiles) or not all(os.path.exists(f) for f in infiles_completed)
-                if any(s is not None and s == s and not s > 0 for s in infiles_size):
-                    sizes_bad = True
-                elif any(s is None or s != s for s in infiles_size):
-                    sizes_bad = None  # NA
-                else:
-                    sizes_bad = False
-                if missing or sizes_bad is True:
-                    pass
-                elif sizes_bad is None:
-                    raise rcompat.RError("missing value where TRUE/FALSE needed")
-                else:
-                    break
+            # Wait for every input and its completion marker, then check the sizes (D1b: R
+            # measured the sizes once, before waiting, so a file that appeared late stopped the run)
+            while not all(os.path.exists(f) for f in infiles) or not all(os.path.exists(f) for f in infiles_completed):
                 nattempts = nattempts + 1
                 if nattempts > 100:
                     r_stop("Could not find files", "".join(infiles))
                 time.sleep(60)
+            infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
+            if any(s is None or s != s or not s > 0 for s in infiles_size):
+                r_stop("One or more kinship matrix files are empty: ", " ".join(infiles), "\n")
             # Read one line from the first kinship matrix
             kin1 = scan_doubles(infiles[0], 1)
             nsamp = len(kin1)
