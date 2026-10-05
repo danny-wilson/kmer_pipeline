@@ -331,6 +331,9 @@ get_betaCOL_2cols = function(beta, cols, se){
 	beta.min = as.numeric(beta[2])-(as.numeric(beta[3])*se)
 	beta.max = as.numeric(beta[2])+(as.numeric(beta[3])*se)
 	beta.point = as.numeric(beta[2])
+	# N10: an effect of exactly 0, or NaN (a pattern GEMMA could not fit), has no direction:
+	# grey, as an interval spanning 0 (before, no colour was returned and the figure stopped)
+	if(!is.finite(beta.point) || beta.point == 0) return("#d3d3d3")
 	if(beta.min<0 & beta.max>0){
 		return("#d3d3d3")
 	} else {

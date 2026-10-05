@@ -44,3 +44,11 @@ def test_protein_single_frame_with_unaligned_kmers(tmp_path):
     nores = "data.frame(negLog10 = c(3, 1), beta = c(-0.1, 0.4), maf = c(0.3, 0.1))"
     out = run_r(SINGLE_FRAME.format(nores=nores), tmp_path).split("\n")
     assert out[0].split() == ["#838383", "#d3d3d3", "#838383", "#ffbc87", "#D55E00"]
+
+
+def test_beta_colour_for_zero_and_nan_effects(tmp_path):
+    """N10: an effect of exactly 0 or NaN is grey; before, no colour was returned."""
+    out = run_r('cols = c("blue", "green", "orange", "red")\n'
+                'b = rbind(c(0, -1, 0), c(0, 2, 0), c(0, 0, 0), c(0, NaN, 0), c(0, 1, 2))\n'
+                'cat(apply(b, 1, function(x) get_betaCOL_2cols(x, cols, 1.96)), "\\n")\n', tmp_path)
+    assert out.split() == ["blue", "red", "#d3d3d3", "#d3d3d3", "#d3d3d3"]
