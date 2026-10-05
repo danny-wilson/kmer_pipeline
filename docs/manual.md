@@ -1387,6 +1387,7 @@ prepare_gemma.py \
     --kmerfile-prefix KMERFILE_PREFIX \
     --id-file ID_FILE \
     [--covariate-file COVARIATE_FILE] \
+    [--pheno-file PHENO_FILE] \
     --analysis-dir ANALYSIS_DIR \
     --output-prefix OUTPUT_PREFIX \
     --kmer-type KMER_TYPE \
@@ -1403,6 +1404,7 @@ prepare_gemma.py \
 | `--kmerfile-prefix` | Prefix of the pattern and kinship files of step 3 (`analysis_dir/output_prefix_kmer_typekmer_length`). |
 | `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. |
 | `--covariate-file` | *Optional.* Gemma formatted covariate file. First column must be a column of 1s for the intercept. |
+| `--pheno-file` | *Optional.* A tab-separated file with the header `id` and `pheno`: phenotypes to use instead of the `pheno` column of `--id-file`, matched by ID (as text). |
 | `--analysis-dir` | Directory location for the analysis. |
 | `--output-prefix` | Output file prefix. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
@@ -2039,7 +2041,8 @@ Each example run gave the same results. The image is a 1.9 GiB download.
 | gen-unmapped-report.py | | | |
 | get_ref_name.py | | | |
 | prepare_gemma.py | | inventory.py | |
-| preflight.py | | | |
+| preflight.py | | reference.py | |
+| | | report_assets.py | |
 
 The Python modules are imported by the scripts (`rcompat.py` reproduces R's behaviour where the
 outputs depend on it). `plot_figures.R` draws the figures, run by `Rscript_launcher.R`, which
