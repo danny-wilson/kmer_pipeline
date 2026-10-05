@@ -141,6 +141,9 @@ def run(args, protein):
     if ref_length is None:
         rcompat.r_stop("Error retrieving the reference genome length from the genbank file", "\n")
     ref_length = int(ref_length)
+    import reference
+    if reference.n_records(REF_GB) > 1:  # D6: the records laid end to end
+        ref_length = reference.total_length(REF_GB)
 
     summary = gr.read_summary_json(PREFIX + "_" + ANATYPE + K + ".summary.json")
     thr_signif = float(summary["bonferroni_threshold"])
@@ -150,8 +153,11 @@ def run(args, protein):
 
     gbk_names = list(gbk["name"])
     first = {}
+    records = list(gbk["record"]) if "record" in gbk.columns else None
     for k, n in enumerate(gbk_names):
         first.setdefault(n, k)
+        if records is not None:  # D6: names used in several records appear as name@record
+            first.setdefault(n + "@" + records[k], k)
 
     def gb(name, col):
         k = first.get(name)
@@ -257,15 +263,22 @@ def run(args, protein):
         gstart = [float(v) for v in gbk["start"]]
         gend = [float(v) for v in gbk["end"]]
         gstrand = [float(v) for v in gbk["strand"]]
+        # The window stays within the reference (the region's record, D6)
+        rec_lo, rec_hi = 1, ref_length
+        if records is not None:
+            k0 = first.get(genes[0] if is_intergenic else gene)
+            if k0 is not None:
+                rec = reference.record_of(reference.records(REF_GB), gstart[k0])
+                rec_lo, rec_hi = rec.start, rec.end
         if is_intergenic:
             idx = [first.get(g) for g in genes]
-            lo = max(1, min(gend[k] for k in idx if k is not None) + 1 - 999)
-            hi = min(ref_length, max(gstart[k] for k in idx if k is not None) - 1 + 999)
+            lo = max(rec_lo, min(gend[k] for k in idx if k is not None) + 1 - 999)
+            hi = min(rec_hi, max(gstart[k] for k in idx if k is not None) - 1 + 999)
             forward = True
         else:
             k = first.get(gene)
-            lo = max(1, gstart[k] - 999)
-            hi = min(ref_length, gend[k] + 999)
+            lo = max(rec_lo, gstart[k] - 999)
+            hi = min(rec_hi, gend[k] + 999)
             forward = gstrand[k] == 1
         lo, hi = int(lo), int(hi)
 

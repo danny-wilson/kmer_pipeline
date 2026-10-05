@@ -30,13 +30,14 @@ def get_alignment_pos_indiv(x):
 
 
 def get_alignment_pos(x):
-    """The 8 fields of a show-coords line; the last is the contig name."""
+    """The 8 fields of a show-coords line (the 8th is the contig name), then the reference
+    record's name (D6: references with several records)."""
     x = [t for t in x.split(" ") if t != "" and t != "|"]
     if not x:
         r_stop("Error in x[length(x)] = ...: replacement has length zero")
     last = x[-1].split("\t")
     x[-1] = last[1] if len(last) > 1 else None
-    return x
+    return x + [last[0]]
 
 
 def get_alignment(x):
@@ -161,9 +162,6 @@ def read_reference_name(ref_fa):
     if lines and lines[-1] == "":
         lines.pop()
     ref_name = lines[0] if lines and lines[0] != "" else None
-    if sum(l.startswith(">") for l in lines) > 1:
-        r_stop("Error: reference fasta file ", ref_fa, " contains more than one record; only single-record "
-               "references are supported", "\n")
     if ref_name is None:
         r_stop("Error in substr(ref.name, 1, 1): argument is of length zero")
     ref_name = ref_name.split(" ")[0]
@@ -186,6 +184,11 @@ def read_reference_files(ref_gb, ref_fa, ref_length, process, output_dir, prefix
     ref_length = rcompat.r_as_numeric(toks[2]) if len(toks) >= 3 else None
     if ref_length is None:
         r_stop("Error retrieving the reference genome length from the genbank file", "\n")
+    import reference
+    recs = reference.records(ref_gb)
+    if len(recs) > 1:  # D6: the records laid end to end
+        ref_length = float(reference.total_length(ref_gb))
+        r_cat("Reference records:", len(recs), "\n")
     r_cat("Reference genome length:", ref_length, "\n")
 
     # Read in reference genbank file
@@ -198,11 +201,18 @@ def read_reference_files(ref_gb, ref_fa, ref_length, process, output_dir, prefix
     # Get a gene/IR ID for every position in the reference
     # A position can have multiple gene IDs as there are overlapping genes
     ref_pos_gene_id = PosGenes(int(ref_length))
-    for i in range(1, nref + 1):
+    if len(recs) > 1:  # D6: genes, then each record's intergenic and wrap-round regions
+        regs = reference.regions(ref, recs)
+        for gid, reg in enumerate(regs, start=1):
+            for a, b in reg.ranges:
+                ref_pos_gene_id.add_range(int(a), int(b), gid)
+        intergenic_names = [r.name for r in regs if r.kind != "gene"]
+    for i in (range(1, nref + 1) if len(recs) == 1 else []):
         ref_pos_gene_id.add_range(starts[i - 1], ends[i - 1], i)
     # Intergenic ID only assigned if the start of one gene is after the end of the previous gene
-    intergenic_names = []
-    for i in r_colon(2, nref):
+    if len(recs) == 1:
+        intergenic_names = []
+    for i in (r_colon(2, nref) if len(recs) == 1 else []):
         if i > nref:
             r_stop("Error in if (inter_start <= inter_end): missing value where TRUE/FALSE needed")
         inter_start = ends[i - 2] + 1
@@ -320,9 +330,85 @@ def protein_kmer_windows(translation, nk, k):
     return [r_index(wh_notX, [m + x - 1 for m in range(1, k + 1)]) for x in range(1, nk + 1)]
 
 
+def align_contig_record(contig_alignment_c, alignment_pos, contig_id_c, record, offset, ident_threshold, ids_i, c):
+    """The show-aligns output of one contig against one reference record: (contig positions, their
+    reference positions plus the record's offset, contig positions covered by passing alignments)."""
+    # Find the lines in the alignment output containing the start and end of each alignment
+    wh_begin = [k + 1 for k, l in enumerate(contig_alignment_c) if "BEGIN alignment" in l]
+    wh_end = [k + 1 for k, l in enumerate(contig_alignment_c) if "END alignment" in l]
+    if len(wh_begin) != len(wh_end):
+        r_stop("Error: number of BEGIN alignment matches is not equal to the number of END alignment matches for ID",
+               ids_i, "and contig", c, contig_id_c, "\n")
+    # Pull out from the alignment the start and end positions for contig c
+    alignfile = [get_alignment_pos_indiv(contig_alignment_c[k - 1]) for k in wh_begin]
+    # Pull out from the full alignment positions matrix the rows for contig c (and the record)
+    coordsfile = [row for row in alignment_pos if row[7] == contig_id_c and (record is None or row[8] == record)]
+    for j in range(len(alignfile)):
+        if j >= len(coordsfile):
+            r_stop("Error in alignment.pos.coordsfile[j, ]: subscript out of bounds")
+        if any(a != rcompat.r_as_numeric(b) for a, b in zip(alignfile[j], coordsfile[j][:4])):
+            r_stop("Error: alignment coordinates do not match between the alignment file and the coordinates file", "\n")
+    passing = [j for j in range(len(coordsfile)) if rcompat.r_as_numeric(coordsfile[j][6]) >= ident_threshold]
+    # Get all bases which are covered by an alignment for contig c that pass the identity threshold
+    covered = covered_contig_bases(alignfile, passing)
+
+    contig_pos_all = []
+    ref_pos_all = []
+    # For every alignment for contig c
+    for j in passing:
+        if j >= len(wh_begin):
+            r_stop("Error in (wh.begin[j] + 1):(wh.end[j] - 1): NA/NaN argument")
+        # First pull out the lines of the alignment j
+        lines = r_index(contig_alignment_c, r_colon(wh_begin[j] + 1, wh_end[j] - 1))
+        lines = ["NA" if l is None else l for l in lines]
+        # Remove all empty lines; keep those that don't start with a space (the alignments)
+        lines = [l for l in lines if l != "" and l[0] != " "]
+        lines = [get_alignment(l) for l in lines]
+        # Concatenate the reference and query alignments, which alternate in lines
+        n_half = -(-len(lines) // 2)  # seq(length.out = n/2) rounds up
+        ref_align = "".join("NA" if v is None else v for v in r_index(lines, [1 + 2 * k for k in range(n_half)]))
+        query_align = "".join("NA" if v is None else v for v in r_index(lines, [2 + 2 * k for k in range(n_half)]))
+        # Check that there are no unknown characters in either alignment
+        if not set(ref_align) <= allowed_chars:
+            r_stop("Unknown characters in reference sequence", "\n")
+        if not set(query_align) <= allowed_chars:
+            r_stop("Unknown characters in reference sequence", "\n")
+        # Get the length of the reference and query in the alignment that are not gaps
+        ref_nchar = len(ref_align) - ref_align.count(".")
+        query_nchar = len(query_align) - query_align.count(".")
+        if len(ref_align) != len(query_align):
+            r_stop("Error: reference alignment length not equal to query alignment length for ID", ids_i,
+                   "and contig", c, contig_id_c, "j", j + 1, "\n")
+        if str(ref_nchar) != coordsfile[j][4]:
+            r_stop("Error: reference alignment extracted is not the correct length for ID", ids_i, "and contig", c,
+                   contig_id_c, "j", j + 1, "\n")
+        if str(query_nchar) != coordsfile[j][5]:
+            r_stop("Error: reference alignment extracted is not the correct length for ID", ids_i, "and contig", c,
+                   contig_id_c, "j", j + 1, "\n")
+        # For every position in the reference alignment that is not a gap, assign it its position in the
+        # reference; for every position that is a gap, the highest leftmost position that is not a gap
+        positions = r_colon(int(alignfile[j][0]), int(alignfile[j][1]))
+        ref_pos = []
+        it = iter(positions)
+        last = None
+        for ch in ref_align:
+            if ch != ".":
+                last = next(it)
+                ref_pos.append(last)
+            else:
+                if last is None:
+                    r_stop("Error in ref.pos.new[...] = ...: replacement has length zero")
+                ref_pos.append(last)
+        contig_pos_all += r_colon(int(alignfile[j][2]), int(alignfile[j][3]))
+        ref_pos_all += [rp + offset for rp, q in zip(ref_pos, query_align) if q != "."]
+    return contig_pos_all, ref_pos_all, covered
+
+
 def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, ident_threshold, alignment_pos,
-                 delta, ref_name, mummer_path, ref_pos_gene_id, ids_i, oneLetterCodes, revcompl):
-    """One pass of the R loop over contigs: (kmers, gene index of each k-mer, bases not aligned)."""
+                 delta, ref_name, mummer_path, ref_pos_gene_id, ids_i, oneLetterCodes, revcompl, record_offsets=None):
+    """One pass of the R loop over contigs: (kmers, gene index of each k-mer, bases not aligned).
+    record_offsets ({FASTA record name: offset}, D6): with several reference records, the contig's
+    alignments to each record are read separately and their positions offset."""
     import sequence_functions
     L = len(contig)
     if kmer_type == "protein":
@@ -347,81 +433,30 @@ def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, i
                 kmers_flat += km
         kmers_null = not kmers_flat
 
-    # Run for every contig
-    contig_alignment_c = rcompat.r_system_intern(mummer_path + "show-aligns " + delta + " " + ref_name + " " + contig_id_c)
+    # Run for every contig (and, with several reference records, every record it aligns to)
+    if record_offsets is None or len(record_offsets) == 1:
+        targets = [(ref_name, 0, None)]
+    else:
+        targets = [(r, off, r) for r, off in record_offsets.items()
+                   if any(row[7] == contig_id_c and row[8] == r for row in alignment_pos)]
+    alignments = [(rcompat.r_system_intern(mummer_path + "show-aligns " + delta + " " + name + " " + contig_id_c),
+                   off, record) for name, off, record in targets]
 
     no_match = None
-    if len(contig_alignment_c) > 0 and not kmers_null:
-        # Find the lines in the alignment output containing the start and end of each alignment
-        wh_begin = [k + 1 for k, l in enumerate(contig_alignment_c) if "BEGIN alignment" in l]
-        wh_end = [k + 1 for k, l in enumerate(contig_alignment_c) if "END alignment" in l]
-        if len(wh_begin) != len(wh_end):
-            r_stop("Error: number of BEGIN alignment matches is not equal to the number of END alignment matches for ID",
-                   ids_i, "and contig", c, contig_id_c, "\n")
-        # Pull out from the alignment the start and end positions for contig c
-        alignfile = [get_alignment_pos_indiv(contig_alignment_c[k - 1]) for k in wh_begin]
-        # Pull out from the full alignment positions matrix the rows for contig c
-        coordsfile = [row for row in alignment_pos if row[7] == contig_id_c]
-        for j in range(len(alignfile)):
-            if j >= len(coordsfile):
-                r_stop("Error in alignment.pos.coordsfile[j, ]: subscript out of bounds")
-            if any(a != rcompat.r_as_numeric(b) for a, b in zip(alignfile[j], coordsfile[j][:4])):
-                r_stop("Error: alignment coordinates do not match between the alignment file and the coordinates file", "\n")
-        passing = [j for j in range(len(coordsfile)) if rcompat.r_as_numeric(coordsfile[j][6]) >= ident_threshold]
-        # Get all bases which are covered by an alignment for contig c that pass the identity threshold
-        covered = covered_contig_bases(alignfile, passing)
-        # Write the number of bases that are not part of any alignment for contig c
-        no_match = sum(1 for p in range(1, L + 1) if p not in covered)
-
+    if any(len(a) > 0 for a, _, _ in alignments) and not kmers_null:
+        covered = set()
         contig_pos_all = []
         ref_pos_all = []
-        # For every alignment for contig c
-        for j in passing:
-            if j >= len(wh_begin):
-                r_stop("Error in (wh.begin[j] + 1):(wh.end[j] - 1): NA/NaN argument")
-            # First pull out the lines of the alignment j
-            lines = r_index(contig_alignment_c, r_colon(wh_begin[j] + 1, wh_end[j] - 1))
-            lines = ["NA" if l is None else l for l in lines]
-            # Remove all empty lines; keep those that don't start with a space (the alignments)
-            lines = [l for l in lines if l != "" and l[0] != " "]
-            lines = [get_alignment(l) for l in lines]
-            # Concatenate the reference and query alignments, which alternate in lines
-            n_half = -(-len(lines) // 2)  # seq(length.out = n/2) rounds up
-            ref_align = "".join("NA" if v is None else v for v in r_index(lines, [1 + 2 * k for k in range(n_half)]))
-            query_align = "".join("NA" if v is None else v for v in r_index(lines, [2 + 2 * k for k in range(n_half)]))
-            # Check that there are no unknown characters in either alignment
-            if not set(ref_align) <= allowed_chars:
-                r_stop("Unknown characters in reference sequence", "\n")
-            if not set(query_align) <= allowed_chars:
-                r_stop("Unknown characters in reference sequence", "\n")
-            # Get the length of the reference and query in the alignment that are not gaps
-            ref_nchar = len(ref_align) - ref_align.count(".")
-            query_nchar = len(query_align) - query_align.count(".")
-            if len(ref_align) != len(query_align):
-                r_stop("Error: reference alignment length not equal to query alignment length for ID", ids_i,
-                       "and contig", c, contig_id_c, "j", j + 1, "\n")
-            if str(ref_nchar) != coordsfile[j][4]:
-                r_stop("Error: reference alignment extracted is not the correct length for ID", ids_i, "and contig", c,
-                       contig_id_c, "j", j + 1, "\n")
-            if str(query_nchar) != coordsfile[j][5]:
-                r_stop("Error: reference alignment extracted is not the correct length for ID", ids_i, "and contig", c,
-                       contig_id_c, "j", j + 1, "\n")
-            # For every position in the reference alignment that is not a gap, assign it its position in the
-            # reference; for every position that is a gap, the highest leftmost position that is not a gap
-            positions = r_colon(int(alignfile[j][0]), int(alignfile[j][1]))
-            ref_pos = []
-            it = iter(positions)
-            last = None
-            for ch in ref_align:
-                if ch != ".":
-                    last = next(it)
-                    ref_pos.append(last)
-                else:
-                    if last is None:
-                        r_stop("Error in ref.pos.new[...] = ...: replacement has length zero")
-                    ref_pos.append(last)
-            contig_pos_all += r_colon(int(alignfile[j][2]), int(alignfile[j][3]))
-            ref_pos_all += [rp for rp, q in zip(ref_pos, query_align) if q != "."]
+        for contig_alignment_c, offset, record in alignments:
+            if not contig_alignment_c:
+                continue
+            cp, rp, cov = align_contig_record(contig_alignment_c, alignment_pos, contig_id_c, record, offset,
+                                              ident_threshold, ids_i, c)
+            covered |= cov
+            contig_pos_all += cp
+            ref_pos_all += rp
+        # Write the number of bases that are not part of any alignment for contig c
+        no_match = sum(1 for p in range(1, L + 1) if p not in covered)
 
         if contig_pos_all:
             # aggregate(ref_pos_all, by = list(contig_pos_all), FUN = "unique"): for each contig position,
@@ -692,9 +727,17 @@ def run(script_path, description, merge_hook=None):
         if any(l is None for l in coords_lines):
             r_stop("Error in get_alignment_pos: no alignments in ", query, ".delta")
         alignment_pos = [get_alignment_pos(x) for x in coords_lines]
-        if any(len(row) != 8 for row in alignment_pos):
+        if any(len(row) != 9 for row in alignment_pos):
             r_stop("Error in colnames(alignment.pos) = ...: show-coords lines do not have 8 fields")
         r_cat("Got all alignment positions", "\n")
+        # D6: nucmer names the reference records by their FASTA names; their offsets come from the
+        # GenBank records, matched by order (preflight checks the files agree)
+        import reference
+        recs = reference.records(ref_gb)
+        record_offsets = None
+        if len(recs) > 1:
+            names = [n for n, _ in reference.fasta_records(ref_fa)]
+            record_offsets = {n: r.offset for n, r in zip(names, recs)}
 
         all_kmers_genome_i = []
         all_kmers_gene_index_i = []
@@ -706,7 +749,7 @@ def run(script_path, description, merge_hook=None):
             kmers_c, genes_c, no_match = align_contig(
                 c, contigs[c - 1], contig_id[c - 1], kmer_type, kmer_length, kstart, kend, ident_threshold,
                 alignment_pos, query + ".delta", ref_name, mummer_path, ref_pos_gene_id, id_i,
-                sequence_functions.oneLetterCodes, sequence_functions.revcompl)
+                sequence_functions.oneLetterCodes, sequence_functions.revcompl, record_offsets)
             length_contig_no_match.append(no_match)
             # Add the kmers and gene pos for the kmers from contig c to the total
             all_kmers_genome_i += kmers_c

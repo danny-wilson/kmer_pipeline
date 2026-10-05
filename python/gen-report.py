@@ -188,8 +188,20 @@ def main():
     ngenes_signif = sum(1 for v in top_p if v is not None and v >= thr_signif)
 
     first_index = {}
+    records = list(gbk["record"]) if "record" in gbk.columns else None
     for k, n in enumerate(gbk_names):
         first_index.setdefault(n, k)
+        if records is not None:  # D6: names used in several records appear as name@record
+            first_index.setdefault(n + "@" + records[k], k)
+    import reference
+    single_record = reference.records(REF_GB)[0].name
+
+    def record(region):
+        """The reference record of a gene or intergenic region (its first gene's)."""
+        if records is None:
+            return single_record
+        k = first_index.get(region.split(":")[0])
+        return "NA" if k is None else records[k]
 
     def product(n):
         k = first_index.get(n)
@@ -208,14 +220,14 @@ def main():
              NL,
              "  <table>",
              "    <tr>",
-             "      <th>Region</th><th>Significance</th><th>Product</th>",
+             "      <th>Region</th><th>Record</th><th>Significance</th><th>Product</th>",
              "    </tr>"]
     for g, p, prod in zip(top_names, top_p, propro):
         tag = ("<b>", "</b>") if not (p < thr_signif) else ("", "")
         report_filename = outfile_prefix + "report_" + g.replace(":", "_") + ".html"
         lines += ["    <tr>",
                   "      <td><a href='" + report_filename + "' target='_blank' rel='noopener noreferrer'>" + g
-                  + "</a></td><td>" + tag[0] + s3(p) + tag[1] + "</td><td>" + prod + "</td>",
+                  + "</a></td><td>" + record(g) + "</td><td>" + tag[0] + s3(p) + tag[1] + "</td><td>" + prod + "</td>",
                   "    </tr>"]
     lines += ["  </table>", NL]
     html_body = NL.join(lines)

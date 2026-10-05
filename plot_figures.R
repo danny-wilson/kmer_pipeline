@@ -156,7 +156,7 @@ get_Manhattan_colours = function(final_kmer_pos_index = NULL, assoc_patterns = N
 	return(list("multialignCOL" = multialignCOL, "betaCOL" = betaCOL, "mafCOL" = mafCOL))
 	
 }
-plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = NULL, ypos = NULL, ylims.i = NULL, annotateGeneFile = NULL, ref = NULL, which_genes_to_annotate.i = NULL, allCOLS = NULL, allPCH = NULL, i = NULL, bonferroni = NULL, legendtext = NULL, legendcol = NULL, legendpch = NULL, legendlty = NULL, beta = NULL, gene_names = NULL, gene_conversion = NULL, pheno_type = NULL, ref_length = NULL){
+plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = NULL, ypos = NULL, ylims.i = NULL, annotateGeneFile = NULL, ref = NULL, which_genes_to_annotate.i = NULL, allCOLS = NULL, allPCH = NULL, i = NULL, bonferroni = NULL, legendtext = NULL, legendcol = NULL, legendpch = NULL, legendlty = NULL, beta = NULL, gene_names = NULL, gene_conversion = NULL, pheno_type = NULL, ref_length = NULL, records = NULL){
 	
 			
 	
@@ -190,6 +190,14 @@ plot_manhattan = function(outfilename = NULL, xpos = NULL, ma_threshold_pass = N
 	mtext(expression(paste("Significance (-log"[10],italic(' p'),") LMM",collapse="")), side = 2, line = 2.8, cex = 0.8)
 	axis(1, cex.axis = 0.8, at = c(0:floor(ref_length/1e6))*1e6, labels = as.character(0:floor(ref_length/1e6)))
 	axis(2, cex.axis = 0.8)
+	# D6: with several reference records, their boundaries and names (only the 20 largest named)
+	if(!is.null(records)){
+		abline(v = records$start[-1] - 0.5, col = "grey60", lty = 3)
+		ends = c(records$start[-1] - 1, ref_length)
+		len = ends - records$start + 1
+		show = if(nrow(records) <= 20) rep(TRUE, nrow(records)) else len >= sort(len, decreasing = TRUE)[20]
+		mtext(records$name[show], side = 3, line = 0.1, at = ((records$start + ends) / 2)[show], cex = 0.5)
+	}
 	abline(h = bonferroni, col = "black", lty = 2)
 	par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
 	plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n")
@@ -1567,6 +1575,8 @@ draw_genome_manhattan = function(dd, p) {
 	macormaf = p[["macormaf"]]
 	pheno_type = p[["pheno_type"]]
 	ref_length = as.numeric(p[["ref_length"]])
+	records = NULL
+	if("record_names" %in% names(p)) records = data.frame(name = strsplit(p[["record_names"]], ",", fixed = TRUE)[[1]], start = as.numeric(strsplit(p[["record_starts"]], ",", fixed = TRUE)[[1]]), stringsAsFactors = FALSE)
 	annotateGeneFile = if(file.exists(file.path(dd, "annotate_genes.txt"))) file.path(dd, "annotate_genes.txt") else NULL
 
 	## Get y position
@@ -1650,7 +1660,7 @@ draw_genome_manhattan = function(dd, p) {
 				if(max(ypos, na.rm = T)<(max(ylims.i)+(max(ylims.i)/2))) plot.i = FALSE else plot.i = TRUE
 			}
 			if(plot.i){
-				plot_manhattan(outfilename = outfilename, xpos = xpos, ma_threshold_pass = ma_threshold_pass, ypos = ypos, ylims.i = ylims.i, annotateGeneFile = annotateGeneFile, ref = ref, gene_names = gene_names, which_genes_to_annotate.i = which_genes_to_annotate.i, gene_conversion = gene_conversion, allCOLS = allCOLS, allPCH = allPCH, i = i, bonferroni = bonferroni, legendtext = legendtext, legendcol = legendcol, legendpch = legendpch, legendlty = legendlty, beta = as.numeric(assoc[,2]), pheno_type = pheno_type, ref_length = ref_length)
+				plot_manhattan(outfilename = outfilename, xpos = xpos, ma_threshold_pass = ma_threshold_pass, ypos = ypos, ylims.i = ylims.i, annotateGeneFile = annotateGeneFile, ref = ref, gene_names = gene_names, which_genes_to_annotate.i = which_genes_to_annotate.i, gene_conversion = gene_conversion, allCOLS = allCOLS, allPCH = allPCH, i = i, bonferroni = bonferroni, legendtext = legendtext, legendcol = legendcol, legendpch = legendpch, legendlty = legendlty, beta = as.numeric(assoc[,2]), pheno_type = pheno_type, ref_length = ref_length, records = records)
 			}
 		}
 	}

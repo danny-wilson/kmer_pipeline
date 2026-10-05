@@ -301,6 +301,12 @@ def check(args):
     check_params([p for p in args.user_params.split(",") if p], errors, warnings)
     if args.id_file:
         validate_inputs(args.id_file, args.covariate_file or None, run_steps, errors, warnings, args.pheno_file or None)
+    files = json.loads(args.input_files)
+    if files.get("ref_fa") and files.get("ref_gb") and os.path.isfile(files["ref_fa"]) and os.path.isfile(files["ref_gb"]):
+        import reference  # D6: the FASTA and GenBank files describe the same records
+        ref_errors, ref_warnings = reference.check(files["ref_fa"], files["ref_gb"])
+        errors.extend(ref_errors)
+        warnings.extend(ref_warnings)
     resume = args.resume == "true"
     overwrite = args.overwrite == "true"
 

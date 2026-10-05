@@ -14,11 +14,11 @@ from rcompat import r_colon, r_index, r_stop
 
 def read_reference(ref_file):
     """The reference sequence (every line after the first, concatenated), as a
-    str. scan() is not quiet here, so "Read N items" goes to stderr as in R."""
+    str. scan() is not quiet here, so "Read N items" goes to stderr as in R. With
+    several records (D6), their sequences laid end to end (reference.py)."""
     r = rcompat.r_scan_lines(ref_file, quiet=False)
     if sum(line.startswith(">") for line in r) > 1:
-        r_stop("Error: reference fasta file ", ref_file, " contains more than one record; "
-               "only single-record references are supported", "\n")
+        return "".join(line.strip() for line in r if not line.startswith(">"))
     # r[2:length(r)]: with one line, R's 2:1 gives c(NA, r[1])
     return rcompat.r_paste_collapse(r_index(r, r_colon(2, len(r))))
 
@@ -236,13 +236,44 @@ def read_dna_seg_from_file(file, tagsToParse=("CDS",), gene_type="auto"):
     pid, gene, synonym, product, proteinid, feature, gene_type, [col,] fill, lty,
     lwd, pch, cex), or None when no features were read. Row labels are R's row
     names (1, 2, ...)."""
-    import warnings
-
-    import pandas as pd
     with rcompat.r_open(file) as f:
         importedData = f.read().split("\n")
     if importedData and importedData[-1] == "":
         importedData.pop()
+    starts = [k for k, l in enumerate(importedData) if l.startswith("LOCUS")]
+    if len(starts) <= 1:
+        return read_dna_seg_from_lines(importedData, file, tagsToParse, gene_type)
+    # D6: several records, read one at a time and laid end to end (positions offset by the
+    # lengths of the records before), with a "record" column holding each LOCUS name
+    import pandas as pd
+    tables, offset = [], 0
+    for i, k in enumerate(starts):
+        block = importedData[k:starts[i + 1] if i + 1 < len(starts) else len(importedData)]
+        toks = [t for t in block[0].split(" ") if t != ""]
+        length = rcompat.r_as_numeric(toks[2]) if len(toks) >= 3 else None
+        if length is None:
+            r_stop("Error retrieving the length of GenBank record ", i + 1, " from its LOCUS line", "\n")
+        t = read_dna_seg_from_lines(block, file, tagsToParse, gene_type)
+        if t is not None:
+            t = t.copy()
+            t["start"] = t["start"].astype(float) + offset
+            t["end"] = t["end"].astype(float) + offset
+            t["record"] = toks[1]
+            tables.append(t)
+        offset += int(length)
+    if not tables:
+        return None
+    out = pd.concat(tables, ignore_index=True)
+    out.index = range(1, len(out) + 1)
+    return out
+
+
+def read_dna_seg_from_lines(importedData, file, tagsToParse=("CDS",), gene_type="auto"):
+    """read_dna_seg_from_file on the lines of one GenBank record (D6: a reference with several
+    records is read one record at a time)."""
+    import warnings
+
+    import pandas as pd
     TYPE = "Unknown"
     if importedData and ">" in importedData[0]:
         TYPE = "Fasta"
@@ -376,14 +407,23 @@ def reorder_reference_gbk(ref_gb):
     if ref is None:
         r_stop("Error in ref[which(ref$feature == \"CDS\"), ]: incorrect number of dimensions")
     ref = ref[ref["feature"] == "CDS"].copy()
-    # For each name, if there is more than one entry, label as 'gene_1', 'gene_2'
-    counts = {}
-    for nm in ref["name"]:
-        counts[nm] = counts.get(nm, 0) + 1
+    # For each name, if there is more than one entry, label as 'gene_1', 'gene_2' (within each
+    # record, D6); a name used in more than one record becomes name@record
+    records = list(ref["record"]) if "record" in ref.columns else [None] * len(ref)
     names = list(ref["name"])
-    for nm in [n for n in counts if counts[n] > 1]:
-        w = [k for k, n in enumerate(names) if n == nm]
-        for j, k in enumerate(w):
-            names[k] = nm + "_" + str(j + 1)
+    for rec in dict.fromkeys(records):
+        counts = {}
+        for nm, r in zip(names, records):
+            if r == rec:
+                counts[nm] = counts.get(nm, 0) + 1
+        for nm in [n for n in counts if counts[n] > 1]:
+            w = [k for k, (n, r) in enumerate(zip(names, records)) if n == nm and r == rec]
+            for j, k in enumerate(w):
+                names[k] = nm + "_" + str(j + 1)
+    if "record" in ref.columns:
+        seen = {}
+        for nm, r in zip(names, records):
+            seen.setdefault(nm, set()).add(r)
+        names = [nm + "@" + r if len(seen[nm]) > 1 else nm for nm, r in zip(names, records)]
     ref["name"] = names
     return ref.iloc[rcompat.r_order(ref["start"].to_numpy(dtype=float))]

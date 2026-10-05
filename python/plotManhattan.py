@@ -27,6 +27,9 @@ def read_ref_length(ref_gb):
     ref_length = rcompat.r_as_numeric(toks[2]) if len(toks) >= 3 else None
     if ref_length is None:
         r_stop("Error retrieving the reference genome length from the genbank file", "\n")
+    import reference
+    if reference.n_records(ref_gb) > 1:  # D6: the records laid end to end
+        ref_length = float(reference.total_length(ref_gb))
     return ref_length
 
 
@@ -63,6 +66,24 @@ def get_gene_xpos(gene_lookup_file, ref_gb):
 
     # Read in reference genbank file
     ref = sequence_functions.reorder_reference_gbk(ref_gb=ref_gb)
+    import reference
+    recs = reference.records(ref_gb)
+    if len(recs) > 1:  # D6: positions of the regions of each record
+        regs = {r.name: r for r in reference.regions(ref, recs)}
+        gene_lookup_pos = []
+        for name in names_lookup:
+            r = regs.get(name)
+            if r is None:
+                r_stop("Error: no region of the reference is called ", name, "\n")
+            if r.kind == "wrap":  # from the start of the record's last gene to the record's end, as for one record
+                start = regs[name[:-1]].ranges[0][0]
+                end = float(reference.record_of(recs, start).end)
+            else:
+                start, end = r.ranges[0]
+            gene_lookup_pos.append(((end - start) / 2) + start)
+        r_cat("Read in reference genbank file", "\n")
+        return {"gene_lookup": names_lookup, "ref": ref, "gene_lookup_pos": gene_lookup_pos, "ref_length": ref_length,
+                "records": recs}
     ref_names = list(ref["name"])
     ref_start = [float(v) for v in ref["start"]]
     ref_end = [float(v) for v in ref["end"]]
@@ -357,6 +378,9 @@ def run(args, bowtie):
 
     # Read in reference and gene look up
     if bowtie:
+        import reference
+        if reference.n_records(ref_gb) > 1:
+            r_stop("Error: the bowtie2 branch supports only references with one record", "\n")
         ref_length = read_ref_length(ref_gb)
         print("Read 1 item", file=sys.stderr, flush=True)
         r_cat("Reference genome length:", ref_length, "\n")
@@ -491,6 +515,9 @@ def run(args, bowtie):
                        ("bonferroni", float(bonferroni)), ("pheno_type", pheno_type), ("nsamples", nsamples),
                        ("override_signif", bool(override_signif)), ("manhattan_stem", manhattan_stem)):
         fd.param(key, value)
+    if not bowtie and gene_xpos.get("records") and len(gene_xpos["records"]) > 1:  # D6: record boundaries
+        fd.param("record_names", ",".join(r.name for r in gene_xpos["records"]))
+        fd.param("record_starts", ",".join(str(r.start) for r in gene_xpos["records"]))
     # The Manhattan plots R draws: four colourings, and a ylim 50 version when the maximum is at least 75
     finite = ypos[~np.isnan(ypos)]
     ylim50 = len(finite) > 0 and not (finite.max() < 50 + 50 / 2)

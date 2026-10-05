@@ -126,9 +126,15 @@ def num(v):
 # --------------------------------------------------------------------------
 
 
-def create_gene_lookup(ref, ref_length):
+def create_gene_lookup(ref, ref_length, recs=None):
     """sequence_functions.R's create_gene_lookup()$gene_lookup: rows (name, id,
-    start, end, strand) for genes then intergenic regions."""
+    start, end, strand) for genes then intergenic regions. With several reference
+    records (recs, D6), the regions of reference.regions (a wrap-round region's row
+    gives its first range, after the record's last gene, as for one record)."""
+    if recs is not None and len(recs) > 1:
+        import reference
+        regs = reference.regions(ref, recs)
+        return [(r.name, str(k + 1), r.ranges[0][0], r.ranges[0][1], r.strand) for k, r in enumerate(regs)]
     names = list(ref["name"])
     starts = [float(v) for v in ref["start"]]
     ends = [float(v) for v in ref["end"]]
@@ -153,18 +159,21 @@ def create_gene_lookup(ref, ref_length):
             enumerate(zip(allnames, starts + istart, ends + iend, strands + [1.0] * len(intergenic)))]
 
 
-def get_ref_gene_i(gene_lookup, genename_i, ref_length, ref_fa, oneLetterCodes):
+def get_ref_gene_i(gene_lookup, genename_i, ref_length, ref_fa, oneLetterCodes, bounds=None):
+    """The gene's region of the reference, with 999 bases either side, within bounds (the
+    gene's record, D6; the whole reference by default)."""
     import sequence_functions as sf
     wh = [k for k, row in enumerate(gene_lookup) if row[0] == genename_i]
     if not wh:
         r_stop("Error: no match for gene name", genename_i, "\n")
     row = gene_lookup[wh[0]]
+    lo, hi = bounds if bounds is not None else (1.0, float(ref_length))
     ref_start_i = row[2] - 999
-    if ref_start_i < 1:
-        ref_start_i = 1.0
+    if ref_start_i < lo:
+        ref_start_i = float(lo)
     ref_end_i = row[3] + 999
-    if ref_end_i > ref_length:
-        ref_end_i = float(ref_length)
+    if ref_end_i > hi:
+        ref_end_i = float(hi)
     ref_gene_i = rcompat.r_paste_collapse(rcompat.r_index(ref_fa, rcompat.r_colon(int(ref_start_i), int(ref_end_i))))
     length_protein = len(rcompat.r_colon(int(row[2]), int(row[3]))) / 3
     all_translations = translate_6_frames_alignment(ref_gene_i, oneLetterCodes)
@@ -619,7 +628,9 @@ def plot_closeup_alignments(ref, ref_length, ref_gb, ref_fa, figures_dir, output
     import sequence_functions as sf
     FIGURES = figure_data
     write_features(figure_data, ref_gb)
-    gene_lookup = create_gene_lookup(ref, ref_length)
+    import reference
+    recs = reference.records(ref_gb)
+    gene_lookup = create_gene_lookup(ref, ref_length, recs)
     ref_fa_seq = sf.read_reference(ref_fa)
 
     genes = genes_all["genes"]
@@ -634,7 +645,11 @@ def plot_closeup_alignments(ref, ref_length, ref_gb, ref_fa, figures_dir, output
         if not wh_genelookup:
             r_stop("Error: no match for gene name", genename_i, "\n")
         wh_genelookup = wh_genelookup[0]
-        ref_gene_i = get_ref_gene_i(gene_lookup, genename_i, ref_length, ref_fa_seq, oneLetterCodes)
+        bounds = None
+        if len(recs) > 1:
+            rec = reference.record_of(recs, gene_lookup[wh_genelookup][2])
+            bounds = (float(rec.start), float(rec.end))
+        ref_gene_i = get_ref_gene_i(gene_lookup, genename_i, ref_length, ref_fa_seq, oneLetterCodes, bounds)
         if kmer_type == "nucleotide" and ref_gene_i["correct_frame"] != 1:
             ref_gene_i["ref_gene_i"] = rc_full_str(ref_gene_i["ref_gene_i"])
 
