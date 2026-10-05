@@ -292,6 +292,17 @@ def gene_index_for_kmers(windows, out):
     return [wg.window(w) for w in windows]
 
 
+def covered_contig_bases(alignfile, passing):
+    """Contig positions covered by the passing alignments: each alignment's contig start to end
+    (columns 3-4 of its show-aligns header). D1c: R's matrix(..., byrow = T) paired the starts
+    with each other and the ends with each other when more than one alignment passed, so the
+    unaligned-base count in the log was wrong."""
+    covered = set()
+    for j in passing:
+        covered.update(r_colon(int(alignfile[j][2]), int(alignfile[j][3])))
+    return covered
+
+
 def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, ident_threshold, alignment_pos,
                  delta, ref_name, mummer_path, ref_pos_gene_id, ids_i, oneLetterCodes, revcompl):
     """One pass of the R loop over contigs: (kmers, gene index of each k-mer, bases not aligned)."""
@@ -340,18 +351,8 @@ def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, i
             if any(a != rcompat.r_as_numeric(b) for a, b in zip(alignfile[j], coordsfile[j][:4])):
                 r_stop("Error: alignment coordinates do not match between the alignment file and the coordinates file", "\n")
         passing = [j for j in range(len(coordsfile)) if rcompat.r_as_numeric(coordsfile[j][6]) >= ident_threshold]
-        # Get all bases which are covered by an alignment for contig c that pass the identity threshold.
-        # As R's matrix(alignfile[pass, 3:4], ncol = 2, byrow = T) reads the columns of a k x 2 matrix
-        # row by row, the pairs are (s1, s2), (s3, s4), ..., (e1, e2), ... when k > 1. This only
-        # affects the count of unaligned bases reported in the log.
-        if len(passing) == 1:
-            pairs = [(alignfile[passing[0]][2], alignfile[passing[0]][3])]
-        else:
-            data = [alignfile[j][2] for j in passing] + [alignfile[j][3] for j in passing]
-            pairs = [(data[2 * r], data[2 * r + 1]) for r in range(len(passing))]
-        covered = set()
-        for a, b in pairs:
-            covered.update(r_colon(int(a), int(b)))
+        # Get all bases which are covered by an alignment for contig c that pass the identity threshold
+        covered = covered_contig_bases(alignfile, passing)
         # Write the number of bases that are not part of any alignment for contig c
         no_match = sum(1 for p in range(1, L + 1) if p not in covered)
 
