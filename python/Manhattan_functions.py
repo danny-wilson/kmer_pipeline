@@ -5,6 +5,7 @@ R keeps the GEMMA results as a character matrix, so every number read from it
 (beta, -log10 p) is the value R printed with 15 significant digits; the port
 does the same (as_r_text_number). Figures are drawn by plot_figures.R from the
 figure-data files written here (FigureData; PLAN 5.5)."""
+import gzip
 import math
 import os
 import sys
@@ -221,20 +222,64 @@ def top20genes(gene_names, ma, minor_allele_threshold, ypos, macormaf, output_di
         f.write("".join(g + "\t" + rcompat.r_as_character(p) + "\n" for g, p in zip(top, pvals)))
 
 
+def json_number(v, fmt="%.17g"):
+    """A number for the summary JSON: null if missing or not finite (JSON has no NaN)."""
+    return "null" if v is None or not math.isfinite(v) else fmt % v
+
+
 def write_summary_json(summary_file, n_kmers, n_patterns, n_untested_patterns, max_neglog10p, minor_allele_threshold,
-                       macormaf, n_tests, bonferroni):
+                       macormaf, n_tests, bonferroni, n_genomes=None, n_genomes_analysed=None, n_patterns_nan=None,
+                       pheno_type=None, pheno=None):
     lines = ["{",
              '  "n_kmers": %d,' % int(n_kmers),
              '  "n_patterns": %d,' % int(n_patterns),
              '  "n_untested_patterns": %d,' % int(n_untested_patterns),
-             '  "max_neglog10p": %.17g,' % max_neglog10p,
+             '  "max_neglog10p": %s,' % json_number(max_neglog10p),
              '  "minor_allele_threshold": %.17g,' % minor_allele_threshold,
              '  "macormaf": "%s",' % macormaf,
              '  "n_tests": %d,' % int(n_tests),
-             '  "bonferroni_threshold": %.17g' % bonferroni,
-             "}"]
+             '  "bonferroni_threshold": %.17g' % bonferroni]
+    # N9: the genomes and patterns the results describe
+    extra = []
+    if n_genomes is not None:
+        extra += ['  "n_genomes": %d' % n_genomes, '  "n_genomes_analysed": %d' % n_genomes_analysed,
+                  '  "n_patterns_nan": %d' % n_patterns_nan, '  "pheno_type": "%s"' % pheno_type]
+        if pheno_type == "binary" and pheno is not None:
+            values = sorted({v for v in pheno if v is not None})
+            extra += ['  "n_cases": %d' % sum(1 for v in pheno if v == values[-1]),
+                      '  "n_controls": %d' % sum(1 for v in pheno if v == values[0]),
+                      '  "case_value": %s' % json_number(values[-1], "%.15g"),
+                      '  "control_value": %s' % json_number(values[0], "%.15g")]
+    if extra:
+        lines[-1] += ","
+        lines += [e + "," for e in extra[:-1]] + [extra[-1]]
+    lines.append("}")
     rcompat.r_cat_lines(lines, summary_file)
     r_cat("Written summary for reports:", summary_file, "\n")
+
+
+def check_gemma_logs(logs, n_analysed, n_rows):
+    """GEMMA analysed the genomes the pipeline counts (9.6a), fitted the null model, and wrote a
+    result for every pattern it analysed (no truncated output)."""
+    import prepare_gemma
+    n_snps = 0
+    for log in logs:
+        n = prepare_gemma.gemma_log_individuals(log)
+        if n is not None and n != n_analysed:
+            r_stop("Error: GEMMA analysed ", n, " genomes (", log, ") but the pipeline counts ", n_analysed,
+                   " genomes with a phenotype and complete covariates", "\n")
+        lognull = extract_lambda_lognull(log)["lognull"]
+        v = rcompat.r_as_numeric(lognull)
+        if v is None or not math.isfinite(v):
+            r_stop("Error: GEMMA could not fit the null model (log-likelihood ", lognull, " in ", log, "): check the "
+                   "phenotype and covariates of the analysed genomes", "\n")
+        with gzip.open(log, "rt") as fh:
+            for line in fh:
+                if "number of analyzed SNPs" in line:
+                    n_snps += int(line.split("=")[-1])
+    if logs and n_snps != n_rows:
+        r_stop("Error: GEMMA's logs report ", n_snps, " analysed patterns but its result files hold ", n_rows,
+               " (truncated output?)", "\n")
 
 
 def get_pheno_type(pheno):

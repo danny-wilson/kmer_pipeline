@@ -3,6 +3,7 @@
 close-up alignment figures of the top genes. Port of plotManhattan.Rscript.
 Writes <prefix>_<type><k>.summary.json for the reports (PLAN 5.3)."""
 import argparse
+import glob
 import math
 import os
 import sys
@@ -144,6 +145,9 @@ def main():
     parser.add_argument("--ref-fa", required=True)
     parser.add_argument("--gene-lookup-file", required=True)
     parser.add_argument("--id-file", required=True)
+    parser.add_argument("--covariate-file", default=None,
+                        help="GEMMA covariate file, if step 4 used one (to rebuild the analysed genomes of an "
+                             "analysis made by an earlier release)")
     parser.add_argument("--nucmerident", required=True)
     parser.add_argument("--plot-min-genomes", "--min-count", dest="min_count", required=True,
                         help="genomes a k-mer/gene combination must be seen in to be plotted (--min-count "
@@ -229,7 +233,9 @@ def run(args, bowtie):
 
     kmerKeySizeFile = kmerfilePrefix + ".patternmerge.patternKeySize.txt"
     kmerIndexFile = kmerfilePrefix + ".patternmerge.patternIndex.txt.gz"
-    kmerPresenceCountFile = kmerfilePrefix + ".patternmerge.presenceCount.txt.gz"
+    # Made by step 4 for this analysis's phenotype (N4), so always in this analysis_dir
+    kmerPresenceCountFile = r_paste0(output_dir, output_prefix, "_", kmer_type, kmer_length,
+                                     ".patternmerge.presenceCount.txt.gz")
     kmerSeqFile = kmerfilePrefix + ".kmermerge.txt.gz"
     if bowtie:
         mappingFile = r_paste0(kmerfilePrefix, ".", ref_name, ".SAMq", samtools_filter, ".bowtie2map.txt.gz")
@@ -323,10 +329,16 @@ def run(args, bowtie):
               minor_allele_threshold, "\n")
         macormaf = "mac"
 
-    # Read in ID file
+    # Read in ID file; the phenotypes of the genomes GEMMA analysed (9.6a: those with a finite
+    # phenotype and complete covariates; None for the others)
     id_table = rcompat.r_read_table(id_file, header=True, sep="\t")
     ids = [rcompat.r_as_character(v) for v in id_table["id"]]
-    pheno = [rcompat.r_as_numeric_value(v) for v in id_table["pheno"]]
+    import prepare_gemma
+    gemma_logs = sorted(glob.glob(r_paste0(gemma_dir, output_prefix, "_", kmer_type, kmer_length, ".*.log.txt.gz")))
+    pheno = prepare_gemma.analysed_phenotypes(output_dir, output_prefix, kmer_type, kmer_length, id_file,
+                                              getattr(args, "covariate_file", None), gemma_logs)
+    if len(pheno) != len(ids):
+        r_stop("Error: the analysed-phenotype file has ", len(pheno), " genomes but id_file has ", len(ids), "\n")
     nsamples = sum(1 for p in pheno if p is not None)
 
     # Check count threshold variable
@@ -365,6 +377,7 @@ def run(args, bowtie):
     assoc = mf.read_gemma_files(input_dir=gemma_dir, prefix=output_prefix, kmer_type=kmer_type, kmer_length=kmer_length,
                                 nPatterns=nPatterns)
     neglog10 = mf.assoc_column(assoc, 6)
+    mf.check_gemma_logs(gemma_logs, nsamples, sum(1 for r in assoc if r is not None))
     beta_patterns = mf.assoc_column(assoc, 2)
 
     ## Read in MAF
@@ -396,14 +409,22 @@ def run(args, bowtie):
     with np.errstate(invalid="ignore"):
         tested = [kmerIndex[k] for k in range(len(kmerIndex)) if ma[k] >= minor_allele_threshold and assoc[kmerIndex[k] - 1] is not None]
     n_tests = len(set(tested))
+    if n_tests == 0:
+        r_stop("Error: no pattern was tested above the ", macormaf, " threshold ", minor_allele_threshold, " (",
+               sum(1 for r in assoc if r is not None), " of ", int(nPatterns), " patterns returned by GEMMA, among ",
+               nsamples, " analysed genomes): lower minor_allele_threshold, or check kmer_min_count", "\n")
     bonferroni = -math.log10(0.05 / n_tests)
     r_cat("Bonferroni threshold:", bonferroni, "\n")
     mf.write_summary_json(summary_file=r_paste0(output_dir, output_prefix, "_", kmer_type, kmer_length,
                                                 ".bowtie2mapping.summary.json" if bowtie else ".summary.json"),
                           n_kmers=len(kmerIndex), n_patterns=nPatterns,
                           n_untested_patterns=sum(1 for r in assoc if r is None),
-                          max_neglog10p=float(np.nanmax(neglog10)), minor_allele_threshold=minor_allele_threshold,
-                          macormaf=macormaf, n_tests=n_tests, bonferroni=bonferroni)
+                          max_neglog10p=float(np.nanmax(neglog10)) if np.isfinite(neglog10).any() else math.nan,
+                          minor_allele_threshold=minor_allele_threshold,
+                          macormaf=macormaf, n_tests=n_tests, bonferroni=bonferroni,
+                          n_genomes=len(ids), n_genomes_analysed=nsamples,
+                          n_patterns_nan=sum(1 for r, v in zip(assoc, neglog10) if r is not None and not v == v),
+                          pheno_type=mf.get_pheno_type(pheno), pheno=pheno)
 
     ## Figure data for plot_figures.R (PLAN 5.5): QQ plots
     fd = mf.FigureData(figures_dir)

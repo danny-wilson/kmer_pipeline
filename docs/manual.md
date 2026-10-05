@@ -1323,7 +1323,7 @@ createfullkmerlist.py \
 
 | Output |
 |---|
-| *Patterns.* Patterns are first created for batches of kmers and stored in a subdirectory `kmertypekmerlength_patternbatches` for use in a later step. The batches are merged into one set of patterns in stages creating the files ending:<br><br>&bull; `.patternmerge.patternKey.txt.gz`: unique presence/absence patterns. Each line is a separate pattern with 0 representing absence and 1 presence of a kmer. The 0/1 order is determined by the order of the samples in `id_file`.<br>&bull; `.patternmerge.patternIndex.txt.gz`: a 0-based index the length of the total number of kmers. Each line describes the presence/absence pattern in `.patternmerge.patternKey.txt.gz` for the corresponding kmer in the file ending `.kmermerge.txt.gz`.<br>&bull; `.patternmerge.presenceCount.txt.gz` (**phenotype dependent file**): for each pattern, the sum of the number of genomes kmers with that pattern are present in. If there are any NAs within the phenotype file, those samples are not included when determining the counts.<br><br>*Kinship matrix.* Kinship matrices are first created for each batch of patterns, then merged into one kinship matrix in stages creating the files ending:<br><br>&bull; `.kinship.txt.gz`: kinship matrix file. Rows and columns are ordered according to the order of samples in `id_file`.<br>&bull; `.kinshipWeight.txt`: contains the number of kmers used to create the full kinship file; this should be equal to the total number of kmers in `.kmermerge.txt.gz`.<br><br>Temporary files are created in the run directory and deleted.<br><br>The standard output will be written to a file for each process, and the standard error if any errors occur. Recommend running in a separate run directory due to the large number of stdout and stderr files.<br><br>The presence/absence patterns and kinship matrix files are created for the full set of samples included in id_file, ignoring the phenotype column. If there are any NAs in the phenotype column, these samples are still included in the patterns, and kinship matrix. The pattern counts are determined for just the samples with a non NA phenotype. To get the pattern counts for all samples or those with non NA phenotypes, `pattern2presencecount.py` can be run separately adjusting the option `--include-na` (see [Get kmer presence counts](#get-kmer-presence-counts)).<br><br>If the patterns file and kinship matrix have been successfully created, the pattern batches directory can be deleted. |
+| *Patterns.* Patterns are first created for batches of kmers and stored in a subdirectory `kmertypekmerlength_patternbatches` for use in a later step. The batches are merged into one set of patterns in stages creating the files ending:<br><br>&bull; `.patternmerge.patternKey.txt.gz`: unique presence/absence patterns. Each line is a separate pattern with 0 representing absence and 1 presence of a kmer. The 0/1 order is determined by the order of the samples in `id_file`.<br>&bull; `.patternmerge.patternIndex.txt.gz`: a 0-based index the length of the total number of kmers. Each line describes the presence/absence pattern in `.patternmerge.patternKey.txt.gz` for the corresponding kmer in the file ending `.kmermerge.txt.gz`.<br><br>*Kinship matrix.* Kinship matrices are first created for each batch of patterns, then merged into one kinship matrix in stages creating the files ending:<br><br>&bull; `.kinship.txt.gz`: kinship matrix file. Rows and columns are ordered according to the order of samples in `id_file`.<br>&bull; `.kinshipWeight.txt`: contains the number of kmers used to create the full kinship file; this should be equal to the total number of kmers in `.kmermerge.txt.gz`.<br><br>Temporary files are created in the run directory and deleted.<br><br>The standard output will be written to a file for each process, and the standard error if any errors occur. Recommend running in a separate run directory due to the large number of stdout and stderr files.<br><br>The presence/absence patterns and kinship matrix files are created for the full set of samples included in id_file, ignoring the phenotype column. If there are any NAs in the phenotype column, these samples are still included in the patterns and kinship matrix, so steps 1-3 do not depend on the phenotype: the number of analysed genomes each pattern is present in, which does, is counted by step 4. To count the genomes each pattern is present in, among all genomes or those with a phenotype, run `pattern2presencecount.py` (see [Get kmer presence counts](#get-kmer-presence-counts)).<br><br>If the patterns file and kinship matrix have been successfully created, the pattern batches directory can be deleted. |
 
 Usage:
 
@@ -1366,7 +1366,39 @@ stringlist2patternandkinship.py \
 
 | Output |
 |---|
-| The kmer patterns are split into `p` batches and GEMMA is run separately for each batch of patterns. The GEMMA output files will be stored within a subdirectory `kmer_typekmer_length_gemma/output` within `analysis_dir`. Output files for each batch ending:<br><br>&bull; `.assoc.txt.gz`: GEMMA output file containing the pattern number, p-values and log likelihood under the alternative.<br>&bull; `.pval.txt.gz`: the likelihood ratio test p-value column extracted from the `.assoc.txt.gz` file.<br>&bull; `.log.txt.gz`: GEMMA log file containing the heritability estimate and standard error.<br><br>Temporary files are created in the run directory and deleted.<br><br>The standard output will be written to a file for each process, and the standard error if any errors occur. Recommend running in a separate run directory. |
+| First, once for all batches: the genomes to analyse are those with a phenotype and, if a covariate file is given, a value for every covariate (GEMMA leaves out the others); they are listed in `kmer_typekmer_length_gemma/output_prefix_kmer_typekmer_length.analysed_phenotypes.txt`, which steps 6 and 7 also use. The step stops with an explanation if the model cannot be fitted to them (too few genomes for the covariates, a single phenotype value, or covariates that are linearly dependent among them). It also writes GEMMA's phenotype file, counts the analysed genomes each pattern is present in (`.patternmerge.presenceCount.txt.gz` in `analysis_dir`, used for the MAC/MAF filter) and decompresses the kinship matrix once for all batches (removed at the end).<br><br>The kmer patterns are then split into `p` batches and GEMMA is run separately for each batch of patterns. The GEMMA output files will be stored within a subdirectory `kmer_typekmer_length_gemma/output` within `analysis_dir`. Output files for each batch ending:<br><br>&bull; `.assoc.txt.gz`: GEMMA output file containing the pattern number, p-values and log likelihood under the alternative.<br>&bull; `.pval.txt.gz`: the pattern number (`rs`) and likelihood ratio test p-value (`p_lrt`) of each pattern GEMMA tested, from the `.assoc.txt.gz` file. GEMMA leaves out patterns that do not vary among the analysed genomes.<br>&bull; `.log.txt.gz`: GEMMA log file containing the heritability estimate and standard error.<br><br>Temporary files are created in the run directory and deleted.<br><br>The standard output will be written to a file for each process, and the standard error if any errors occur. Recommend running in a separate run directory. |
+
+
+The preparation, run once before the GEMMA tasks (and with `--cleanup` once after them):
+
+```text
+prepare_gemma.py \
+    --kmerfile-prefix KMERFILE_PREFIX \
+    --id-file ID_FILE \
+    [--covariate-file COVARIATE_FILE] \
+    --analysis-dir ANALYSIS_DIR \
+    --output-prefix OUTPUT_PREFIX \
+    --kmer-type KMER_TYPE \
+    --kmer-length KMER_LENGTH \
+    [--cleanup]
+```
+
+**Arguments**
+
+---
+
+| Argument | Description |
+|---|---|
+| `--kmerfile-prefix` | Prefix of the pattern and kinship files of step 3 (`analysis_dir/output_prefix_kmer_typekmer_length`). |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. |
+| `--covariate-file` | *Optional.* Gemma formatted covariate file. First column must be a column of 1s for the intercept. |
+| `--analysis-dir` | Directory location for the analysis. |
+| `--output-prefix` | Output file prefix. |
+| `--kmer-type` | Either `protein` or `nucleotide`. |
+| `--kmer-length` | Kmer length. |
+| `--cleanup` | *Optional.* Remove the decompressed kinship matrix (after the last GEMMA task). |
+
+Then each GEMMA task:
 
 Usage:
 
@@ -1381,7 +1413,8 @@ rungemma.py \
     --kmertype KMERTYPE \
     --kmer-length KMER_LENGTH \
     --software-file SOFTWARE_FILE \
-    [--covariate-file COVARIATE_FILE]
+    [--covariate-file COVARIATE_FILE] \
+    [--prepared]
 ```
 
 **Arguments**
@@ -1400,6 +1433,7 @@ rungemma.py \
 | `--kmer-length` | Kmer length. |
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
 | `--covariate-file` | *Optional.* Gemma formatted covariate file. First column must be a column of 1s for the intercept. |
+| `--prepared` | *Optional.* Use the phenotype file and decompressed kinship matrix written once by `prepare_gemma.py` (as the pipeline does), instead of writing them in each task. |
 
 ## Step 5 Run contig alignment
 
@@ -1545,9 +1579,8 @@ kmercontigalignmerge.py \
 
 ## Step 6 Plot figures using contig alignment positions
 
-Assumptions: reads in the kmer files with the provided prefix (`--kmerfile-prefix`). This
-includes the file ending `.patternmerge.presenceCount.txt.gz` which is a phenotype dependent file
-when some phenotypes are set to NA, see step 3.
+Assumptions: reads in the kmer files with the provided prefix (`--kmerfile-prefix`), and the
+presence counts and analysed genomes made by step 4 for this analysis (see step 4).
 
 This step runs in two parts. `plotManhattan.py` does all the computation: it aligns the kmers to
 the top genes, writes the tables below and, in the subdirectory `figure_data`, the data behind
@@ -1571,6 +1604,7 @@ plotManhattan.py \
     --ref-fa REF_FA \
     --gene-lookup-file GENE_LOOKUP_FILE \
     --id-file ID_FILE \
+    [--covariate-file COVARIATE_FILE] \
     --nucmerident NUCMERIDENT \
     --plot-min-genomes MIN_COUNT \
     --kmer-type KMER_TYPE \
@@ -1596,6 +1630,7 @@ plotManhattan.py \
 | `--ref-fa` | File path to the reference fasta file. |
 | `--gene-lookup-file` | File created in step 5 ending `gene_id_name_lookup.txt` in the subdirectory ending `_kmergenealign`. |
 | `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--covariate-file` | *Optional.* The covariate file step 4 used, if any: needed only to rebuild the analysed genomes of an analysis made by an earlier release (step 4 now lists them). |
 | `--nucmerident` | Minimum percentage identity threshold for a contig alignment to be used to position a kmer used in step 5, between 0-100. |
 | `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot. The old name `--min-count` is still accepted. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
@@ -1654,9 +1689,8 @@ runbowtie.py \
 
 ## Step 6B Plot figures using bowtie2 mapping positions (nucleotide kmers only)
 
-Assumptions: reads in the kmer files with the provided prefix (`--kmerfile-prefix`). This
-includes the file ending `.patternmerge.presenceCount.txt.gz` which is a phenotype dependent file
-when some phenotypes are set to NA, see step 3.
+Assumptions: reads in the kmer files with the provided prefix (`--kmerfile-prefix`), and the
+presence counts and analysed genomes made by step 4 for this analysis (see step 4).
 
 As in step 6, `plotManhattanbowtie.py` writes the tables and the figure data, and the Nextflow
 process `plotFiguresbowtie` draws the figures in R with `plot_figures.R`.
@@ -1993,11 +2027,15 @@ Each example run gave the same results. The image is a 1.9 GiB download.
 | gen-protein-report.py | | | |
 | gen-unmapped-report.py | | | |
 | get_ref_name.py | | | |
+| prepare_gemma.py | | inventory.py | |
+| preflight.py | | | |
 
 The Python modules are imported by the scripts (`rcompat.py` reproduces R's behaviour where the
 outputs depend on it). `plot_figures.R` draws the figures, run by `Rscript_launcher.R`, which
 reports the file and line of any error. `nucleotidekmermerge.py`, `proteinkmermerge.py` and
 `pattern2presencecount.py` are called by other scripts rather than by `kmer_pipeline.nf`
-directly; `kmercontigalign.py` (step 5 with the merge of step 5A) is not called by the pipeline. The R
+directly; `kmercontigalign.py` (step 5 with the merge of step 5A) is not called by the pipeline. `preflight.py` runs before the
+workflow writes anything: it checks the parameters, earlier outputs in `analysis_dir` (deleting
+them if `overwrite = true`) and `-resume`, using the list of each step's files in `inventory.py`. The R
 versions of the workflow scripts, which these Python scripts replaced, are in the release tagged
 `2026-10-04` and its image.

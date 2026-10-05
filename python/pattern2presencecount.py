@@ -2,6 +2,7 @@
 """pattern2presencecount.py: count the genomes each k-mer pattern is present in
 (optionally only genomes with a non-NA phenotype). Port of pattern2presencecount.Rscript."""
 import argparse
+import gzip
 import math
 import os
 
@@ -31,8 +32,8 @@ def r_seq_length_out(from_, to, length_out):
 
 
 def format_count(v):
-    """cat() of a presence count (an R double)."""
-    if v == v and 0 <= v < 100000 and v == int(v):
+    """A presence count: a plain integer (D1a; R's cat() wrote 100000 as "1e+05")."""
+    if v == v and v == int(v):
         return str(int(v))
     return rcompat.r_str(v, 7)
 
@@ -55,6 +56,52 @@ def presence_counts(lines, notNA):
         vals = [float(c) if c.isdigit() else math.nan for c in l]
         out[k] = sum(vals[i] if i < len(vals) else math.nan for i in notNA)
     return out
+
+
+def write_presence_counts(kmerfilePrefix, out_prefix, selected):
+    """Write <out_prefix>.patternmerge.presenceCount.txt.gz: for each pattern of <kmerfilePrefix>,
+    the number of the selected genomes (0-based columns) it is present in. Returns its path."""
+    kmerKeySizeFile = kmerfilePrefix + ".patternmerge.patternKeySize.txt"
+    kmerKey = kmerfilePrefix + ".patternmerge.patternKey.txt.gz"
+    pheno_notNA = selected
+    # Read in total number of kmer patterns
+    sizes = [float(v) for v in open(kmerKeySizeFile).read().split()]
+    nPatterns = sizes[0] if len(sizes) == 1 else sizes
+    r_cat("Number of patterns:", nPatterns, "\n")
+    if len(sizes) != 1:
+        r_stop("Error: expected one number in ", kmerKeySizeFile)
+
+    s = [float(round(v)) for v in r_seq_length_out(1.0, nPatterns, min(nPatterns, 21))]
+    if not s:
+        r_stop("Error: no patterns in ", kmerKeySizeFile)
+
+    # The patterns are read in the batches R uses (lines s[1] .. end); every
+    # pattern is counted once, so they are read here in chunks from line s[1]
+    presencecount = []
+    with rcompat.r_open(kmerKey) as f:
+        for _ in range(int(s[0]) - 1):
+            next(f)
+        chunk = []
+        for line in f:
+            tokens = line.split()
+            chunk.extend(tokens)  # scan(what = character()) reads whitespace-separated items
+            if len(chunk) >= CHUNK:
+                presencecount.append(presence_counts(chunk, pheno_notNA))
+                chunk = []
+        if chunk:
+            presencecount.append(presence_counts(chunk, pheno_notNA))
+    presencecount = np.concatenate(presencecount) if presencecount else np.array([])
+    if len(presencecount) != nPatterns:
+        r_stop("Error: length of presence count vector not equal to total number of patterns", "\n")
+
+    # Written to a temporary name, then renamed (gzip would refuse to replace an existing file)
+    presencecountfile = out_prefix + ".patternmerge.presenceCount.txt.gz"
+    with gzip.open(presencecountfile + ".tmp", "wt") as f:
+        f.write("".join(("NA" if v != v else format_count(v)) + "\n" for v in presencecount)
+                if len(presencecount) else "\n")
+    os.replace(presencecountfile + ".tmp", presencecountfile)
+    r_cat("Written presence counts to file:", presencecountfile, "\n")
+    return presencecountfile
 
 
 def main():
@@ -107,42 +154,7 @@ def main():
         pheno_notNA = list(range(len(pheno)))
         r_cat("Calculating presence counts for all samples", "\n")
 
-    # Read in total number of kmer patterns
-    sizes = [float(v) for v in open(kmerKeySizeFile).read().split()]
-    nPatterns = sizes[0] if len(sizes) == 1 else sizes
-    r_cat("Number of patterns:", nPatterns, "\n")
-    if len(sizes) != 1:
-        r_stop("Error: expected one number in ", kmerKeySizeFile)
-
-    s = [float(round(v)) for v in r_seq_length_out(1.0, nPatterns, min(nPatterns, 21))]
-    if not s:
-        r_stop("Error: no patterns in ", kmerKeySizeFile)
-
-    # The patterns are read in the batches R uses (lines s[1] .. end); every
-    # pattern is counted once, so they are read here in chunks from line s[1]
-    presencecount = []
-    with rcompat.r_open(kmerKey) as f:
-        for _ in range(int(s[0]) - 1):
-            next(f)
-        chunk = []
-        for line in f:
-            tokens = line.split()
-            chunk.extend(tokens)  # scan(what = character()) reads whitespace-separated items
-            if len(chunk) >= CHUNK:
-                presencecount.append(presence_counts(chunk, pheno_notNA))
-                chunk = []
-        if chunk:
-            presencecount.append(presence_counts(chunk, pheno_notNA))
-    presencecount = np.concatenate(presencecount) if presencecount else np.array([])
-    if len(presencecount) != nPatterns:
-        r_stop("Error: length of presence count vector not equal to total number of patterns", "\n")
-
-    presencecountfile = output_dir + kmerfilePrefix_noDir + ".patternmerge.presenceCount.txt"
-    with open(presencecountfile, "w") as f:
-        f.write("".join(("NA" if v != v else format_count(v)) + "\n" for v in presencecount)
-                if len(presencecount) else "\n")
-    rcompat.r_system("gzip " + presencecountfile)
-    r_cat("Written presence counts to file:", presencecountfile + ".gz", "\n")
+    write_presence_counts(kmerfilePrefix, output_dir + kmerfilePrefix_noDir, pheno_notNA)
 
 
 if __name__ == "__main__":

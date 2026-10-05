@@ -19,9 +19,9 @@ STEP_FILES = {
     1: ["{TK}/**", "translated_contigs/**", "{P}_kmers_filepaths.txt"],
     2: ["{P}.kmermerge.txt.gz", "{O}.{T}{K}.j.*"],
     3: ["{TK}_patternbatches/**", "{P}.patternmerge.patternKey.txt.gz", "{P}.patternmerge.patternKeySize.txt",
-        "{P}.patternmerge.patternIndex.txt.gz", "{P}.patternmerge.presenceCount.txt.gz",
-        "{P}.kinshipmerge.kinship.txt.gz", "{P}.kinshipmerge.kinshipWeight.txt"],
-    4: ["{TK}_gemma/**"],
+        "{P}.patternmerge.patternIndex.txt.gz", "{P}.kinshipmerge.kinship.txt.gz", "{P}.kinshipmerge.kinshipWeight.txt"],
+    # The presence counts depend on the phenotype: made by step 4 (by step 3 before Phase 4, N4)
+    4: ["{TK}_gemma/**", "{P}.patternmerge.presenceCount.txt.gz", "{P}.patternmerge.presenceCount.txt.gz.tmp"],
     5: ["{TK}_kmergenealign/**", "{P}.*.kmeralignmerge.txt.gz", "{P}.*.kmeralignmerge.count.txt.gz"],
     6: ["{TK}_kmergenealign_figures/**", "{P}.summary.json"],
     7: ["{P}.report.html", "{P}.report_*.html", "report.css", "report.js"],

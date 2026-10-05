@@ -493,6 +493,61 @@ else
 
 // Step 4: Run GEMMA
 //   p-fold parallelization
+// Step 4 preparation, once before the GEMMA tasks: the genomes GEMMA analyses (finite phenotype,
+// complete covariates), GEMMA's phenotype file, the patterns' presence counts among those genomes
+// and the kinship matrix decompressed once. Not cached: it must match the current phenotype.
+process prepareGemma {
+cache false
+input:
+	val ready
+output:
+	val true, emit: done
+shell:
+if(!SKIP[4])
+	'''
+	echo "Step 4: Preparing GEMMA"
+	ln -sfr $(pwd) !{params.workdir}/prepareGemma 2>/dev/null || ln -sf $(pwd) !{params.workdir}/prepareGemma
+	ln -sfr $(pwd)/.command.log !{params.logdir}/prepareGemma.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/prepareGemma.log
+	!{params.container_cmd} !{params.container_script_dir}/prepare_gemma.py \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--id-file !{params.container_id_file} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--output-prefix !{params.output_prefix} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length} \
+		!{COVARIATE_ARG}
+	rm -f !{params.logdir}/prepareGemma.log && cp $(pwd)/.command.log !{params.logdir}/prepareGemma.log
+	'''
+else
+	'''
+	echo "Skipping Step 4: Preparing GEMMA"
+	'''
+}
+
+// After the last GEMMA task: remove the decompressed kinship matrix
+process cleanupGemma {
+cache false
+input:
+	val ready
+output:
+	val true, emit: done
+shell:
+if(!SKIP[4])
+	'''
+	!{params.container_cmd} !{params.container_script_dir}/prepare_gemma.py --cleanup \
+		--kmerfile-prefix !{params.kmerFilePrefix} \
+		--id-file !{params.container_id_file} \
+		--analysis-dir !{params.container_analysis_dir} \
+		--output-prefix !{params.output_prefix} \
+		--kmer-type !{params.kmer_type} \
+		--kmer-length !{params.kmer_length}
+	'''
+else
+	'''
+	echo "Skipping Step 4: cleaning up"
+	'''
+}
+
 process rungemma {
 //	publishDir "${params.container_analysis_dir}", mode: 'rellink'
 //	stageInMode 'rellink'
@@ -509,6 +564,7 @@ if(!SKIP[4] && params.container_covariate_file=="")
 	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/rungemma.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/rungemma.py \
+		--prepared \
 		--task-id !{taskid} \
 		--p !{params.p} \
 		--kmerfile-prefix !{params.kmerFilePrefix} \
@@ -526,6 +582,7 @@ else if(!SKIP[4] && params.container_covariate_file!="")
 	ln -sfr $(pwd) !{params.workdir}/rungemma.!{taskid} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/rungemma.!{taskid}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/rungemma.!{taskid}.log
 	!{params.container_cmd} !{params.container_script_dir}/rungemma.py \
+		--prepared \
 		--task-id !{taskid} \
 		--p !{params.p} \
 		--kmerfile-prefix !{params.kmerFilePrefix} \
@@ -746,7 +803,8 @@ if(!SKIP[6])
 		--minor-allele-threshold !{params.minor_allele_threshold} \
 		--software-file !{params.container_software_file} \
 		--blastident !{params.blastident} \
-		--ngenes !{params.ntopgenes}
+		--ngenes !{params.ntopgenes} \
+		!{COVARIATE_ARG}
 	rm -f !{params.logdir}/plotManhattan.log && cp $(pwd)/.command.log !{params.logdir}/plotManhattan.log
 	'''
 	/* Temporarily removed since default values cannot be explicitly specified:\
@@ -1099,6 +1157,8 @@ println 'container_ref_fa:        ' + params.container_ref_fa
 println 'container_ref_gb:        ' + params.container_ref_gb
 println 'container_logdir:        ' + params.container_logdir
 println 'workdir:                 ' + params.workdir
+// The covariate file option of the scripts that take one (empty without a covariate file)
+COVARIATE_ARG = params.container_covariate_file ? "--covariate-file " + params.container_covariate_file : ""
 println ''
 // Checks before anything is written; then the workflow's own files
 preflight()
@@ -1137,7 +1197,9 @@ workflow {
 
 		// Step 4: Running GEMMA
 		// maxp-fold parallelization
-		rungemma(stringlist2patternandkinship.out.done.collect(), Channel.of(1..params.maxp))
+		prepareGemma(stringlist2patternandkinship.out.done.collect())
+		rungemma(prepareGemma.out.done.collect(), Channel.of(1..params.maxp))
+		cleanupGemma(rungemma.out.done.collect())
 
 		// Step 5: Running contig alignment (no merging)
 		// n-fold parallelization
@@ -1151,7 +1213,7 @@ workflow {
 
 		// Step 6: Plotting figures using contig alignment positions
 		// One core
-		plotManhattan(rungemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
+		plotManhattan(cleanupGemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
 
 		// Step 6, figures: drawn in R
 		// One core
@@ -1193,7 +1255,9 @@ workflow {
 
 		// Step 4: Running GEMMA
 		// maxp-fold parallelization
-		rungemma(stringlist2patternandkinship.out.done.collect(), Channel.of(1..params.maxp))
+		prepareGemma(stringlist2patternandkinship.out.done.collect())
+		rungemma(prepareGemma.out.done.collect(), Channel.of(1..params.maxp))
+		cleanupGemma(rungemma.out.done.collect())
 
 		// Step 5: Running contig alignment (no merging)
 		// n-fold parallelization
@@ -1207,7 +1271,7 @@ workflow {
 
 		// Step 6: Plotting figures using contig alignment positions
 		// One core
-		plotManhattan(rungemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
+		plotManhattan(cleanupGemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
 
 		// Step 6, figures: drawn in R
 		// One core

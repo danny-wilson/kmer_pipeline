@@ -162,6 +162,25 @@ def main():
         "  familywise error rate of 5%, this implied a Bonferroni-corrected",
         "  <i>p</i>-value threshold of " + s3(thr_p) + ", or 10<sup>-" + s3(thr_signif) + "</sup>.</p>", NL])
 
+    # N9: the genomes and patterns the results describe (summaries from earlier releases lack them)
+    if "n_genomes_analysed" in summary:
+        n_untested = int(float(summary["n_untested_patterns"]))
+        n_nan = int(float(summary["n_patterns_nan"]))
+        groups = ""
+        if summary.get("pheno_type") == "binary" and "n_cases" in summary:
+            groups = (" (" + summary["n_cases"] + " with phenotype " + summary["case_value"] + " and "
+                      + summary["n_controls"] + " with phenotype " + summary["control_value"] + ")")
+        html_body = NL.join([
+            html_body,
+            "  <h2>Genomes and patterns analysed</h2>",
+            "  <p>Of the " + summary["n_genomes"] + " genomes, " + summary["n_genomes_analysed"] + " were analysed"
+            + groups + " (genomes are analysed if they have a phenotype and, when covariates are used, a value for"
+            + " every covariate).",
+            "  GEMMA tested " + str(total_npatterns - n_untested - n_nan) + " of the " + str(total_npatterns)
+            + " phylopatterns; " + str(n_untested) + " were not tested because they do not vary among the analysed"
+            + " genomes" + (", and " + str(n_nan) + " could not be fitted (no result)" if n_nan else "") + ".</p>",
+            NL])
+
     # Top regions by min p-value
     table_topgenes = rcompat.r_read_table(filename_topgenes)
     top_names = [rcompat.r_as_character(v) for v in table_topgenes.iloc[:, 0]]

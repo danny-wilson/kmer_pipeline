@@ -733,13 +733,8 @@ def main():
                                kmerlen=kmerlen, batches_dir=batch["batches_dir"])
         r_cat("\n")
 
-    # Keep the last process to calculate the MACs for the patterns
-    if t == p:
-        r_cat("Calculating number of genomes each pattern is present in (of the genomes with a non NA phenotype)", "\n")
-        rcompat.r_system(python_path + " " + pattern2presencecountscript + " --kmerfile-prefix "
-                         + r_paste0(output_dir, output_prefix, "_", kmertype, kmerlen) + " --output-dir " + output_dir
-                         + " --id-file " + id_file + " --include-na FALSE")
-        r_cat("\n")
+    # The presence counts (MACs) of the patterns depend on the phenotype, so they are now made
+    # by step 4 (prepare_gemma.py), from the genomes GEMMA analyses (N4)
 
     r_cat("Finished in", (time.monotonic() - start_time) / 3600, "hours\n")
 

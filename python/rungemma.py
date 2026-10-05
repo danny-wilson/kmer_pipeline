@@ -34,6 +34,9 @@ def main():
     parser.add_argument("--kmer-length", required=True)
     parser.add_argument("--software-file", required=True)
     parser.add_argument("--covariate-file", default=None, help="GEMMA covariate file (first column all 1s)")
+    parser.add_argument("--prepared", action="store_true",
+                        help="use the phenotype file and decompressed kinship matrix prepare_gemma.py wrote once "
+                             "for all tasks (the workflow does), instead of making them in each task")
     args = parser.parse_args()
 
     # Initialize variables
@@ -147,9 +150,15 @@ def main():
     # Read in pheno file
     id_table = rcompat.r_read_table(id_file, header=True, sep="\t")
     pheno = [rcompat.r_as_numeric_value(v) for v in id_table["pheno"]]
-    phenofile = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, "_gemma_formatted_phenotype_process", t, ".txt")
-    r_cat("Writing phenotype to gemma formatted file:", phenofile, "\n")
-    rcompat.r_cat_lines([gemma_phenotype_text(v) for v in pheno], phenofile)
+    if args.prepared:  # N6: written once by prepare_gemma.py
+        phenofile = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, "_gemma_formatted_phenotype.txt")
+        if not os.path.exists(phenofile):
+            r_stop("Error: phenotype file from prepare_gemma.py doesn't exist: ", phenofile, "\n")
+    else:
+        phenofile = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, "_gemma_formatted_phenotype_process", t,
+                             ".txt")
+        r_cat("Writing phenotype to gemma formatted file:", phenofile, "\n")
+        rcompat.r_cat_lines([gemma_phenotype_text(v) for v in pheno], phenofile)
 
     # Compute other variables
     b = math.ceil(n / p)
@@ -183,9 +192,14 @@ def main():
     os.chdir(gemma_dir)
 
     # Run gemma
-    kinfile_txt = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, ".kinship.", beg, "-", end, ".txt")
-    if kinfile_txt != kinfile:
-        rcompat.r_system("zcat " + kinfile + " > " + kinfile_txt)
+    if args.prepared:  # N6: decompressed once by prepare_gemma.py, removed after the last task
+        kinfile_txt = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, ".kinship.txt")
+        if not os.path.exists(kinfile_txt):
+            r_stop("Error: decompressed kinship matrix from prepare_gemma.py doesn't exist: ", kinfile_txt, "\n")
+    else:
+        kinfile_txt = r_paste0(gemma_dir, output_prefix, "_", kmertype, kmerlen, ".kinship.", beg, "-", end, ".txt")
+        if kinfile_txt != kinfile:
+            rcompat.r_system("zcat " + kinfile + " > " + kinfile_txt)
     if covariate_file is None:
         rcompat.r_system(gemmapath + " -g " + genofile + " -p " + phenofile + " -k " + kinfile_txt
                          + " -lmm 4 -maf 0 -o " + outfile_prefix)
@@ -195,7 +209,8 @@ def main():
 
     # Delete temporary files
     r_cat("Deleting intermediate files", "\n")
-    for f in ([kinfile_txt] if kinfile_txt != kinfile else []) + [genofile_prefix, genofile, phenofile]:
+    temporary = [genofile_prefix, genofile] + ([] if args.prepared else [phenofile] + ([kinfile_txt] if kinfile_txt != kinfile else []))
+    for f in temporary:
         if os.path.lexists(f):
             os.remove(f)
 
