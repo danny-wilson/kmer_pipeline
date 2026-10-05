@@ -593,7 +593,9 @@ def main():
     parser.add_argument("--kmertype", required=True, help="protein or nucleotide")
     parser.add_argument("--software-file", required=True)
     parser.add_argument("--kmer-length", default="31")
-    parser.add_argument("--mincount", default="5")
+    parser.add_argument("--kmer-min-count", "--mincount", dest="mincount", default="5",
+                        help="copies of a k-mer in a genome for it to count as present (--mincount is "
+                             "the old name)")
     args = parser.parse_args()
 
     # Initialize variables

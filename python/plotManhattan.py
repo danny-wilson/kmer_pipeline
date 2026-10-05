@@ -145,7 +145,9 @@ def main():
     parser.add_argument("--gene-lookup-file", required=True)
     parser.add_argument("--id-file", required=True)
     parser.add_argument("--nucmerident", required=True)
-    parser.add_argument("--min-count", required=True)
+    parser.add_argument("--plot-min-genomes", "--min-count", dest="min_count", required=True,
+                        help="genomes a k-mer/gene combination must be seen in to be plotted (--min-count "
+                             "is the old name)")
     parser.add_argument("--kmer-type", required=True)
     parser.add_argument("--kmer-length", required=True)
     parser.add_argument("--minor-allele-threshold", required=True)

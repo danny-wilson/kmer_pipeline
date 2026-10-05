@@ -49,7 +49,11 @@ def main():
                                      allow_abbrev=False)
     for name in ("prefix", "anatype", "k", "refname", "ref-gb", "maf", "alignident", "mincount", "ngenes", "srcdir",
                  "outdir", "logdir"):
-        parser.add_argument("--" + name, required=True)
+        if name == "mincount":  # D4: --plot-min-genomes; --mincount kept as an alias
+            parser.add_argument("--plot-min-genomes", "--mincount", dest="mincount", required=True,
+                                help="genomes a k-mer/gene combination must be seen in to be plotted (as step 6)")
+        else:
+            parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
 
     PREFIX, ANATYPE, K, REFNAME, REF_GB = args.prefix, args.anatype, args.k, args.refname, args.ref_gb
@@ -273,14 +277,14 @@ def main():
         for i in range(1, int(NGENES) + 1):
             CMD = " ".join([sys.executable, fp(SRC + "/gen-gene-report.py"), "--hit-num", str(i), "--prefix", PREFIX,
                             "--anatype", ANATYPE, "--k", K, "--refname", REFNAME, "--ref-gb", fp(REF_GB), "--maf", MAF,
-                            "--alignident", ALIGNIDENT, "--mincount", MINCOUNT, "--srcdir", fp(SRC), "--outdir", fp(PWD),
+                            "--alignident", ALIGNIDENT, "--plot-min-genomes", MINCOUNT, "--srcdir", fp(SRC), "--outdir", fp(PWD),
                             "--logdir", fp(LOGDIR)])
             rcompat.r_system(CMD)
             print("Done", i, "of", NGENES)
         # And for unmapped kmers
         CMD = " ".join([sys.executable, fp(SRC + "/gen-unmapped-report.py"), "--prefix", PREFIX, "--anatype", ANATYPE,
                         "--k", K, "--refname", REFNAME, "--ref-gb", fp(REF_GB), "--maf", MAF, "--alignident", ALIGNIDENT,
-                        "--mincount", MINCOUNT, "--srcdir", fp(SRC), "--outdir", fp(PWD), "--logdir", fp(LOGDIR)])
+                        "--plot-min-genomes", MINCOUNT, "--srcdir", fp(SRC), "--outdir", fp(PWD), "--logdir", fp(LOGDIR)])
         rcompat.r_system(CMD)
         print("Done unmapped kmer report")
 

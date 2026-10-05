@@ -22,7 +22,11 @@ def main():
                                                  "Daniel Wilson (2022)", allow_abbrev=False)
     for name in ("prefix", "anatype", "k", "refname", "ref-gb", "maf", "alignident", "mincount", "srcdir", "outdir",
                  "logdir"):
-        parser.add_argument("--" + name, required=True)
+        if name == "mincount":  # D4: --plot-min-genomes; --mincount kept as an alias
+            parser.add_argument("--plot-min-genomes", "--mincount", dest="mincount", required=True,
+                                help="genomes a k-mer/gene combination must be seen in to be plotted (as step 6)")
+        else:
+            parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
     PREFIX, ANATYPE, K, REFNAME = args.prefix, args.anatype, args.k, args.refname
     MAF, ALIGNIDENT, MINCOUNT, PWD = args.maf, args.alignident, args.mincount, args.outdir

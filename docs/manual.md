@@ -1206,7 +1206,9 @@ Parameters with default values do not need to be specified in `nextflow.config`.
 |---|---|
 | `ntopgenes` | [20] Number of the most significant genes or intergenic regions on which to create reports. |
 | `minor_allele_threshold` | [0.01] Minor allele threshold for excluding extreme-frequency kmers. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
-| `min_count` | [1] Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot. For genome assemblies, set to 1. |
+| `kmer_min_count` | [1] Minimum number of times a kmer must occur in a genome to count as present (step 3). For genome assemblies, set to 1. |
+| `plot_min_genomes` | [1] Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (steps 6 and 7). |
+| `min_count` | Replaced by `kmer_min_count` and `plot_min_genomes`. Still accepted, setting both, with a warning; it cannot be combined with them. |
 | `nucmerident` | [90] Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
 | `bowtie_parameters` | ["--very-sensitive"] Parameters for running bowtie2. If the provided option is not the default, assumes a text file where the lines read in are the bowtie parameters used. |
 | `samtools_filter` | [10] Bowtie2 mapping quality filter. Samtools is used to remove kmers mapped below this threshold. |
@@ -1328,7 +1330,7 @@ stringlist2patternandkinship.py \
     --kmertype KMERTYPE \
     --software-file SOFTWARE_FILE \
     [--kmer-length KMER_LENGTH] \
-    [--mincount MINCOUNT]
+    [--kmer-min-count MINCOUNT]
 ```
 
 **Arguments**
@@ -1347,7 +1349,7 @@ stringlist2patternandkinship.py \
 | `--kmertype` | Either `protein` or `nucleotide`. |
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
 | `--kmer-length` | *Optional (default `31`).* Kmer length. |
-| `--mincount` | *Optional (default `5`).* Minimum number of times a kmer has to be present in a sample to be counted as present. Set this to 1 as the kmers have been counted from assemblies. |
+| `--kmer-min-count` | *Optional (default `5`).* Minimum number of times a kmer has to be present in a sample to be counted as present. Set this to 1 as the kmers have been counted from assemblies. The old name `--mincount` is still accepted. |
 
 ## Step 4 Run GEMMA
 
@@ -1555,7 +1557,7 @@ plotManhattan.py \
     --gene-lookup-file GENE_LOOKUP_FILE \
     --id-file ID_FILE \
     --nucmerident NUCMERIDENT \
-    --min-count MIN_COUNT \
+    --plot-min-genomes MIN_COUNT \
     --kmer-type KMER_TYPE \
     --kmer-length KMER_LENGTH \
     --minor-allele-threshold MINOR_ALLELE_THRESHOLD \
@@ -1580,7 +1582,7 @@ plotManhattan.py \
 | `--gene-lookup-file` | File created in step 5 ending `gene_id_name_lookup.txt` in the subdirectory ending `_kmergenealign`. |
 | `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
 | `--nucmerident` | Minimum percentage identity threshold for a contig alignment to be used to position a kmer used in step 5, between 0-100. |
-| `--min-count` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot. |
+| `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot. The old name `--min-count` is still accepted. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
 | `--kmer-length` | Kmer length. |
 | `--minor-allele-threshold` | Minor allele threshold to exclude kmers below the threshold. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
@@ -1710,7 +1712,7 @@ gen-report.py \
     --ref-gb REF_GB \
     --maf MAF \
     --alignident ALIGNIDENT \
-    --mincount MINCOUNT \
+    --plot-min-genomes MINCOUNT \
     --ngenes NGENES \
     --srcdir SRCDIR \
     --outdir OUTDIR \
@@ -1730,7 +1732,7 @@ gen-report.py \
 | `--ref-gb` | File path to the reference genbank file. |
 | `--maf` | Minor allele threshold to exclude kmers below the threshold. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
 | `--alignident` | Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
-| `--mincount` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--min-count` of step 6). |
+| `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--plot-min-genomes` of step 6). The old name `--mincount` is still accepted. |
 | `--ngenes` | Specifies the number of top hit genes on which to report. |
 | `--srcdir` | Script directory specified in software file. |
 | `--outdir` | Directory location for the analysis, where the report files are written. |
@@ -1758,7 +1760,7 @@ gen-gene-report.py \
     --ref-gb REF_GB \
     --maf MAF \
     --alignident ALIGNIDENT \
-    --mincount MINCOUNT \
+    --plot-min-genomes MINCOUNT \
     --srcdir SRCDIR \
     --outdir OUTDIR \
     --logdir LOGDIR
@@ -1778,7 +1780,7 @@ gen-gene-report.py \
 | `--ref-gb` | File path to the reference genbank file. |
 | `--maf` | Minor allele threshold to exclude kmers below the threshold. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
 | `--alignident` | Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
-| `--mincount` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--min-count` of step 6). |
+| `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--plot-min-genomes` of step 6). The old name `--mincount` is still accepted. |
 | `--srcdir` | Script directory specified in software file. |
 | `--outdir` | Directory location for the analysis, where the report files are written. |
 | `--logdir` | Log directory to read stdout from GEMMA. |
@@ -1797,7 +1799,7 @@ gen-protein-report.py \
     --ref-gb REF_GB \
     --maf MAF \
     --alignident ALIGNIDENT \
-    --mincount MINCOUNT \
+    --plot-min-genomes MINCOUNT \
     --srcdir SRCDIR \
     --outdir OUTDIR \
     --logdir LOGDIR
@@ -1817,7 +1819,7 @@ gen-protein-report.py \
 | `--ref-gb` | File path to the reference genbank file. |
 | `--maf` | Minor allele threshold to exclude kmers below the threshold. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
 | `--alignident` | Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
-| `--mincount` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--min-count` of step 6). |
+| `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--plot-min-genomes` of step 6). The old name `--mincount` is still accepted. |
 | `--srcdir` | Script directory specified in software file. |
 | `--outdir` | Directory location for the analysis, where the report files are written. |
 | `--logdir` | Log directory to read stdout from GEMMA. |
@@ -1841,7 +1843,7 @@ gen-unmapped-report.py \
     --ref-gb REF_GB \
     --maf MAF \
     --alignident ALIGNIDENT \
-    --mincount MINCOUNT \
+    --plot-min-genomes MINCOUNT \
     --srcdir SRCDIR \
     --outdir OUTDIR \
     --logdir LOGDIR
@@ -1860,7 +1862,7 @@ gen-unmapped-report.py \
 | `--ref-gb` | File path to the reference genbank file. |
 | `--maf` | Minor allele threshold to exclude kmers below the threshold. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
 | `--alignident` | Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
-| `--mincount` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--min-count` of step 6). |
+| `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (as `--plot-min-genomes` of step 6). The old name `--mincount` is still accepted. |
 | `--srcdir` | Script directory specified in software file. |
 | `--outdir` | Directory location for the analysis, where the report files are written. |
 | `--logdir` | Log directory to read stdout from GEMMA. |

@@ -384,7 +384,7 @@ if(!params.skip3)
 		--kmertype !{params.kmer_type} \
 		--software-file !{params.container_software_file} \
 		--kmer-length !{params.kmer_length} \
-		--mincount !{params.min_count}
+		--kmer-min-count !{params.kmer_min_count}
 	'''
 else
 	'''
@@ -679,7 +679,7 @@ if(!params.skip6)
 		--gene-lookup-file !{params.gene_lookup_file} \
 		--id-file !{params.container_id_file} \
 		--nucmerident !{params.nucmerident} \
-		--min-count !{params.min_count} \
+		--plot-min-genomes !{params.plot_min_genomes} \
 		--kmer-type !{params.kmer_type} \
 		--kmer-length !{params.kmer_length} \
 		--minor-allele-threshold !{params.minor_allele_threshold} \
@@ -818,7 +818,7 @@ if(!params.skip7)
 		--ref-gb !{params.container_ref_gb} \
 		--maf !{params.minor_allele_threshold} \
 		--alignident !{params.nucmerident} \
-		--mincount !{params.min_count} \
+		--plot-min-genomes !{params.plot_min_genomes} \
 		--ngenes !{params.ntopgenes} \
 		--srcdir !{params.container_script_dir} \
 		--outdir !{params.container_analysis_dir} \
@@ -853,7 +853,7 @@ if(!params.skip7)
 		--ref-gb !{params.container_ref_gb} \
 		--maf !{params.minor_allele_threshold} \
 		--alignident !{params.nucmerident} \
-		--mincount !{params.min_count} \
+		--plot-min-genomes !{params.plot_min_genomes} \
 		--srcdir !{params.container_script_dir} \
 		--outdir !{params.container_analysis_dir} \
 		--logdir !{params.container_logdir}
@@ -887,7 +887,7 @@ if(!params.skip7)
 		--ref-gb !{params.container_ref_gb} \
 		--maf !{params.minor_allele_threshold} \
 		--alignident !{params.nucmerident} \
-		--mincount !{params.min_count} \
+		--plot-min-genomes !{params.plot_min_genomes} \
 		--srcdir !{params.container_script_dir} \
 		--outdir !{params.container_analysis_dir} \
 		--logdir !{params.container_logdir}
@@ -919,7 +919,7 @@ if(!params.skip7)
 		--ref-gb !{params.container_ref_gb} \
 		--maf !{params.minor_allele_threshold} \
 		--alignident !{params.nucmerident} \
-		--mincount !{params.min_count} \
+		--plot-min-genomes !{params.plot_min_genomes} \
 		--srcdir !{params.container_script_dir} \
 		--outdir !{params.container_analysis_dir} \
 		--logdir !{params.container_logdir}
@@ -948,8 +948,21 @@ params.ntopgenes = 20
 println 'ntopgenes:               ' + params.ntopgenes
 params.minor_allele_threshold = 0.01
 println 'minor_allele_threshold:  ' + params.minor_allele_threshold
-params.min_count = 1
-println 'min_count:               ' + params.min_count
+// D4: min_count is split into kmer_min_count (copies of a k-mer in a genome for it to count as
+// present, step 3) and plot_min_genomes (genomes a k-mer/gene combination must be seen in to be
+// plotted, steps 6-7). A legacy min_count sets both, as before. Checked before any default is set.
+if(params.containsKey('min_count')) {
+	if(params.containsKey('kmer_min_count') || params.containsKey('plot_min_genomes'))
+		throw new Exception("min_count is replaced by kmer_min_count and plot_min_genomes: set only the new parameters")
+	params.kmer_min_count = params.min_count
+	params.plot_min_genomes = params.min_count
+	println "Warning: min_count is replaced by kmer_min_count (copies of a k-mer in a genome for it to count as present) and plot_min_genomes (genomes a k-mer/gene combination must be seen in to be plotted); min_count = ${params.min_count} sets both" + (params.min_count.toString().toInteger() > 1 ? ", so a k-mer must also occur ${params.min_count} times in a genome to count as present" : "")
+} else {
+	params.kmer_min_count = 1
+	params.plot_min_genomes = 1
+}
+println 'kmer_min_count:          ' + params.kmer_min_count
+println 'plot_min_genomes:        ' + params.plot_min_genomes
 params.nucmerident = 90
 println 'nucmerident:             ' + params.nucmerident
 params.bowtie_parameters = "--very-sensitive"

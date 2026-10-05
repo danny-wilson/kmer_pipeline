@@ -4,7 +4,7 @@ The scripts under test are found in KMER_PIPELINE_SCRIPTS if it is set; otherwis
 ../python (a checkout of the repository) or, failing that, /usr/local/bin (the
 kmer_pipeline image, where the tests are installed in /usr/share/kmer_pipeline/tests).
 Run them with the image's Python, e.g. from a checkout:
-    apptainer exec kmer_pipeline.sif python3 -m pytest -p no:cacheprovider tests
+    apptainer exec --cleanenv kmer_pipeline.sif python3 -m pytest -p no:cacheprovider tests
 """
 import os
 import subprocess

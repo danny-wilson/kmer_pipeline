@@ -44,7 +44,11 @@ def main():
                                                  "protein. Daniel Wilson (2022)", allow_abbrev=False)
     for name in ("hit-num", "prefix", "anatype", "k", "refname", "ref-gb", "maf", "alignident", "mincount", "srcdir",
                  "outdir", "logdir"):
-        parser.add_argument("--" + name, required=True)
+        if name == "mincount":  # D4: --plot-min-genomes; --mincount kept as an alias
+            parser.add_argument("--plot-min-genomes", "--mincount", dest="mincount", required=True,
+                                help="genomes a k-mer/gene combination must be seen in to be plotted (as step 6)")
+        else:
+            parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
     out = ggr.run(args, protein=True)
     if out is None:
