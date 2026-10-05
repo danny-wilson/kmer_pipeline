@@ -303,6 +303,15 @@ def covered_contig_bases(alignfile, passing):
     return covered
 
 
+def kmer_gene_pairs(aggregate):
+    """One (gene ID, k-mer) pair per gene of each k-mer, from {k-mer: unique gene IDs}, in the
+    dict's order. D1d: R's sapply() made a matrix without names when every k-mer had the same
+    number (> 1) of genes, so the genome's k-mer/gene pairs were written without their k-mers."""
+    genes = [float(g) for v in aggregate.values() for g in v]
+    names = [km for km, v in aggregate.items() for _ in v]
+    return genes, names
+
+
 def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, ident_threshold, alignment_pos,
                  delta, ref_name, mummer_path, ref_pos_gene_id, ids_i, oneLetterCodes, revcompl):
     """One pass of the R loop over contigs: (kmers, gene index of each k-mer, bases not aligned)."""
@@ -708,15 +717,7 @@ def run(script_path, description, merge_hook=None):
         if not aggregate:
             r_stop("Error in agg_kmers[[index]]: subscript out of bounds (no k-mers aligned for ID ", id_i, ")")
         aggregate = {km: unique_unlist(v) for km, v in sorted(aggregate.items())}
-        lengths = {len(v) for v in aggregate.values()}
-        if len(lengths) == 1 and lengths.pop() > 1:
-            # sapply() simplifies to a matrix when every k-mer has the same number (> 1) of genes;
-            # the matrix has no names, so R pairs no k-mer with the genes. Reproduced as R does it.
-            unique_kmers_genes = [float(g) for v in aggregate.values() for g in v]
-            unique_kmers_genes_names = []
-        else:
-            unique_kmers_genes = [float(g) for v in aggregate.values() for g in v]
-            unique_kmers_genes_names = [km for km, v in aggregate.items() for _ in v]
+        unique_kmers_genes, unique_kmers_genes_names = kmer_gene_pairs(aggregate)
         ## Add in for reverse complement kmers
         if kmer_type == "nucleotide":
             rb = sequence_functions.rev_base
