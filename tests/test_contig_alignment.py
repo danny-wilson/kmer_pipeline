@@ -20,3 +20,13 @@ def test_kmer_gene_pairs_when_every_kmer_has_two_genes():
 def test_kmer_gene_pairs_mixed():
     genes, names = kca.kmer_gene_pairs({"AAC": [3], "GGT": [7, 8]})
     assert list(zip(names, genes)) == [("AAC", 3.0), ("GGT", 7.0), ("GGT", 8.0)]
+
+
+def test_protein_kmer_windows():
+    assert kca.protein_kmer_windows("ACDEF", 3, 3) == [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
+
+
+def test_protein_kmer_windows_frame_shorter_than_k():
+    """D1e: a frame shorter than k has no k-mers and no windows."""
+    assert kca.count_protein_kmers("ACD", 5) is None
+    assert kca.protein_kmer_windows("ACD", 0, 5) == []

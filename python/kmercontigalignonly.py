@@ -312,6 +312,14 @@ def kmer_gene_pairs(aggregate):
     return genes, names
 
 
+def protein_kmer_windows(translation, nk, k):
+    """Amino-acid positions (1-based) of each of the nk k-mers of one translated frame. D1e: a
+    frame shorter than k has no k-mers; R's 1:0 gave two spurious windows and the run stopped."""
+    # positions of the amino acids that are not X (all of them now)
+    wh_notX = [p + 1 for p, a in enumerate(translation) if a != "X"]
+    return [r_index(wh_notX, [m + x - 1 for m in range(1, k + 1)]) for x in range(1, nk + 1)]
+
+
 def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, ident_threshold, alignment_pos,
                  delta, ref_name, mummer_path, ref_pos_gene_id, ids_i, oneLetterCodes, revcompl):
     """One pass of the R loop over contigs: (kmers, gene index of each k-mer, bases not aligned)."""
@@ -439,11 +447,8 @@ def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, i
                     n_aa = len(contig_translate_c[j])
                     idx = [start + by * k for k in range(n_aa)]
                     pos_frame = [None] + [out[p] if 1 <= p <= L else None for p in idx]  # 1-based
-                    # positions of the amino acids that are not X (all of them now)
-                    wh_notX = [k + 1 for k, a in enumerate(contig_translate_c[j]) if a != "X"]
                     nk = len(kmers_contig_c[j]) if kmers_contig_c[j] is not None else 0
-                    k = int(kmer_length)
-                    windows = [r_index(wh_notX, [m + x - 1 for m in range(1, k + 1)]) for x in r_colon(1, nk)]
+                    windows = protein_kmer_windows(contig_translate_c[j], nk, int(kmer_length))
                     kmers_genes_c += gene_index_for_kmers(windows, pos_frame)
             else:
                 # Which positions in the contig are not Ns; split where the Ns were
