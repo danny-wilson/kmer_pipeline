@@ -497,7 +497,7 @@ def align_contig(c, contig, contig_id_c, kmer_type, kmer_length, kstart, kend, i
 ###################################################################################################
 
 
-def parse_args(prog_description):
+def parse_args(prog_description, waits=False):
     parser = argparse.ArgumentParser(description=prog_description, allow_abbrev=False)
     parser.add_argument("--task-id", required=True)
     parser.add_argument("--n", required=True, help="number of samples")
@@ -513,7 +513,13 @@ def parse_args(prog_description):
     parser.add_argument("--software-file", required=True)
     parser.add_argument("--kstart", default=None, help="shortest variable k-mer length (default 9)")
     parser.add_argument("--kend", default=None, help="longest variable k-mer length (default 100)")
-    return parser.parse_args()
+    if waits:  # kmercontigalign.py, which also runs the merge
+        parser.add_argument("--merge-wait-minutes", default="100",
+                            help="minutes to wait for files written by other tasks before stopping (default 100)")
+    args = parser.parse_args()
+    if waits:
+        rcompat.set_merge_wait(args.merge_wait_minutes)
+    return args
 
 
 def run(script_path, description, merge_hook=None):
@@ -521,7 +527,7 @@ def run(script_path, description, merge_hook=None):
     merge_hook that launches kmercontigalignmerge.py."""
     rcompat.script_setup(script_path)
     start_time = time.monotonic()
-    args = parse_args(description)
+    args = parse_args(description, waits=merge_hook is not None)
 
     # Initialise variables
     process = rcompat.r_as_integer(args.task_id)

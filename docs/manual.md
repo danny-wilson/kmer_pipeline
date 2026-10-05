@@ -1209,6 +1209,7 @@ Parameters with default values do not need to be specified in `nextflow.config`.
 | `kmer_min_count` | [1] Minimum number of times a kmer must occur in a genome to count as present (step 3). For genome assemblies, set to 1. |
 | `plot_min_genomes` | [1] Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (steps 6 and 7). |
 | `min_count` | Replaced by `kmer_min_count` and `plot_min_genomes`. Still accepted, setting both, with a warning; it cannot be combined with them. |
+| `merge_wait_minutes` | [100] Minutes a task of steps 2, 3 and 5A waits for files written by other tasks before stopping with an error. Set it higher if tasks can wait longer than this in the cluster queue. |
 | `nucmerident` | [90] Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
 | `bowtie_parameters` | ["--very-sensitive"] Parameters for running bowtie2. If the provided option is not the default, assumes a text file where the lines read in are the bowtie parameters used. |
 | `samtools_filter` | [10] Bowtie2 mapping quality filter. Samtools is used to remove kmers mapped below this threshold. |
@@ -1291,7 +1292,8 @@ createfullkmerlist.py \
     --id-file ID_FILE \
     --kmer-type KMER_TYPE \
     --kmer-length KMER_LENGTH \
-    --software-file SOFTWARE_FILE
+    --software-file SOFTWARE_FILE \
+    [--merge-wait-minutes MERGE_WAIT_MINUTES]
 ```
 
 **Arguments**
@@ -1309,6 +1311,7 @@ createfullkmerlist.py \
 | `--kmer-type` | Either `protein` or `nucleotide`. |
 | `--kmer-length` | Kmer length. |
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
+| `--merge-wait-minutes` | *Optional (default `100`).* Minutes to wait for the files written by other tasks before stopping with an error. If tasks wait a long time in the cluster queue, set this higher (the workflow parameter `merge_wait_minutes`). |
 
 ## Step 3 Create kmer presence/absence patterns and kinship matrix
 
@@ -1330,7 +1333,8 @@ stringlist2patternandkinship.py \
     --kmertype KMERTYPE \
     --software-file SOFTWARE_FILE \
     [--kmer-length KMER_LENGTH] \
-    [--kmer-min-count MINCOUNT]
+    [--kmer-min-count MINCOUNT] \
+    [--merge-wait-minutes MERGE_WAIT_MINUTES]
 ```
 
 **Arguments**
@@ -1350,6 +1354,7 @@ stringlist2patternandkinship.py \
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
 | `--kmer-length` | *Optional (default `31`).* Kmer length. |
 | `--kmer-min-count` | *Optional (default `5`).* Minimum number of times a kmer has to be present in a sample to be counted as present. Set this to 1 as the kmers have been counted from assemblies. The old name `--mincount` is still accepted. |
+| `--merge-wait-minutes` | *Optional (default `100`).* Minutes to wait for the files written by other tasks before stopping with an error. If tasks wait a long time in the cluster queue, set this higher (the workflow parameter `merge_wait_minutes`). |
 
 ## Step 4 Run GEMMA
 
@@ -1461,7 +1466,8 @@ kmercontigalign.py \
     --kmerseqfile KMERSEQFILE \
     --software-file SOFTWARE_FILE \
     [--kstart KSTART] \
-    [--kend KEND]
+    [--kend KEND] \
+    [--merge-wait-minutes MERGE_WAIT_MINUTES]
 ```
 
 **Arguments**
@@ -1484,6 +1490,7 @@ kmercontigalign.py \
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
 | `--kstart` | *Optional.* If `--kmer-length` is 0 (meaning variable kmer lengths) the minimum kmer length to use. |
 | `--kend` | *Optional.* If `--kmer-length` is 0 (meaning variable kmer lengths) the maximum kmer length to use. |
+| `--merge-wait-minutes` | *Optional (default `100`).* Minutes to wait for the files written by other tasks before stopping with an error. If tasks wait a long time in the cluster queue, set this higher (the workflow parameter `merge_wait_minutes`). |
 
 ## Step 5A Merge kmer/gene alignments
 
@@ -1507,7 +1514,8 @@ kmercontigalignmerge.py \
     --kmer-length KMER_LENGTH \
     --ref-fa REF_FA \
     --nucmerident NUCMERIDENT \
-    --software-file SOFTWARE_FILE
+    --software-file SOFTWARE_FILE \
+    [--merge-wait-minutes MERGE_WAIT_MINUTES]
 ```
 
 **Arguments**
@@ -1527,6 +1535,7 @@ kmercontigalignmerge.py \
 | `--ref-fa` | File path to the reference fasta file. |
 | `--nucmerident` | Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer used in step 5, between 0-100. |
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
+| `--merge-wait-minutes` | *Optional (default `100`).* Minutes to wait for the files written by other tasks before stopping with an error. If tasks wait a long time in the cluster queue, set this higher (the workflow parameter `merge_wait_minutes`). |
 
 ## Step 6 Plot figures using contig alignment positions
 

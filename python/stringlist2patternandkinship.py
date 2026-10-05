@@ -113,8 +113,8 @@ def merge_pattern_batches_parameters(nkmersbatch, p, t, output_dir, output_prefi
     nattempts = 0
     while not all(os.path.exists(f) for f in infiles_completed) or not all(os.path.exists(f) for f in infiles):
         nattempts = nattempts + 1
-        if nattempts > 100:
-            r_stop("Could not find files", "".join(infiles_completed))
+        if rcompat.wait_exceeded(nattempts, 60):
+            r_stop("Could not find files", "".join(infiles_completed), rcompat.wait_message())
         time.sleep(60)
 
     n = len(infiles)
@@ -164,8 +164,8 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
             nattempts = 0
             while not all(os.path.exists(f) for f in infiles):
                 nattempts = nattempts + 1
-                if nattempts > 1000:
-                    r_stop("Could not find files", "".join(infiles))
+                if rcompat.wait_exceeded(nattempts, 1):
+                    r_stop("Could not find files", "".join(infiles), rcompat.wait_message())
                 time.sleep(1)
 
             # Check files aren't empty
@@ -239,8 +239,8 @@ def merge_patterns(t, n, b, p, imax, prefix, files, patternmergepath, output_dir
             nattempts = 0
             while not all(os.path.exists(f) for f in infiles_completed) or not all(os.path.exists(f) for f in infiles):
                 nattempts = nattempts + 1
-                if nattempts > 3600:
-                    r_stop("Could not find files", "".join(infiles_completed))
+                if rcompat.wait_exceeded(nattempts, 1):
+                    r_stop("Could not find files", "".join(infiles_completed), rcompat.wait_message())
                 time.sleep(1)
 
             infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
@@ -449,8 +449,8 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
             # measured the sizes once, before waiting, so a file that appeared late stopped the run)
             while not all(os.path.exists(f) for f in infiles) or not all(os.path.exists(f) for f in infiles_completed):
                 nattempts = nattempts + 1
-                if nattempts > 100:
-                    r_stop("Could not find files", "".join(infiles))
+                if rcompat.wait_exceeded(nattempts, 60):
+                    r_stop("Could not find files", "".join(infiles), rcompat.wait_message())
                 time.sleep(60)
             infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
             if any(s is None or s != s or not s > 0 for s in infiles_size):
@@ -503,8 +503,8 @@ def merge_kinship_matrices(t, n, b, p, imax, files, prefix, nkmersbatch, output_
             while (not all(os.path.exists(f) for f in infiles) or not all(os.path.exists(f) for f in infiles_weights)
                    or not all(os.path.exists(f) for f in infiles_completed)):
                 nattempts = nattempts + 1
-                if nattempts > 3600:
-                    r_stop("Could not find files", "".join(infiles))
+                if rcompat.wait_exceeded(nattempts, 1):
+                    r_stop("Could not find files", "".join(infiles), rcompat.wait_message())
                 time.sleep(1)
             infiles_size = [size_of(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")) for x in infiles]
             if r_any_zero(infiles_size):
@@ -596,7 +596,10 @@ def main():
     parser.add_argument("--kmer-min-count", "--mincount", dest="mincount", default="5",
                         help="copies of a k-mer in a genome for it to count as present (--mincount is "
                              "the old name)")
+    parser.add_argument("--merge-wait-minutes", default="100",
+                        help="minutes to wait for files written by other tasks before stopping (default 100)")
     args = parser.parse_args()
+    rcompat.set_merge_wait(args.merge_wait_minutes)
 
     # Initialize variables
     t = rcompat.r_as_integer(args.task_id)

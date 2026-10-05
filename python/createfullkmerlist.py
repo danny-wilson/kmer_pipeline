@@ -26,7 +26,10 @@ def main():
     parser.add_argument("--kmer-type", required=True, help="protein or nucleotide")
     parser.add_argument("--kmer-length", required=True)
     parser.add_argument("--software-file", required=True)
+    parser.add_argument("--merge-wait-minutes", default="100",
+                        help="minutes to wait for files written by other tasks before stopping (default 100)")
     args = parser.parse_args()
+    rcompat.set_merge_wait(args.merge_wait_minutes)
 
     # Initialize variables
     process = rcompat.r_as_integer(args.task_id)
@@ -101,13 +104,15 @@ def main():
         rcompat.r_system(python_path + " " + proteinkmermergescript + " --n " + arg(n) + " --p " + arg(p)
                          + " --output-prefix " + output_prefix + " --input-dir " + input_dir + " --output-dir " + output_dir
                          + " --id-file " + id_file + " --kmer-length " + arg(kmer_length)
-                         + " --software-file " + software_file + " --process " + arg(process))
+                         + " --software-file " + software_file + " --process " + arg(process)
+                         + " --merge-wait-minutes " + rcompat.r_as_character(rcompat.MERGE_WAIT_MINUTES))
 
     if kmer_type == "nucleotide":
         rcompat.r_system(python_path + " " + nucleotidekmermergescript + " --n " + arg(n) + " --p " + arg(p)
                          + " --output-prefix " + output_prefix + " --input-dir " + input_dir + " --output-dir " + output_dir
                          + " --id-file " + id_file + " --kmer-length " + arg(kmer_length)
-                         + " --process " + arg(process))
+                         + " --process " + arg(process)
+                         + " --merge-wait-minutes " + rcompat.r_as_character(rcompat.MERGE_WAIT_MINUTES))
 
 
 if __name__ == "__main__":

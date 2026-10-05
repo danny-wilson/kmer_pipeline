@@ -50,7 +50,10 @@ def main():
     parser.add_argument("--id-file", required=True)
     parser.add_argument("--kmer-length", required=True)
     parser.add_argument("--process", required=True, help="task number (from 1)")
+    parser.add_argument("--merge-wait-minutes", default="100",
+                        help="minutes to wait for files written by other tasks before stopping (default 100)")
     args = parser.parse_args()
+    rcompat.set_merge_wait(args.merge_wait_minutes)
 
     # Initialize variables
     n = rcompat.r_as_integer(args.n)
@@ -161,8 +164,8 @@ def main():
             nattempts = 0
             while not all(os.path.exists(f) for f in infiles_completed) or not all(os.path.exists(f) for f in infiles):
                 nattempts = nattempts + 1
-                if nattempts > 100:
-                    r_stop("Could not find files", "".join(infiles_completed))
+                if rcompat.wait_exceeded(nattempts, 60):
+                    r_stop("Could not find files", "".join(infiles_completed), rcompat.wait_message())
                 time.sleep(60)
 
             infiles_size = [float(rcompat.r_system_intern("ls -l " + x + " | cut -d ' ' -f5")[0]) for x in infiles]

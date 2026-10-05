@@ -325,7 +325,8 @@ if(!params.skip2)
 		--id-file !{params.container_id_file} \
 		--kmer-type !{params.kmer_type} \
 		--kmer-length !{params.kmer_length} \
-		--software-file !{params.container_software_file}
+		--software-file !{params.container_software_file} \
+		--merge-wait-minutes !{params.merge_wait_minutes}
 	'''
 else
 	'''
@@ -384,7 +385,8 @@ if(!params.skip3)
 		--kmertype !{params.kmer_type} \
 		--software-file !{params.container_software_file} \
 		--kmer-length !{params.kmer_length} \
-		--kmer-min-count !{params.kmer_min_count}
+		--kmer-min-count !{params.kmer_min_count} \
+		--merge-wait-minutes !{params.merge_wait_minutes}
 	'''
 else
 	'''
@@ -617,7 +619,8 @@ if(!params.skip5)
 		--kmer-length !{params.kmer_length} \
 		--ref-fa !{params.container_ref_fa} \
 		--nucmerident !{params.nucmerident} \
-		--software-file !{params.container_software_file}
+		--software-file !{params.container_software_file} \
+		--merge-wait-minutes !{params.merge_wait_minutes}
 	'''
 else
 	'''
@@ -971,6 +974,9 @@ params.samtools_filter = 10
 println 'samtools_filter:         ' + params.samtools_filter
 params.blastident = 70
 println 'blastident:              ' + params.blastident
+// N7: how long a merging task (steps 2, 3, 5A) waits for files written by other tasks
+params.merge_wait_minutes = 100
+println 'merge_wait_minutes:      ' + params.merge_wait_minutes
 //Neither yet implemented because of problem explicitly specifying NULL annotateGeneFile:
 //params.annotateGeneFile = "NULL"
 //println 'annotateGeneFile:        ' + params.annotateGeneFile

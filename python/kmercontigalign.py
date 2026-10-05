@@ -44,8 +44,8 @@ def merge(state):
     nattempts = 0
     while not all(os.path.exists(f) for f in input_files_completed) or not all(os.path.exists(f) for f in input_files):
         nattempts = nattempts + 1
-        if nattempts > 100:
-            r_stop("Could not find files", "".join(input_files_completed))
+        if rcompat.wait_exceeded(nattempts, 60):
+            r_stop("Could not find files", "".join(input_files_completed), rcompat.wait_message())
         time.sleep(60)
 
     rcompat.r_system(state["python_path"] + " " + state["kmercontigalignmergepath"] + " --task-id " + str(process)

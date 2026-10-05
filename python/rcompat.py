@@ -376,6 +376,33 @@ def r_str(v, digits):
     return str(v)
 
 
+# Waiting for files written by other tasks (N7): every polling loop stops after the same time,
+# merge_wait_minutes (default 100), whatever its polling interval.
+MERGE_WAIT_MINUTES = 100.0
+
+
+def set_merge_wait(minutes):
+    """Set the limit from a --merge-wait-minutes argument (a positive number of minutes)."""
+    global MERGE_WAIT_MINUTES
+    try:
+        value = float(minutes)
+    except (TypeError, ValueError):
+        value = math.nan
+    if not value > 0:
+        r_stop("Error: merge_wait_minutes must be a positive number of minutes, not ", minutes, "\n")
+    MERGE_WAIT_MINUTES = value
+
+
+def wait_exceeded(nattempts, interval):
+    """True once nattempts polls interval seconds apart have taken longer than the limit."""
+    return nattempts * interval > MERGE_WAIT_MINUTES * 60
+
+
+def wait_message():
+    return (" after waiting " + r_str(MERGE_WAIT_MINUTES, 7) + " minutes for another task; if that task is "
+            "still queued or running, set merge_wait_minutes higher")
+
+
 def parse_index(tok):
     """A count or index read back from a file or file name. Written as plain integers
     since Phase 4 (D1a); older outputs wrote round values as R did ("1e+05"), so any
