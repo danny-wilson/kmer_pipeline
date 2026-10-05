@@ -135,3 +135,33 @@ def test_analysed_phenotypes_for_an_earlier_release(tmp_path):
     gemma_log(log, 3, 5)
     with pytest.raises(rcompat.RError, match="not the inputs step 4 was run with"):
         pg.analysed_phenotypes(str(tmp_path), "pre", "protein", 5, str(ids), None, [log])
+
+
+def test_pheno_file_is_matched_by_id_as_text(tmp_path):
+    """N5, P123: 007 in a mixed id_file must match 007 in an all-numeric pheno_file, not 7."""
+    ids = tmp_path / "ids.txt"
+    ids.write_text("id\tpaths\tpheno\n007\t/x\t1\nX8\t/x\t2\n7\t/x\t3\nG4\t/x\t4\n")
+    pheno_file = tmp_path / "pheno.txt"
+    pheno_file.write_text("id\tpheno\n7\t70\n007\t0.07\n99\t9\n")
+    report = {}
+    got_ids, pheno = pg.read_phenotypes(str(ids), str(pheno_file), report)
+    assert pheno == [0.07, None, 70.0, None]
+    assert report == {"matched": ["007", "7"], "missing": ["X8", "G4"], "unknown": ["99"]}
+
+
+def test_covariates_with_an_id_column(tmp_path):
+    ids = tmp_path / "ids.txt"
+    ids.write_text("id\tpaths\tpheno\nA\t/x\t1\nB\t/x\t2\nC\t/x\t3\n")
+    cov = tmp_path / "cov.txt"
+    cov.write_text("id\tintercept\tage\nC\t1\t30\nA\t1\t10\nZ\t1\t5\n")
+    report = {}
+    rows = pg.read_covariates(str(cov), str(ids), report)
+    assert rows == [[1.0, 10.0], [None, None], [1.0, 30.0]]
+    assert report == {"missing": ["B"], "unknown": ["Z"]}
+    assert pg.analysed_set([1.0, 2.0, 3.0], rows) == [True, False, True]
+    out = str(tmp_path / "gemma_cov.txt")
+    pg.write_gemma_covariates(out, rows)
+    assert open(out).read() == "1\t10\n1\tNA\n1\t30\n"
+    plain = tmp_path / "plain.txt"
+    plain.write_text("1\t10\n1\t20\n1\t30\n")
+    assert pg.read_covariates(str(plain), str(ids)) == [[1.0, 10.0], [1.0, 20.0], [1.0, 30.0]]

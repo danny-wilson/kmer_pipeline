@@ -282,3 +282,45 @@ def test_covariates(tmp_path):
     assert "first column" in errors[0]
     errors, _ = check(tmp_path, rows, covs=cov([["1", "0.5"]] * 8))
     assert any("linearly dependent" in e for e in errors)
+
+
+def test_precomputed_dir(tmp_path):
+    pre = tmp_path / "pre"
+    make_run(pre, steps=[1, 2, 3, 5])
+    for f in (".patternmerge.patternKeySize.txt", ".patternmerge.patternIndex.txt.gz", ".kinshipmerge.kinship.txt.gz",
+              ".NC_000962.3_t90.kmeralignmerge.count.txt.gz"):
+        (pre / (P + f)).write_text("x\n")
+    (pre / f"{TYPE}kmer{K}_kmergenealign/{P}_NC_000962.3_gene_id_name_lookup.txt").write_text("x\n")
+    before = remaining(pre)
+
+    def run(run_steps=(4, 6, 7), pre_dir=pre, analysis=tmp_path / "new", ids=None):
+        args = ["--analysis-dir", str(analysis), "--output-prefix", PREFIX, "--kmer-type", TYPE,
+                "--kmer-length", str(K), "--session-id", "s9", "--run-steps", ",".join(map(str, run_steps)),
+                "--params-json", json.dumps({"kmer_min_count": "1", "nucmerident": "90"}),
+                "--id-file", ids or id_file(tmp_path), "--precomputed-dir", str(pre_dir),
+                "--precomputed-prefix", PREFIX, "--ref-name", "NC_000962.3"]
+        return json.loads(run_script("preflight.py", *args).stdout)
+
+    out = run()
+    assert out["errors"] == [], out
+    assert remaining(pre) == before  # precomputed_dir is only read
+    assert any("cannot also run" in e for e in run(run_steps=[3, 4, 6, 7])["errors"])
+    assert any("must differ" in e for e in run(analysis=pre)["errors"])
+    assert any("their order" in e for e in run(ids=id_file(tmp_path, ["791", "725", "702"]))["errors"])
+    os.remove(pre / (P + ".kinshipmerge.kinship.txt.gz"))
+    assert any("lacks outputs" in e and "kinship" in e for e in run()["errors"])
+
+
+def test_pheno_file_checks(tmp_path):
+    rows = genomes(CONT)
+    pf = tmp_path / "pheno.txt"
+    pf.write_text("id\tpheno\nG0\t1\nG1\t2\nG2\tR\nG3\t4\nZZ\t5\n")
+    out = preflight(tmp_path, tmp_path / "a", ids=raw_id_file(tmp_path, rows))
+    args_pheno = ["--pheno-file", str(pf)]
+    res = run_script("preflight.py", "--analysis-dir", str(tmp_path / "b"), "--output-prefix", PREFIX,
+                     "--kmer-type", TYPE, "--kmer-length", str(K), "--session-id", "s", "--run-steps", "4,6,7",
+                     "--id-file", raw_id_file(tmp_path, rows), *args_pheno)
+    out = json.loads(res.stdout)
+    assert any("pheno_file, ID G2: 'R'" in e for e in out["errors"])
+    assert any("1 IDs of pheno_file are not in id_file" in w for w in out["warnings"])
+    assert any("4 genomes of id_file have no phenotype" in w for w in out["warnings"])

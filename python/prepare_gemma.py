@@ -42,20 +42,75 @@ def analysed_file(analysis_dir, output_prefix, kmer_type, kmer_length):
                         file_prefix(output_prefix, kmer_type, kmer_length) + ANALYSED_SUFFIX)
 
 
-def read_phenotypes(id_file):
-    """(ids as the scripts read them, phenotypes as numbers or None)."""
+def raw_ids(path):
+    """The first column of a tab-separated file with a header line, as text (no conversion)."""
+    with open(path, encoding="utf-8", errors="surrogateescape") as fh:
+        lines = [line.rstrip("\n").rstrip("\r") for line in fh if line.strip()]
+    return [line.split("\t", 1)[0].strip() for line in lines[1:]]
+
+
+def read_phenotypes(id_file, pheno_file=None, report=None):
+    """(ids as the scripts read them, phenotypes as numbers or None).
+
+    With pheno_file (columns id and pheno), the phenotypes come from it instead, matched to
+    id_file's genomes by ID as text (N5; reading IDs as numbers could match 007 with 7). Genomes
+    missing from pheno_file get NA. report, a dict, receives the matched, missing and unknown IDs."""
     table = rcompat.r_read_table(id_file, header=True, sep="\t")
     ids = [rcompat.r_as_character(v) for v in table["id"]]
-    pheno = [rcompat.r_as_numeric_value(v) for v in table["pheno"]]
+    if not pheno_file:
+        return ids, [rcompat.r_as_numeric_value(v) for v in table["pheno"]]
+    ptable = rcompat.r_read_table(pheno_file, header=True, sep="\t")
+    if list(ptable.columns) != ["id", "pheno"]:
+        r_stop("Error: pheno_file must have two columns with the header id<tab>pheno: ", pheno_file, "\n")
+    values = dict(zip(raw_ids(pheno_file), (rcompat.r_as_numeric_value(v) for v in ptable["pheno"])))
+    genome_ids = raw_ids(id_file)
+    pheno = [values.get(i) for i in genome_ids]
+    if report is not None:
+        report["matched"] = [i for i in genome_ids if i in values]
+        report["missing"] = [i for i in genome_ids if i not in values]
+        known = set(genome_ids)
+        report["unknown"] = [i for i in values if i not in known]
     return ids, pheno
 
 
-def read_covariates(covariate_file):
-    """Rows of numbers (None for missing), as rungemma reads the file; [] without a file."""
+def read_covariates(covariate_file, id_file=None, report=None):
+    """Rows of numbers (None for missing), in id_file's genome order; [] without a file.
+
+    The file is either GEMMA's format, one row per genome in id_file's order without a header,
+    or has a header line starting with id and the genome IDs in the first column (N5): its rows
+    are then matched to id_file's genomes by ID as text, and a genome without a row gets missing
+    covariates (so it is not analysed)."""
     if not covariate_file:
         return []
-    table = rcompat.r_read_table(covariate_file, header=False, sep="\t")
-    return [[rcompat.r_as_numeric_value(v) for v in row] for row in table.itertuples(index=False, name=None)]
+    with open(covariate_file, encoding="utf-8", errors="surrogateescape") as fh:
+        first = fh.readline().split("\t", 1)[0].strip()
+    if first != "id":
+        table = rcompat.r_read_table(covariate_file, header=False, sep="\t")
+        return [[rcompat.r_as_numeric_value(v) for v in row] for row in table.itertuples(index=False, name=None)]
+    if not id_file:
+        r_stop("Error: a covariate file with an id column needs id_file", "\n")
+    table = rcompat.r_read_table(covariate_file, header=True, sep="\t")
+    rows = {i: [rcompat.r_as_numeric_value(v) for v in row[1:]]
+            for i, row in zip(raw_ids(covariate_file), table.itertuples(index=False, name=None))}
+    genome_ids = raw_ids(id_file)
+    width = len(table.columns) - 1
+    if report is not None:
+        report["missing"] = [i for i in genome_ids if i not in rows]
+        known = set(genome_ids)
+        report["unknown"] = [i for i in rows if i not in known]
+    return [rows.get(i, [None] * width) for i in genome_ids]
+
+
+def write_gemma_covariates(path, covariates):
+    """GEMMA's covariate file: one row per genome in id_file's order, NA for missing values. A genome
+    with no row in an id-keyed file keeps the intercept (1); its NAs make GEMMA leave it out."""
+    def text(row):
+        if row and all(v is None for v in row):
+            row = [1.0] + row[1:]
+        return "\t".join("NA" if v is None else "%.17g" % v for v in row)
+    with open(path + ".tmp", "w") as fh:
+        fh.write("".join(text(row) + "\n" for row in covariates))
+    os.replace(path + ".tmp", path)
 
 
 def finite(v):
@@ -123,15 +178,16 @@ def gemma_phenotype_text(v):
     return "%.17g" % v
 
 
-def analysed_phenotypes(analysis_dir, output_prefix, kmer_type, kmer_length, id_file, covariate_file, gemma_logs):
+def analysed_phenotypes(analysis_dir, output_prefix, kmer_type, kmer_length, id_file, covariate_file, gemma_logs,
+                        pheno_file=None):
     """The analysed phenotypes for steps 6-7: from the analysed-phenotype file, or, for an
     analysis made by an earlier release (no such file), rebuilt from id_file and the covariates
     and checked against the number of analysed genomes in GEMMA's logs."""
     path = analysed_file(analysis_dir, output_prefix, kmer_type, kmer_length)
     if os.path.exists(path):
         return read_analysed(path)[1]
-    ids, pheno = read_phenotypes(id_file)
-    analysed = analysed_set(pheno, read_covariates(covariate_file))
+    ids, pheno = read_phenotypes(id_file, pheno_file)
+    analysed = analysed_set(pheno, read_covariates(covariate_file, id_file))
     n = sum(analysed)
     for log in gemma_logs:
         logged = gemma_log_individuals(log)
@@ -160,7 +216,11 @@ def main():
                                      allow_abbrev=False)
     parser.add_argument("--kmerfile-prefix", required=True, help="prefix of the pattern and kinship files")
     parser.add_argument("--id-file", required=True)
-    parser.add_argument("--covariate-file", default=None, help="GEMMA covariate file (first column all 1s)")
+    parser.add_argument("--covariate-file", default=None,
+                        help="covariate file: GEMMA's format (first column all 1s), or with a header line starting "
+                             "with id and the genome IDs in the first column")
+    parser.add_argument("--pheno-file", default=None,
+                        help="phenotypes (columns id, pheno) to use instead of id_file's pheno column")
     parser.add_argument("--analysis-dir", required=True)
     parser.add_argument("--output-prefix", required=True)
     parser.add_argument("--kmer-type", required=True)
@@ -179,10 +239,19 @@ def main():
         return
 
     os.makedirs(gdir, exist_ok=True)
-    ids, pheno = read_phenotypes(args.id_file)
-    covariates = read_covariates(args.covariate_file)
+    report, creport = {}, {}
+    ids, pheno = read_phenotypes(args.id_file, args.pheno_file, report)
+    if args.pheno_file:
+        r_cat("Phenotypes from", args.pheno_file + ":", len(report["matched"]), "genomes matched,",
+              len(report["missing"]), "without a phenotype (NA),", len(report["unknown"]), "IDs not in id_file", "\n")
+        if not report["matched"]:
+            r_stop("Error: no ID of pheno_file is in id_file", "\n")
+    covariates = read_covariates(args.covariate_file, args.id_file, creport)
     if covariates and len(covariates) != len(pheno):
         r_stop("Error: covariate file has ", len(covariates), " rows but id_file has ", len(pheno), " genomes", "\n")
+    if creport.get("missing"):
+        r_cat("Warning:", len(creport["missing"]), "genomes have no row in the covariate file, so they are not "
+              "analysed:", ", ".join(creport["missing"][:20]), "\n")
     analysed = analysed_set(pheno, covariates)
     r_cat("Genomes analysed:", sum(analysed), "of", len(pheno), "\n")
     for k, (v, a) in enumerate(zip(pheno, analysed)):
@@ -194,6 +263,8 @@ def main():
 
     write_analysed(analysed_file(args.analysis_dir, args.output_prefix, kmer_type, args.kmer_length),
                    ids, pheno, analysed)
+    if covariates:  # in GEMMA's format and id_file's order, whichever form the file had (N5)
+        write_gemma_covariates(os.path.join(gdir, prefix + "_gemma_covariates.txt"), covariates)
     rcompat.r_cat_lines([gemma_phenotype_text(v) if a else "NA" for v, a in zip(pheno, analysed)],
                         os.path.join(gdir, prefix + "_gemma_formatted_phenotype.txt"))
 

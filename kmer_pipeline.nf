@@ -58,6 +58,16 @@ def deployment() {
 	// Convert io files from user file system to container file system
 	base_dir = Paths.get(params.base_dir)
 	params.container_analysis_dir = user2containerPath(base_dir, params.analysis_dir, params.container_mount)
+	params.container_pheno_file = ""
+	if(params.pheno_file!="") {
+		if(!Files.exists(Paths.get(params.pheno_file))) throw new Exception("pheno_file ${params.pheno_file} does not exist")
+		params.container_pheno_file = user2containerPath(base_dir, params.pheno_file, params.container_mount)
+	}
+	params.container_precomputed_dir = ""
+	if(params.precomputed_dir!="") {
+		if(!Files.isDirectory(Paths.get(params.precomputed_dir))) throw new Exception("precomputed_dir ${params.precomputed_dir} is not a folder")
+		params.container_precomputed_dir = user2containerPath(base_dir, params.precomputed_dir, params.container_mount)
+	}
 	if(params.covariate_file=="") {
 		params.container_covariate_file = ""
 	} else {
@@ -175,8 +185,10 @@ def preflight(List extra = []) {
 		kmer_min_count: params.kmer_min_count.toString(), plot_min_genomes: params.plot_min_genomes.toString(),
 		minor_allele_threshold: params.minor_allele_threshold.toString(), nucmerident: params.nucmerident.toString(),
 		ntopgenes: params.ntopgenes.toString(), blastident: params.blastident.toString(), maxp: params.maxp.toString(),
-		output_prefix: params.output_prefix, run_steps: run_steps]
+		output_prefix: params.output_prefix, run_steps: run_steps, precomputed_dir: params.container_precomputed_dir,
+		precomputed_prefix: params.precomputed_prefix]
 	def input_files = [id_file: params.container_user_id_file, covariate_file: params.container_covariate_file,
+		pheno_file: params.container_pheno_file,
 		ref_fa: params.container_ref_fa, ref_gb: params.container_ref_gb]
 	def cmd = params.container_cmd.tokenize() + ["${params.container_script_dir}/preflight.py".toString(),
 		"--analysis-dir", params.container_analysis_dir, "--output-prefix", params.output_prefix,
@@ -185,7 +197,9 @@ def preflight(List extra = []) {
 		"--overwrite", OVERWRITE.toString(), "--resume", workflow.resume.toString(),
 		"--pid", ProcessHandle.current().pid().toString(), "--user-params", USER_KEYS.join(","),
 		"--params-json", JsonOutput.toJson(result_params), "--input-files", JsonOutput.toJson(input_files),
-		"--id-file", params.container_user_id_file, "--covariate-file", params.container_covariate_file] + extra
+		"--id-file", params.container_user_id_file, "--covariate-file", params.container_covariate_file,
+		"--pheno-file", params.container_pheno_file, "--precomputed-dir", params.container_precomputed_dir,
+		"--precomputed-prefix", params.precomputed_prefix, "--ref-name", params.ref_name.toString()] + extra
 	def proc = cmd.execute()
 	def sout = new StringBuilder(), serr = new StringBuilder()
 	proc.waitForProcessOutput(sout, serr)
@@ -549,7 +563,7 @@ if(!SKIP[4])
 		--output-prefix !{params.output_prefix} \
 		--kmer-type !{params.kmer_type} \
 		--kmer-length !{params.kmer_length} \
-		!{COVARIATE_ARG}
+		!{COVARIATE_ARG} !{PHENO_ARG}
 	rm -f !{params.logdir}/prepareGemma.log && cp $(pwd)/.command.log !{params.logdir}/prepareGemma.log
 	'''
 else
@@ -1137,6 +1151,13 @@ println ''
 println 'Input files'
 println 'id_file:                 ' + params.id_file			// No default
 params.covariate_file = ""
+// N5: phenotypes from another file, matched to id_file by ID; steps 1-3 and 5 from an earlier analysis
+params.pheno_file = ""
+println 'pheno_file:              ' + params.pheno_file
+params.precomputed_dir = ""
+println 'precomputed_dir:         ' + params.precomputed_dir
+params.precomputed_prefix = params.output_prefix
+println 'precomputed_prefix:      ' + params.precomputed_prefix
 println 'covariate_file:          ' + params.covariate_file
 println ''
 // Species-specific reference genome FASTA and genbank files (no defaults)
@@ -1164,6 +1185,18 @@ SKIP = [:]
 (1..7).each { k -> println "skip${k}:                   " + SKIP[k] }
 OVERWRITE = parse_bool("overwrite", params.containsKey('overwrite') ? params.overwrite : false)
 println 'overwrite:               ' + OVERWRITE
+// N5: with precomputed_dir, steps 1-3 and 5 come from it, so they are skipped
+if(params.container_precomputed_dir) {
+	[1, 2, 3, 5].each { k ->
+		if(params.containsKey("skip${k}".toString()) && !SKIP[k])
+			throw new Exception("skip${k} = false: with precomputed_dir, steps 1-3 and 5 are read from it, not run")
+		SKIP[k] = true
+	}
+	println 'steps 1-3 and 5 skipped: read from precomputed_dir'
+}
+// The folder and prefix of the outputs of steps 1-3 and 5: this analysis's, or precomputed_dir's
+INPUT_DIR = params.container_precomputed_dir ?: params.container_analysis_dir
+INPUT_PREFIX = params.container_precomputed_dir ? params.precomputed_prefix : params.output_prefix
 println ''
 // Implied parameters constructed from explicit parameters. Can be overridden by specifying them in nextflow.config
 println 'Implied parameters'
@@ -1173,11 +1206,11 @@ params.analysis_file = params.analysis_dir + "/" + params.output_prefix + "_" + 
 println 'analysis_file:           ' + params.analysis_file
 params.container_analysis_file = params.container_analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + ".analysis_file.txt"
 println 'container_analysis_file: ' + params.container_analysis_file
-params.kmerFilePrefix = params.container_analysis_dir + "/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length
+params.kmerFilePrefix = INPUT_DIR + "/" + INPUT_PREFIX + "_" + params.kmer_type + params.kmer_length
 println 'kmerFilePrefix:          ' + params.kmerFilePrefix
 read_ref_name()
 println 'ref_name:                ' + params.ref_name
-params.gene_lookup_file = params.container_analysis_dir + "/" + params.kmer_type + "kmer" + params.kmer_length + "_kmergenealign/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + "_" + params.ref_name + "_gene_id_name_lookup.txt"
+params.gene_lookup_file = INPUT_DIR + "/" + params.kmer_type + "kmer" + params.kmer_length + "_kmergenealign/" + INPUT_PREFIX + "_" + params.kmer_type + params.kmer_length + "_" + params.ref_name + "_gene_id_name_lookup.txt"
 println 'gene_lookup_file:        ' + params.gene_lookup_file
 params.kmergenecombination = params.container_analysis_dir + "/" + params.kmer_type + "kmer" + params.kmer_length + "_kmergenealign/" + params.output_prefix + "_" + params.kmer_type + params.kmer_length + "_" + params.ref_name + "_kmergenecombination_filepaths.txt"
 println 'kmergenecombination:     ' + params.kmergenecombination
@@ -1193,6 +1226,7 @@ println 'container_logdir:        ' + params.container_logdir
 println 'workdir:                 ' + params.workdir
 // The covariate file option of the scripts that take one (empty without a covariate file)
 COVARIATE_ARG = params.container_covariate_file ? "--covariate-file " + params.container_covariate_file : ""
+PHENO_ARG = params.container_pheno_file ? "--pheno-file " + params.container_pheno_file : ""
 println ''
 // Checks before anything is written; then the workflow's own files
 preflight()

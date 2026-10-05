@@ -40,7 +40,8 @@ KNOWN_PARAMS = {
     "covariate_file", "default_script_dir", "default_software_file", "gene_lookup_file", "id_file",
     "kmerFilePrefix", "kmergenecombination", "kmer_length", "kmer_min_count", "kmer_type", "logdir", "maxp",
     "merge_wait_minutes", "min_count", "minor_allele_threshold", "n", "ntopgenes", "nucmerident", "output_prefix",
-    "overwrite", "override_signif", "p", "p5", "plot_min_genomes", "ref_fa", "ref_gb", "ref_name",
+    "overwrite", "override_signif", "p", "p5", "pheno_file", "plot_min_genomes", "precomputed_dir",
+    "precomputed_prefix", "container_pheno_file", "container_precomputed_dir", "ref_fa", "ref_gb", "ref_name",
     "samtools_filter", "skip1", "skip2", "skip3", "skip4", "skip5", "skip6", "skip7", "software_file", "workdir",
 }
 
@@ -112,7 +113,7 @@ def genomes_of_id_file(id_file):
     return [rcompat.r_as_character(i) for i in table["id"]]
 
 
-def validate_inputs(id_file, covariate_file, run_steps, errors, warnings):
+def validate_inputs(id_file, covariate_file, run_steps, errors, warnings, pheno_file=None):
     """D5: the inputs the scripts will read, checked as they read them. Phenotypes and covariates
     are checked only if a step that uses them (4, 6 or 7) runs: steps 1-3 and 5 do not."""
     try:
@@ -157,32 +158,59 @@ def validate_inputs(id_file, covariate_file, run_steps, errors, warnings):
                             + summarise([f"{r} -> {c}" for r, c in changed]))
     if not any(s in run_steps for s in (4, 6, 7)):
         return
-    table = rcompat.r_read_table(id_file, header=True, sep="\t")
-    pheno = [rcompat.r_as_numeric_value(v) for v in table["pheno"]]
-    text = [r[2].strip() for r in rows]
-    not_numbers = [f"line {k + 2}: {t!r}" for k, (t, v) in enumerate(zip(text, pheno))
-                   if v is None and t not in ("NA", "")]
+    import prepare_gemma
+    if pheno_file:
+        try:
+            with open(pheno_file, encoding="utf-8", errors="replace") as fh:
+                praw = [line.rstrip("\n").rstrip("\r").split("\t") for line in fh if line.strip()]
+        except OSError as e:
+            errors.append(f"pheno_file cannot be read: {e}")
+            return
+        if not praw or praw[0] != ["id", "pheno"]:
+            errors.append("pheno_file must start with the header line id<tab>pheno")
+            return
+        report = {}
+        try:
+            _, pheno = prepare_gemma.read_phenotypes(id_file, pheno_file, report)
+        except Exception as e:
+            errors.append(f"pheno_file cannot be read as the scripts read it: {e}")
+            return
+        if not report["matched"]:
+            errors.append("no ID of pheno_file is in id_file (IDs are matched as text)")
+            return
+        if report["unknown"]:
+            warnings.append(f"{len(report['unknown'])} IDs of pheno_file are not in id_file (not analysed): "
+                            + summarise(report["unknown"]))
+        if report["missing"]:
+            warnings.append(f"{len(report['missing'])} genomes of id_file have no phenotype in pheno_file (NA)")
+        by_id = {r[0].strip(): r[1].strip() for r in praw[1:] if len(r) >= 2}
+        text = [by_id.get(i, "NA") for i in raw_ids]
+        where = {i: f"pheno_file, ID {i}" for i in raw_ids}
+    else:
+        table = rcompat.r_read_table(id_file, header=True, sep="\t")
+        pheno = [rcompat.r_as_numeric_value(v) for v in table["pheno"]]
+        text = [r[2].strip() for r in rows]
+        where = {i: f"line {k + 2}" for k, i in enumerate(raw_ids)}
+    not_numbers = [f"{where[i]}: {t!r}" for i, t, v in zip(raw_ids, text, pheno) if v is None and t not in ("NA", "")]
     if not_numbers:
         errors.append("phenotypes must be numbers, TRUE/FALSE, or NA for a missing value: "
                       + summarise(not_numbers))
-    infinite = [f"line {k + 2}" for k, v in enumerate(pheno)
-                if isinstance(v, float) and math.isinf(v)]
+    infinite = [where[i] for i, v in zip(raw_ids, pheno) if isinstance(v, float) and math.isinf(v)]
     if infinite:
         errors.append("infinite phenotypes: " + summarise(infinite))
     if any(t == "-9" for t in text):
         warnings.append("some phenotypes are -9: GEMMA analyses -9 as a value; use NA for a missing phenotype")
-    import prepare_gemma
     covariates = []
     if covariate_file:
         try:
-            covariates = prepare_gemma.read_covariates(covariate_file)
+            covariates = prepare_gemma.read_covariates(covariate_file, id_file)
         except Exception as e:
             errors.append(f"covariate file cannot be read: {e}")
             return
         if len(covariates) != len(pheno):
             errors.append(f"the covariate file has {len(covariates)} rows but id_file has {len(pheno)} genomes")
             return
-        if any(not row or row[0] != 1 for row in covariates):
+        if any(not row or (row[0] != 1 and any(v is not None for v in row)) for row in covariates):
             errors.append("the first column of the covariate file must be 1 on every row (the intercept)")
     if errors:
         return
@@ -196,6 +224,30 @@ def validate_inputs(id_file, covariate_file, run_steps, errors, warnings):
             warnings.append(f"binary phenotype with only {min(n_lo, n_hi)} genomes in the smaller group "
                             f"({n_hi} with {values[1]:g}, {n_lo} with {values[0]:g}): the LMM's p-values are "
                             "poorly calibrated for so few")
+
+
+def check_precomputed(args, src_dir, src_prefix, run_steps, params, errors):
+    """N5: precomputed_dir holds the outputs of steps 1-3 and 5 that steps 4, 6 and 7 read."""
+    if os.path.realpath(src_dir) == os.path.realpath(args.analysis_dir):
+        errors.append("precomputed_dir must differ from analysis_dir (the analysis writes to analysis_dir only)")
+        return
+    clash = [s for s in (1, 2, 3, 5) if s in run_steps]
+    if clash:
+        errors.append("with precomputed_dir, steps 1-3 and 5 come from it: they cannot also run (step "
+                      + ", ".join(map(str, clash)) + ")")
+    tk = f"{args.kmer_type}kmer{args.kmer_length}"
+    need = [src_prefix + s for s in (".patternmerge.patternKey.txt.gz", ".patternmerge.patternKeySize.txt",
+                                     ".patternmerge.patternIndex.txt.gz", ".kinshipmerge.kinship.txt.gz",
+                                     ".kmermerge.txt.gz", "_kmers_filepaths.txt")]
+    if any(s in run_steps for s in (6, 7)):
+        stem = f"{src_prefix}.{args.ref_name}_t{params.get('nucmerident')}"
+        need += [stem + ".kmeralignmerge.txt.gz", stem + ".kmeralignmerge.count.txt.gz",
+                 f"{tk}_kmergenealign/{src_prefix}_{args.ref_name}_gene_id_name_lookup.txt"]
+    missing = [n for n in need if not os.path.isfile(os.path.join(src_dir, n))]
+    if missing:
+        errors.append(f"precomputed_dir {src_dir} lacks outputs this analysis reads (is precomputed_prefix "
+                      f"{args.precomputed_prefix!r} right, and were steps 1-3 and 5 run there with the same kmer "
+                      "type, length, reference and nucmerident?): " + summarise(missing))
 
 
 def live_run(manifest):
@@ -248,7 +300,7 @@ def check(args):
 
     check_params([p for p in args.user_params.split(",") if p], errors, warnings)
     if args.id_file:
-        validate_inputs(args.id_file, args.covariate_file or None, run_steps, errors, warnings)
+        validate_inputs(args.id_file, args.covariate_file or None, run_steps, errors, warnings, args.pheno_file or None)
     resume = args.resume == "true"
     overwrite = args.overwrite == "true"
 
@@ -297,18 +349,26 @@ def check(args):
                           + summarise(targets) + "). To replace them set overwrite = true; to keep them, use "
                           "another analysis_dir (precomputed_dir can reuse its steps 1-3 and 5)")
 
-    # Reuse: genomes and their order as step 1 counted them
-    filepaths = os.path.join(args.analysis_dir, prefix_full + "_kmers_filepaths.txt")
+    # Reuse: the outputs of skipped steps come from this analysis_dir, or from precomputed_dir (N5)
+    if args.precomputed_dir:
+        src_dir, src_prefix = args.precomputed_dir, f"{args.precomputed_prefix}_{args.kmer_type}{args.kmer_length}"
+        src_manifest = read_manifest(os.path.join(src_dir, src_prefix + ".run_manifest.json"))
+        check_precomputed(args, src_dir, src_prefix, run_steps, params, errors)
+        src_has_outputs = True
+    else:
+        src_dir, src_prefix, src_manifest = args.analysis_dir, prefix_full, manifest
+        src_has_outputs = any(present.get(s) for s in skipped)
+    filepaths = os.path.join(src_dir, src_prefix + "_kmers_filepaths.txt")
     if 1 not in run_steps and run_steps and os.path.isfile(filepaths) and os.path.isfile(args.id_file):
         if genomes_of_step1(filepaths, args.kmer_length) != genomes_of_id_file(args.id_file):
             errors.append("the genomes in id_file, or their order, differ from those the existing step-1 outputs "
-                          f"were made with ({filepaths}): the earlier steps must be rerun (skip1 = false, "
-                          "overwrite = true)")
-    if manifest is None and skipped and run_steps and any(present.get(s) for s in skipped):
-        warnings.append("this analysis_dir has no run manifest (made by an earlier release), so the reference "
+                          f"were made with ({filepaths}): use the id_file of that run (with pheno_file for other "
+                          "phenotypes), or rerun the earlier steps")
+    if src_manifest is None and skipped and run_steps and src_has_outputs:
+        warnings.append(f"{src_dir} has no run manifest (made by an earlier release), so the reference "
                         "and k-mer settings of the outputs being reused cannot be checked")
-    elif manifest is not None:
-        prov = manifest.get("steps", {})
+    elif src_manifest is not None:
+        prov = src_manifest.get("steps", {})
         for s in skipped:
             p = prov.get(str(s))
             if p is None or s in stale or not any(s in inventory.DEPENDS[r] for r in run_steps):
@@ -380,6 +440,10 @@ def main():
     parser.add_argument("--input-files", default="{}", help="input files to checksum (JSON name: path)")
     parser.add_argument("--id-file", default="")
     parser.add_argument("--covariate-file", default="")
+    parser.add_argument("--pheno-file", default="")
+    parser.add_argument("--precomputed-dir", default="")
+    parser.add_argument("--precomputed-prefix", default="")
+    parser.add_argument("--ref-name", default="")
     parser.add_argument("--finish", default=None, help="record the end of the run: finished or failed")
     args = parser.parse_args()
     result = finish(args) if args.finish else check(args)

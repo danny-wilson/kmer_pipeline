@@ -67,6 +67,13 @@ def main():
         r_stop("Error: software file doesn't exist", "\n")
     if covariate_file is not None and not os.path.exists(covariate_file):
         r_stop("Error: covariate file doesn't exist", "\n")
+    if args.prepared and covariate_file is not None:
+        # prepare_gemma.py wrote the covariates in GEMMA's format and id_file's order (the file
+        # given may have an id column instead, N5)
+        covariate_file = r_paste0(output_dir, kmertype, "kmer", kmerlen, "_gemma/", output_prefix, "_", kmertype, kmerlen,
+                                  "_gemma_covariates.txt")
+        if not os.path.exists(covariate_file):
+            r_stop("Error: covariate file from prepare_gemma.py doesn't exist: ", covariate_file, "\n")
 
     keyfile = prefix + ".patternmerge.patternKey.txt.gz"
     keySizefile = prefix + ".patternmerge.patternKeySize.txt"

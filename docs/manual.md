@@ -1228,7 +1228,10 @@ Parameters with default values do not need to be specified in `nextflow.config`.
 
 | Input files | |
 |---|---|
-| `covariate_file` | [""] GEMMA formatted covariate file. First column must be a column of 1s for the intercept. |
+| `covariate_file` | [""] GEMMA formatted covariate file: tab-separated, one row per genome in the order of `id_file`, no header, first column all 1s (the intercept). Or, with a header line starting `id`, the genome IDs in the first column and then the covariates, with the column of 1s first: rows are then matched to `id_file` by ID, and genomes without a row are not analysed. A genome with a missing covariate (`NA`) is not analysed. |
+| `pheno_file` | [""] Optional. A tab-separated file with the header `id` and `pheno`: phenotypes to use instead of the `pheno` column of `id_file`, matched by ID (as text). Genomes not in it get `NA` (not analysed); IDs not in `id_file` are listed and ignored. |
+| `precomputed_dir` | [""] Optional. The `analysis_dir` of an earlier run of steps 1-3 and 5 (same genomes in the same `id_file` order, kmer type and length, reference and `nucmerident`): steps 4, 6 and 7 read its outputs and write to this `analysis_dir`, so several phenotypes can be analysed without repeating steps 1-3 and 5. Steps 1-3 and 5 are then skipped. It is only read, and must be within `base_dir`. |
+| `precomputed_prefix` | [`output_prefix`] The `output_prefix` of the run in `precomputed_dir`. |
 
 | Deployment | |
 |---|---|
