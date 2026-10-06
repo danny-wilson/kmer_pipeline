@@ -8,7 +8,6 @@ import sys
 import time
 
 import rcompat
-import report_assets
 from rcompat import r_s3 as s3
 
 NL = "\n"
@@ -31,7 +30,6 @@ def main():
     args = parser.parse_args()
     PREFIX, ANATYPE, K, REFNAME = args.prefix, args.anatype, args.k, args.refname
     MAF, ALIGNIDENT, MINCOUNT, PWD = args.maf, args.alignident, args.mincount, args.outdir
-    SRC = os.path.abspath(args.srcdir)  # report.css and report.js, written into the report (D12)
     MACORMAF = "maf" if gr.r_lt(MAF, "1") else "mac"
     FIGDIR = ANATYPE + "kmer" + K + "_kmergenealign_figures/"
 
@@ -40,14 +38,14 @@ def main():
     is_maf_text3 = "MAF" if is_maf else "MAC"
 
     html_head = NL.join(["<!DOCTYPE html>", "<html>", "<head>", "  <title>Kmer GWAS report: unmapped kmers</title>",
-                         report_assets.head_style(SRC), NL])
+                         "  <link rel='stylesheet' href='report.css'>", NL])
     html_body = NL.join([
         "</head>", "<body>", "  <h1>Kmer GWAS report: unmapped kmers</h1>",
         "  <div><p class='timestamp'><code>Prefix: " + PREFIX + "; KmerType: " + ANATYPE + "; K:",
         "  " + K + "; ReferenceGenome: " + REFNAME + "; " + is_maf_text3 + ": " + MAF + "; MinCount:",
         "  " + MINCOUNT + "; AlignIdent: " + ALIGNIDENT + "; ReportTimeStamp:",
         "  " + time.ctime() + ".</code></p></div>", NL])
-    html_foot = NL.join([report_assets.foot_script(SRC), "</body>", "</html>", ""])
+    html_foot = NL.join(["<script src='report.js'></script>", "</body>", "</html>", ""])
 
     outfile_html = PREFIX + "_" + ANATYPE + K + "." + "report_unmapped.html"
     filename_unmapped = (FIGDIR + PREFIX + "_" + ANATYPE + K + "_" + REFNAME + "_" + MACORMAF + "_" + MAF + "_alignIdent_"

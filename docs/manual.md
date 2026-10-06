@@ -1761,7 +1761,7 @@ This script is run as part of the main pipeline but can be run separately.
 
 | Output |
 |---|
-| A file ending `.report.html`, containing the kmer GWAS report summary. Each report is a single, self-contained file: its style, script and figures are inside it, so it can be moved, sent or opened on its own, including inside JupyterLab. Without its script (in JupyterLab, until the report is trusted with "Trust HTML") every figure is shown one after another instead of as a slide show; links to the gene reports open them from the same folder. |
+| `report.css`, `report.js` and a file ending `.report.html`, containing the kmer GWAS report summary. |
 
 Usage:
 
@@ -2042,7 +2042,6 @@ Each example run gave the same results. The image is a 1.9 GiB download.
 | get_ref_name.py | | | |
 | prepare_gemma.py | | inventory.py | |
 | preflight.py | | reference.py | |
-| | | report_assets.py | |
 
 The Python modules are imported by the scripts (`rcompat.py` reproduces R's behaviour where the
 outputs depend on it). `plot_figures.R` draws the figures, run by `Rscript_launcher.R`, which

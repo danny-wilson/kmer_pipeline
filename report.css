@@ -24,17 +24,16 @@ img {
   position: relative;
   margin: auto;
 }
-/* Slides and the toggled/untoggled figures are shown by default, so a report whose script
-   does not run (JupyterLab before "Trust HTML") still shows every figure; report.js hides
-   all but the current slide and the figures not selected by the toggle. */
+/* Hide the images by default */
 .mySlides {
-  display: block;
+  display: none;
 }
+/* Hide untoggled by default */
 .toggled {
-  display: block;
+  display: none;
 }
 .untoggled {
-  display: block;
+  display: none;
 }
 /* Next & previous buttons */
 .prev, .next {
