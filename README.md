@@ -34,13 +34,13 @@ The zstr headers are licensed under the MIT license. The myutils headers are lic
 ## Installation
 To download a prebuilt [Docker](https://www.docker.com) image
 
-    docker pull dannywilson/kmer_pipeline:2026-10-04
+    docker pull dannywilson/kmer_pipeline:2026-10-06
 
 The image is built for x86-64 (amd64) Linux. On a Mac with Apple Silicon, Docker runs it under emulation: first type `export DOCKER_DEFAULT_PLATFORM=linux/amd64` in the same terminal, or the pipeline stops at its first step.
 
 To build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) container
 
-    singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-04
+    singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-06
 
 ## Running the Nextflow pipeline
 For instructions on running the Nextflow pipeline, including the *Mycobacterium tuberculosis* example, see [the manual](docs/manual.md), also available [as a PDF](https://github.com/danny-wilson/kmer_pipeline/releases/latest/download/kmer_pipeline_manual.pdf).

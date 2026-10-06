@@ -2,13 +2,13 @@
 # bowtie2, BLAST, MUMmer, samtools, Nextflow 22.04.5 and the compiled C++ tools (unchanged
 # since then), with the pipeline scripts replaced from this commit and Biopython and pytest
 # added. The base image is amd64 (x86-64) only. Build from a clean checkout of a release tag:
-#   docker buildx build --platform linux/amd64 -t dannywilson/kmer_pipeline:2026-10-04 .
+#   docker buildx build --platform linux/amd64 -t dannywilson/kmer_pipeline:2026-10-06 .
 # The Dockerfile that built the base image is in this repository at tag 2022-10-26.
 FROM dannywilson/kmer_pipeline:2022-10-26@sha256:d38900db59b92128dc7fb1118d71482452b37361253fc7348af72bf425bfb7ad
 LABEL app="kmer_pipeline"
 LABEL description="Pipeline for kmer (oligo)-based genome-wide association studies"
 LABEL maintainer="Daniel Wilson"
-LABEL version="2026-10-04"
+LABEL version="2026-10-06"
 
 # Set user and working directory
 USER root

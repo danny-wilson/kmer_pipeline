@@ -2,7 +2,7 @@
 
 Pipeline for performing nucleotide and protein kmer GWAS analyses using Nextflow.
 
-Sarah G Earle and Daniel J Wilson, University of Oxford Big Data Institute. Version 2026-10-04.
+Sarah G Earle and Daniel J Wilson, University of Oxford Big Data Institute. Version 2026-10-06.
 
 This version ports the workflow scripts from R to Python, so that errors report the file and line
 where they occurred; the figures are still drawn in R.
@@ -61,7 +61,7 @@ Public License v3.0.
 
 | Output |
 |---|
-| Docker image `dannywilson/kmer_pipeline:2026-10-04` or Singularity image `kmer_pipeline_2026-10-04.sif`, and the Nextflow pipeline `kmer_pipeline.nf`. |
+| Docker image `dannywilson/kmer_pipeline:2026-10-06` or Singularity image `kmer_pipeline_2026-10-06.sif`, and the Nextflow pipeline `kmer_pipeline.nf`. |
 
 
 **Platform:** the image is built for x86-64 (amd64) Linux, as used by most servers, clusters and
@@ -91,13 +91,13 @@ Open a terminal session where Singularity is available, e.g. via ssh.
 Build a Singularity image by pulling the DockerHub image.
 
 ```sh install-singularity
-singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-04
+singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-06
 ```
 
 Copy the Nextflow pipeline to a local file
 
 ```sh install-singularity
-singularity exec --containall --cleanenv kmer_pipeline_2026-10-04.sif cat \
+singularity exec --containall --cleanenv kmer_pipeline_2026-10-06.sif cat \
     /usr/local/bin/kmer_pipeline.nf > ./kmer_pipeline.nf
 ```
 
@@ -112,13 +112,13 @@ Open a terminal session where Docker is available, e.g. via ssh.
 Pull the Docker image from DockerHub
 
 ```sh install-docker
-docker pull dannywilson/kmer_pipeline:2026-10-04
+docker pull dannywilson/kmer_pipeline:2026-10-06
 ```
 
 Copy the Nextflow pipeline to a local file
 
 ```sh install-docker
-docker run --rm dannywilson/kmer_pipeline:2026-10-04 cat /usr/local/bin/kmer_pipeline.nf > \
+docker run --rm dannywilson/kmer_pipeline:2026-10-06 cat /usr/local/bin/kmer_pipeline.nf > \
     ./kmer_pipeline.nf
 ```
 
@@ -133,7 +133,7 @@ Open a terminal session where Docker and Git are available, e.g. via ssh.
 Create a local directory and clone a specific release of the repository
 
 ```sh install-build
-git clone --depth 1 --branch 2026-10-04 https://github.com/danny-wilson/kmer_pipeline.git
+git clone --depth 1 --branch 2026-10-06 https://github.com/danny-wilson/kmer_pipeline.git
 ```
 
 Build the Docker image from the Dockerfile. The
@@ -142,13 +142,13 @@ external tools and the compiled C++ tools.
 
 ```sh install-build
 cd kmer_pipeline
-docker build -t dannywilson/kmer_pipeline:2026-10-04 .
+docker build -t dannywilson/kmer_pipeline:2026-10-06 .
 ```
 
 Copy the Nextflow pipeline to a local file
 
 ```sh install-build
-docker run --rm dannywilson/kmer_pipeline:2026-10-04 cat /usr/local/bin/kmer_pipeline.nf > \
+docker run --rm dannywilson/kmer_pipeline:2026-10-06 cat /usr/local/bin/kmer_pipeline.nf > \
     ./kmer_pipeline.nf
 ```
 
@@ -174,7 +174,7 @@ are specified relative to the user file system, rather than the container file s
 Begin by defining the location, on the user file system, of the Singularity container. E.g.
 
 ```sh singularity-inside
-CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-04.sif
+CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-06.sif
 ```
 
 *Replace the above with the full path and filename of the Singularity container on your system.*
@@ -261,7 +261,7 @@ example) is recommended.*
 Begin by defining the location, on the user file system, of the Singularity container. E.g.
 
 ```sh singularity-host
-CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-04.sif
+CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-06.sif
 ```
 
 *Replace the above with the full path and filename of the Singularity container on your system.*
@@ -295,7 +295,7 @@ Now edit the example configuration file to point to the correct locations on the
 system. First edit the location of the container path:
 
 ```sh singularity-host
-sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-04.sif,$CONTAINER,g" \
+sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-06.sif,$CONTAINER,g" \
     singularity.nextflow.config > $BASE_DIR/nextflow.config
 ```
 
@@ -364,7 +364,7 @@ example, all file names are specified with full absolute paths on the user file 
 Begin by defining the location, on the user file system, of the Singularity container. E.g.
 
 ```sh singularity-cluster
-CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-04.sif
+CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-06.sif
 ```
 
 *Replace the above with the full path and filename of the Singularity container on your system.*
@@ -398,7 +398,7 @@ Now edit the example configuration file to point to the correct locations on the
 system. First edit the location of the container path:
 
 ```sh singularity-cluster
-sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-04.sif,$CONTAINER,g" sge.nextflow.config \
+sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-06.sif,$CONTAINER,g" sge.nextflow.config \
     > $BASE_DIR/nextflow.config
 ```
 
@@ -500,7 +500,7 @@ specified relative to the user file system, rather than the container file syste
 Begin by defining the name of the Docker image downloaded earlier. E.g.
 
 ```sh docker-inside
-CONTAINER="dannywilson/kmer_pipeline:2026-10-04"
+CONTAINER="dannywilson/kmer_pipeline:2026-10-06"
 ```
 
 *Replace the above with the name of the Docker image on your system, if different.*
@@ -587,7 +587,7 @@ example) is recommended.*
 Begin by defining the name of the Docker image downloaded earlier. E.g.
 
 ```sh docker-host
-CONTAINER="dannywilson/kmer_pipeline:2026-10-04"
+CONTAINER="dannywilson/kmer_pipeline:2026-10-06"
 ```
 
 *Replace the above with the name of the Docker image on your system, if different.*
@@ -621,7 +621,7 @@ Now edit the example configuration file to point to the correct locations on the
 system. First edit the location of the container path:
 
 ```sh docker-host
-sed "s,dannywilson/kmer_pipeline:2026-10-04,$CONTAINER,g" docker.nextflow.config > \
+sed "s,dannywilson/kmer_pipeline:2026-10-06,$CONTAINER,g" docker.nextflow.config > \
     $BASE_DIR/nextflow.config
 ```
 
@@ -691,7 +691,7 @@ with full absolute paths on the user file system. Docker on a cluster has not be
 Begin by defining the name of the Docker image downloaded earlier. E.g.
 
 ```sh docker-cluster
-CONTAINER="dannywilson/kmer_pipeline:2026-10-04"
+CONTAINER="dannywilson/kmer_pipeline:2026-10-06"
 ```
 
 *Replace the above with the name of the Docker image on your system, if different.*
@@ -725,7 +725,7 @@ Now edit the example configuration file to point to the correct locations on the
 system. First edit the location of the container path:
 
 ```sh docker-cluster
-sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-04.sif,$CONTAINER,g" sge.nextflow.config \
+sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-06.sif,$CONTAINER,g" sge.nextflow.config \
     > $BASE_DIR/nextflow.config
 ```
 
