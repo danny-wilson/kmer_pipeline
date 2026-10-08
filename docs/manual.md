@@ -25,7 +25,7 @@ and D. J. Wilson (2016) *Nature Microbiology* 1: 16041
 | Input | Description |
 |---|---|
 | Phenotypes | Binary or continuous phenotypes. If any phenotypes are NA, the samples with NA phenotypes will be ignored in the LMM and when determining the minor allele counts/frequencies but will be included in the other pattern files. |
-| Genotypes | Kmer counting input is assembly contigs, not sequencing reads. Kmers are counted as present if seen once in a genome. |
+| Genotypes | Kmer counting input is assembly contigs (FASTA, optionally gzipped); the pipeline does not assemble reads. Junk contigs, such as adapter dimers, poly-A runs and other very short contigs, produce k-mers that can reach the association test and top the Manhattan plot, so set `min_contig_length` (default 0, which keeps every contig; a value of 10 times the k-mer length, in bases, is a sensible start) to ignore short contigs, and trim adapters from reads before assembly. K-mers that are at least 90% one base or residue are marked with a * in the report tables (they are kept in the analysis). Kmers are counted as present if seen once in a genome. |
 
 **License**
 
@@ -1217,16 +1217,19 @@ The reference may have several records, for example a chromosome and plasmids, o
 
 | Analysis options | |
 |---|---|
-| `ntopgenes` | [20] Number of the most significant genes or intergenic regions on which to create reports. |
+| `ntopgenes` | [20] Number of the most significant genes or intergenic regions on which to create reports. May be changed under `-resume`: only the figure and report steps (6 and 7) rerun, and the statistics are reused. |
 | `minor_allele_threshold` | [0.01] Minor allele threshold for excluding extreme-frequency kmers. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
 | `kmer_min_count` | [1] Minimum number of times a kmer must occur in a genome to count as present (step 3). For genome assemblies, set to 1. |
 | `plot_min_genomes` | [1] Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot (steps 6 and 7). |
 | `min_count` | Replaced by `kmer_min_count` and `plot_min_genomes`. Still accepted, setting both, with a warning; it cannot be combined with them. |
-| `merge_wait_minutes` | [100] Minutes a task of steps 2, 3 and 5A waits for files written by other tasks before stopping with an error. Set it higher if tasks can wait longer than this in the cluster queue. |
+| `merge_wait_minutes` | [100] Minutes a task of steps 2, 3 and 5A waits for files written by other tasks before stopping with an error. The wait includes time the other tasks spend queued, so a healthy run on a busy cluster can exceed the default: set it higher if tasks can wait longer than this in the cluster queue (a few hours is typical on a shared cluster). |
+| `min_contig_length` | [0] Contigs shorter than this many bases are ignored when counting k-mers (step 1). 0 keeps every contig; 10 x `kmer_length` is a sensible value. Changing it changes the step-1 outputs, so rerun step 1 (and everything after it). |
+| `annotateGeneFile` | [unset] File of gene or intergenic-region names (`geneA:geneB`), one per line, to draw close-ups for instead of the `ntopgenes` most significant. Must lie beneath `base_dir`. Changing it under `-resume` redraws only the figures and reports. |
+| `override_signif` | [FALSE] With `annotateGeneFile`, plot all alignments for those genes even if none is significant. |
 | `nucmerident` | [90] Minimum percentage identity threshold for a nucmer contig alignment to be used to position a kmer, between 0-100. |
 | `bowtie_parameters` | ["--very-sensitive"] Parameters for running bowtie2. If the provided option is not the default, assumes a text file where the lines read in are the bowtie parameters used. |
 | `samtools_filter` | [10] Bowtie2 mapping quality filter. Samtools is used to remove kmers mapped below this threshold. |
-| `blastident` | [70] Minimum percentage identity threshold for a BLAST kmer alignment to be kept, between 0-100. |
+| `blastident` | [70] Minimum percentage identity threshold for a BLAST kmer alignment to be kept, between 0-100. May be changed under `-resume` as for `ntopgenes`. |
 
 | Input files | |
 |---|---|
