@@ -427,3 +427,37 @@ def reorder_reference_gbk(ref_gb):
         names = [nm + "@" + r if len(seen[nm]) > 1 else nm for nm, r in zip(names, records)]
     ref["name"] = names
     return ref.iloc[rcompat.r_order(ref["start"].to_numpy(dtype=float))]
+
+
+# Per-kmer QC warnings. These flag a k-mer in the report tables; they never remove it from the analysis.
+LOW_COMPLEXITY_FRACTION = 0.9
+QC_SYMBOLS = {"low_complexity": ("*", "low complexity: at least 90% of the k-mer is one base or residue "
+                                      "(e.g. a homopolymer from a sequencing or assembly artefact)")}
+
+
+def kmer_qc_flags(kmer, low_complexity_fraction=LOW_COMPLEXITY_FRACTION):
+    """Names of the QC warnings that apply to a k-mer sequence (an empty list if none)."""
+    flags = []
+    if kmer:
+        counts = {}
+        for ch in kmer:
+            counts[ch] = counts.get(ch, 0) + 1
+        if max(counts.values()) / len(kmer) >= low_complexity_fraction:
+            flags.append("low_complexity")
+    return flags
+
+
+def kmer_qc_html(kmer):
+    """The k-mer with a superscript symbol (hover for the reason) for each QC warning that applies."""
+    if not isinstance(kmer, str):
+        return "NA"
+    return kmer + "".join(f"<sup title='{QC_SYMBOLS[f][1]}'>{QC_SYMBOLS[f][0]}</sup>" for f in kmer_qc_flags(kmer))
+
+
+def kmer_qc_legend(kmers):
+    """A report footnote explaining the symbols that occur among kmers, or '' if none do."""
+    seen = {f for k in kmers for f in kmer_qc_flags(k)}
+    if not seen:
+        return ""
+    notes = "; ".join(f"<b>{QC_SYMBOLS[f][0]}</b> {QC_SYMBOLS[f][1]}" for f in QC_SYMBOLS if f in seen)
+    return "  <p class='qcnote'>" + notes + ". Flagged k-mers are kept in the analysis; treat their associations with caution.</p>"
