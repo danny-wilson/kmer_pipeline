@@ -391,7 +391,7 @@ def read_res_table(resfile, refseq, i, genes_names, perident=70, kmer_type=None,
 
 
 def get_kmers_noresult(gene_i_results_list, kmers_gene_i, prefix, i, genes_names, kmer_type, kmer_length, output_dir,
-                       ref_name):
+                       ref_name, nsamples):
     matches = set()
     for res in gene_i_results_list:
         matches.update(res.col("origkmer"))
@@ -400,6 +400,9 @@ def get_kmers_noresult(gene_i_results_list, kmers_gene_i, prefix, i, genes_names
         return None
     t = kmers_gene_i.subset(w)
     t.columns = ["kmer", "negLog10", "beta", "mac"]
+    # MAC is always present, so MAF = MAC / n (as for the BLAST-matched k-mers); without it the MAF
+    # threshold plots silently drop these k-mers and can be left with nothing to plot
+    t.set_col("maf", [num(m) / nsamples for m in t.col("mac")])
     t = t.subset(rcompat.r_order([num(v) for v in t.col("negLog10")], decreasing=True))
     t.write(r_paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref_name, "_top_gene_", i, "_", genes_names[i - 1],
                      "_no_blast_result_or_poor_alignment.txt"))
@@ -545,16 +548,14 @@ def run_alignment_nplots_protein(ref_gene_i, res, nsamples, bonferroni, prefix, 
 
 
 def _manhattan_values(res, which_kmers_no_result, macormaf, minor_allele_threshold):
-    """The -log10 p values R plots in a gene's Manhattan plot, and which pass the
-    MAF/MAC threshold. R takes which_kmers_no_result[[macormaf]]: that table has a mac
-    column but no maf column, so with a MAF threshold the k-mers without a BLAST result
-    drop out of the threshold plot."""
+    """The -log10 p values plotted in a gene's Manhattan plot, and which pass the MAF/MAC
+    threshold. The k-mers without a BLAST result carry both mac and maf, so they are
+    thresholded like the rest (the original R dropped them under a MAF threshold)."""
     ypos = [num(v) for v in res.col("negLog10")]
     ma = [num(v) for v in res.col(macormaf)]
     if which_kmers_no_result is not None:
         ypos += [num(v) for v in which_kmers_no_result.col("negLog10")]
-        if macormaf == "mac":
-            ma += [num(v) for v in which_kmers_no_result.col("mac")]
+        ma += [num(v) for v in which_kmers_no_result.col(macormaf)]
     which = [k for k in range(len(ma)) if ma[k] >= minor_allele_threshold]
     return ypos, which
 
@@ -569,7 +570,8 @@ def run_manhattan_single(res, which_kmers_no_result, prefix_path, gene_name, bon
         if not y:
             if name_part:  # protein: R plots only if there are points, and png() then writes no file
                 continue
-            r_stop("Error in plot.window(...): need finite 'xlim' values (no k-mers to plot for ", gene_name, ")")
+            r_cat("Warning: no k-mers to plot for ", gene_name, maname, "; figure skipped\n")
+            continue
         FIGURES.expect(prefix_path + "_" + gene_name + name_part + "_Manhattan" + maname + ".png")
         if max(y) > 100:
             FIGURES.expect(prefix_path + "_" + gene_name + name_part + "_Manhattan_ylim50" + maname + ".png")
@@ -584,9 +586,8 @@ def run_manhattan_allframes(gene_i_results_list, prefix_path, gene_name, which_k
             if num(m) >= minor_allele_threshold]
     if which_kmers_no_result is not None:
         yall += [num(v) for v in which_kmers_no_result.col("negLog10")]
-        if macormaf == "mac":
-            ythr += [num(v) for v, m in zip(which_kmers_no_result.col("negLog10"), which_kmers_no_result.col("mac"))
-                     if num(m) >= minor_allele_threshold]
+        ythr += [num(v) for v, m in zip(which_kmers_no_result.col("negLog10"), which_kmers_no_result.col(macormaf))
+                 if num(m) >= minor_allele_threshold]
     for y, maname in ((yall, "_allkmers"), (ythr, r_paste0("_", macormaf, minor_allele_threshold))):
         FIGURES.expect(prefix_path + "_" + gene_name + "_allframes_Manhattan" + maname + ".png")
         if y and max(y) > 100:
@@ -683,7 +684,7 @@ def plot_closeup_alignments(ref, ref_length, ref_gb, ref_fa, figures_dir, output
                                                         kmer_length, ref_name)
 
         which_kmers_no_result = get_kmers_noresult(gene_i_results_list, kmers_gene_i, output_prefix, i, genes_names,
-                                                   kmer_type, kmer_length, figures_dir, ref_name)
+                                                   kmer_type, kmer_length, figures_dir, ref_name, nsamples)
         prefix_path = r_paste0(figures_dir, output_prefix, "_", kmer_type, kmer_length, "_", ref_name)
         if kmer_type == "protein":
             for j in range(1, 7):
