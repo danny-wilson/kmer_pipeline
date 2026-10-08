@@ -2,7 +2,9 @@
 """countkmers.py: count nucleotide or protein k-mers for one sample.
 Port of countkmers.Rscript."""
 import argparse
+import atexit
 import collections
+import gzip
 import os
 import sys
 import time
@@ -50,6 +52,43 @@ def count_protein_kmers(fastaFile, writeToFile=False, kmerLen=31, kmerDir=None, 
     # Or return counted kmer sequences
     else:
         return kmers
+
+
+def filter_short_contigs(contig_path, min_length, out_path):
+    """Write the contigs of at least min_length bases to out_path and return its absolute path (the counting
+    code changes directory), or return contig_path itself when min_length is 0. Reports how many were dropped.
+    Very short contigs are typically assembly debris, such as adapter dimers or homopolymer runs."""
+    if min_length <= 0:
+        return contig_path
+    out_path = os.path.abspath(out_path)
+    opener = gzip.open if contig_path.endswith(".gz") else open
+    kept = dropped = dropped_bases = 0
+
+    def flush(header, seq, out):
+        nonlocal kept, dropped, dropped_bases
+        if header is None:
+            return
+        n = sum(len(x) for x in seq)
+        if n >= min_length:
+            out.write(header + "".join(x + "\n" for x in seq))
+            kept += 1
+        else:
+            dropped += 1
+            dropped_bases += n
+
+    with opener(contig_path, "rt") as fin, open(out_path, "w") as out:
+        header, seq = None, []
+        for line in fin:
+            line = line.rstrip("\r\n")
+            if line.startswith(">"):
+                flush(header, seq, out)
+                header, seq = line + "\n", []
+            elif line:
+                seq.append(line)
+        flush(header, seq, out)
+    r_cat("Minimum contig length", min_length, ": kept", kept, "contigs, dropped", dropped, "contigs (", dropped_bases,
+          "bases)\n")
+    return out_path
 
 
 def create_kmercount_dir(dir, kmertype, kmerlength):
@@ -136,6 +175,8 @@ def main():
     parser.add_argument("--analysis-dir", required=True, help="analysis directory")
     parser.add_argument("--output-prefix", required=True, help="output prefix")
     parser.add_argument("--software-file", required=True, help="software paths file")
+    parser.add_argument("--min-contig-length", type=int, default=0,
+                        help="ignore contigs shorter than this many bases (default 0: keep all)")
     parser.add_argument("--analyses-list", default=None,
                         help="file of k-mer types and lengths to count (default: nucleotide k-mers of length 31)")
     args = parser.parse_args()
@@ -246,12 +287,16 @@ def main():
     else:
         kmertype = [("nucleotide", 31.0)]
 
+    # Contigs below --min-contig-length are left out of every count; the filtered copy is removed on exit
+    counted_contigs = filter_short_contigs(contig_path, args.min_contig_length, sample_id + ".minlen.fa")
+    if counted_contigs != contig_path:
+        atexit.register(lambda: os.path.exists(counted_contigs) and os.remove(counted_contigs))
+
     if any(t == "protein" for t, _ in kmertype):
         ## For each assembly, translate all contigs into 6 reading frames
         r_cat("Translating contigs for ID", sample_id, "\n")
-        # Translate contigs
         translated_contigs_path = sequence_functions.translate_6_frames(
-            contig_path=contig_path, id=sample_id, outDir=output_dir + "/translated_contigs/",
+            contig_path=counted_contigs, id=sample_id, outDir=output_dir + "/translated_contigs/",
             oneLetterCodes=sequence_functions.oneLetterCodes, revcompl=sequence_functions.revcompl)
         r_cat("Translated contigs for ID " + sample_id + ". Output file: " + translated_contigs_path, "\n")
 
@@ -269,7 +314,7 @@ def main():
     if any(t == "nucleotide" for t, _ in kmertype):
         for kl in [l for t, l in kmertype if t == "nucleotide"]:
             kmer_dir = nucleotide_kmer_counting(output_dir=output_dir, kmerlength=kl, dsk_path=dsk_path,
-                                                dsk2ascii_path=dsk2ascii_path, contig_path=contig_path,
+                                                dsk2ascii_path=dsk2ascii_path, contig_path=counted_contigs,
                                                 sample_id=sample_id)
             write_kmer_filepaths_to_file(process=process, id_file=id_file, kmertype="nucleotide", kmerlength=kl,
                                          output_dir=output_dir, output_prefix=output_prefix, kmer_dir=kmer_dir)
