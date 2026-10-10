@@ -36,14 +36,17 @@ KNOWN_PARAMS = {
     "container_analysis_dir", "container_analysis_file", "container_args", "container_cmd",
     "container_covariate_file", "container_file", "container_id_file", "container_logdir", "container_mount",
     "container_ref_fa", "container_ref_gb", "container_script_dir", "container_software_file", "container_type",
-    "container_user_id_file",
+    "container_user_id_file", "container_annotateGeneFile",
     "covariate_file", "default_script_dir", "default_software_file", "gene_lookup_file", "id_file",
     "kmerFilePrefix", "kmergenecombination", "kmer_length", "kmer_min_count", "kmer_type", "logdir", "maxp",
-    "merge_wait_minutes", "min_count", "minor_allele_threshold", "n", "ntopgenes", "nucmerident", "output_prefix",
-    "overwrite", "override_signif", "p", "p5", "pheno_file", "plot_min_genomes", "precomputed_dir",
+    "merge_wait_minutes", "min_contig_length", "min_count", "minor_allele_threshold", "n", "ntopgenes",
+    "nucmerident", "output_prefix", "overwrite", "override_signif", "p", "p5", "pheno_file", "plot_min_genomes", "precomputed_dir",
     "precomputed_prefix", "container_pheno_file", "container_precomputed_dir", "ref_fa", "ref_gb", "ref_name",
     "samtools_filter", "skip1", "skip2", "skip3", "skip4", "skip5", "skip6", "skip7", "software_file", "workdir",
 }
+
+# Result-affecting parameters added after earlier releases: a manifest without one was made with this value
+PARAM_DEFAULTS = {"min_contig_length": "0"}
 
 MANIFEST_VERSION = 1
 SHOW = 20  # files listed per message
@@ -61,6 +64,11 @@ def near_miss(name):
 def check_params(user_params, errors, warnings):
     for name in sorted(user_params):
         if name in KNOWN_PARAMS:
+            continue
+        # Nextflow also stores every camelCase parameter under its kebab-case alias (annotateGeneFile and
+        # annotate-gene-file): the alias of a known parameter that was set is not a second, unknown one
+        camel = re.sub(r"-([a-z])", lambda m: m.group(1).upper(), name)
+        if camel != name and camel in KNOWN_PARAMS and camel in user_params:
             continue
         guess = near_miss(name)
         if guess:
@@ -302,6 +310,9 @@ def check(args):
     manifest = read_manifest(manifest_path)
 
     check_params([p for p in args.user_params.split(",") if p], errors, warnings)
+    if not re.fullmatch(r"\d+", params.get("min_contig_length", "0")):
+        errors.append("min_contig_length must be a whole number of bases (0 keeps every contig), not "
+                      f"{params['min_contig_length']!r}")
     if args.id_file:
         validate_inputs(args.id_file, args.covariate_file or None, run_steps, errors, warnings, args.pheno_file or None)
     files = json.loads(args.input_files)
@@ -325,7 +336,11 @@ def check(args):
                           f"(session {manifest.get('session')})")
         else:
             old_params, old_inputs = manifest.get("params", {}), manifest.get("inputs", {})
-            changed = [k for k in sorted({**old_params, **params}) if params.get(k) != old_params.get(k)]
+            # Parameters read only by the figure and report steps: changing them under -resume reruns just those
+            # tasks (their command lines change, so Nextflow does not reuse them) and keeps the statistics
+            figure_only = {"ntopgenes", "blastident"}
+            changed = [k for k in sorted({**old_params, **params})
+                       if params.get(k) != old_params.get(k, PARAM_DEFAULTS.get(k)) and k not in figure_only]
             changed += [k for k in sorted({**old_inputs, **inputs}) if inputs.get(k) != old_inputs.get(k)]
             if changed:
                 errors.append("-resume only continues an interrupted run with the same inputs; changed since "
@@ -381,8 +396,8 @@ def check(args):
             p = prov.get(str(s))
             if p is None or s in stale or not any(s in inventory.DEPENDS[r] for r in run_steps):
                 continue
-            keys = {3: ["kmer_min_count"], 5: ["nucmerident", "ref_fa", "ref_gb"]}.get(s, [])
-            diff = [k for k in keys if p.get("params", {}).get(k, p.get("inputs", {}).get(k)) !=
+            keys = {1: ["min_contig_length"], 3: ["kmer_min_count"], 5: ["nucmerident", "ref_fa", "ref_gb"]}.get(s, [])
+            diff = [k for k in keys if p.get("params", {}).get(k, p.get("inputs", {}).get(k, PARAM_DEFAULTS.get(k))) !=
                     params.get(k, inputs.get(k))]
             if diff:
                 errors.append(f"the step-{s} outputs being reused were made with different "

@@ -8,6 +8,7 @@ import sys
 import time
 
 import rcompat
+import sequence_functions as sf
 from rcompat import r_s3 as s3
 
 NL = "\n"
@@ -68,9 +69,11 @@ def main():
                  "  <table class='kmertab center'>", "    <tr>",
                  "      <th>" + "</th><th>".join(["kmer", "Signif", "beta", "MAC"]) + "</th>", "    </tr>"]
         for r in tb:
-            lines += ["    <tr>", "      <td>" + "</td><td>".join(ggr.rstr(r[c]) for c in ("kmer", "Signif", "beta", "MAC"))
+            lines += ["    <tr>", "      <td>" + "</td><td>".join((sf.kmer_qc_html(r[c]) if c == "kmer" else ggr.rstr(r[c]))
+                                                  for c in ("kmer", "Signif", "beta", "MAC"))
                       + "</tr>", "    </tr>"]
-        lines += ["  </table>", "  </div>", NL]
+        legend = sf.kmer_qc_legend([r["kmer"] for r in tb])
+        lines += ["  </table>", "  </div>"] + ([legend] if legend else []) + [NL]
         html_body = NL.join(lines)
     else:
         html_body = NL.join([html_body, "  which was not genome-wide significant.</p>", NL])

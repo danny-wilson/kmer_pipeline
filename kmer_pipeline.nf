@@ -12,18 +12,39 @@ import groovy.json.JsonSlurper
 // The parameters the user set (config files and command line), before any default is assigned
 USER_KEYS = new TreeSet(params.keySet())
 
-def user2containerPath(base_dir, user_path, container_base_dir) {
-	// Throws an error if user_path is not in the subdirectory tree of base_dir
-	try{
-		relative_user_path = base_dir.relativize(Paths.get(user_path))
-	} catch(Exception e) {
-		println "Error converting from user_path to container_path"
-		println "Check user_path is in the subdirectory tree of base_dir"
-		println "base_dir:  " + base_dir
-		println "user_path: " + user_path
-		throw e
+// Real path of p, following symlinks; the part that does not exist yet (e.g. analysis_dir) is kept as written
+def resolvePath(p) {
+	def path = Paths.get(p).toAbsolutePath().normalize()
+	def tail = []
+	while(path != null && !Files.exists(path)) {
+		tail.add(0, path.getFileName().toString())
+		path = path.getParent()
 	}
-	Paths.get(container_base_dir, relative_user_path.toString()).toString()
+	if(path == null) return Paths.get(p).toAbsolutePath().normalize()
+	def real = path.toRealPath()
+	tail.each { real = real.resolve(it) }
+	real
+}
+
+def user2containerPath(base_dir, user_path, container_base_dir) {
+	// Throws an error if user_path is not in the subdirectory tree of base_dir. A path beneath base_dir as written
+	// is used as written (a symlink there may point elsewhere, bound into the container by container_args).
+	// Otherwise both are resolved first, so that two spellings of the same place (for example through a
+	// symlinked directory) are treated alike.
+	def written_base = base_dir.toAbsolutePath().normalize()
+	def written_user = Paths.get(user_path).toAbsolutePath().normalize()
+	if(written_user.startsWith(written_base))
+		return Paths.get(container_base_dir, written_base.relativize(written_user).toString()).toString()
+	def real_base = resolvePath(base_dir.toString())
+	def real_user = resolvePath(user_path)
+	if(!real_user.startsWith(real_base)) {
+		println "Error converting from user_path to container_path"
+		println "Every input and output must lie beneath base_dir, which is the only directory mounted in the container"
+		println "base_dir:  " + base_dir + (real_base.toString() != base_dir.toString() ? " (" + real_base + ")" : "")
+		println "user_path: " + user_path + (real_user.toString() != user_path ? " (" + real_user + ")" : "")
+		throw new Exception("${user_path} is not beneath base_dir ${base_dir}")
+	}
+	Paths.get(container_base_dir, real_base.relativize(real_user).toString()).toString()
 }
 
 // Determine mountpoint and container command
@@ -68,6 +89,12 @@ def deployment() {
 	} else {
 		if(!Files.exists(Paths.get(params.covariate_file))) throw new Exception("covariate_file ${params.covariate_file} does not exist")
 		params.container_covariate_file = user2containerPath(base_dir, params.covariate_file, params.container_mount)
+	}
+	if(params.containsKey('annotateGeneFile')) {
+		if(!Files.exists(Paths.get(params.annotateGeneFile))) throw new Exception("annotateGeneFile ${params.annotateGeneFile} does not exist")
+		params.container_annotateGeneFile = user2containerPath(base_dir, params.annotateGeneFile, params.container_mount)
+	} else {
+		params.container_annotateGeneFile = ""
 	}
 	params.container_ref_fa = user2containerPath(base_dir, params.ref_fa, params.container_mount)
 	params.container_ref_gb = user2containerPath(base_dir, params.ref_gb, params.container_mount)
@@ -180,6 +207,7 @@ def preflight(List extra = []) {
 		kmer_min_count: params.kmer_min_count.toString(), plot_min_genomes: params.plot_min_genomes.toString(),
 		minor_allele_threshold: params.minor_allele_threshold.toString(), nucmerident: params.nucmerident.toString(),
 		ntopgenes: params.ntopgenes.toString(), blastident: params.blastident.toString(), maxp: params.maxp.toString(),
+		min_contig_length: (params.containsKey('min_contig_length') ? params.min_contig_length : 0).toString(),
 		output_prefix: params.output_prefix, run_steps: run_steps, precomputed_dir: params.container_precomputed_dir,
 		precomputed_prefix: params.precomputed_prefix]
 	def input_files = [id_file: params.container_user_id_file, covariate_file: params.container_covariate_file,
@@ -317,7 +345,8 @@ if(!SKIP[1])
 		--analysis-dir !{params.container_analysis_dir} \
 		--output-prefix !{params.output_prefix} \
 		--software-file !{params.container_software_file} \
-		--analyses-list !{params.container_analysis_file}
+		--analyses-list !{params.container_analysis_file} \
+		!{MINLEN_ARG}
 	'''
 else
 	'''
@@ -847,12 +876,9 @@ if(!SKIP[6])
 		--software-file !{params.container_software_file} \
 		--blastident !{params.blastident} \
 		--ngenes !{params.ntopgenes} \
-		!{COVARIATE_ARG}
+		!{COVARIATE_ARG} !{ANNOTATE_ARG}
 	rm -f !{params.logdir}/plotManhattan.log && cp $(pwd)/.command.log !{params.logdir}/plotManhattan.log
 	'''
-	/* Temporarily removed since default values cannot be explicitly specified:\
-	--annotate-gene-file !{params.annotateGeneFile} \
-	--override-signif !{params.override_signif}*/
 else
 	'''
 	echo "Skipping Step 6: Plotting figures using contig alignment positions"
@@ -870,6 +896,8 @@ shell:
 if(!SKIP[6])
 	'''
 	echo "Step 6, figures: Drawing figures in R"
+	# Recorded here so that changing a figure-only parameter reruns this task under -resume
+	echo "Figure parameters: ntopgenes=!{params.ntopgenes} blastident=!{params.blastident} annotateGeneFile=!{params.containsKey('annotateGeneFile') ? params.annotateGeneFile : ''}"
 	ln -sfr $(pwd) !{params.workdir}/plotFigures 2>/dev/null || ln -sf $(pwd) !{params.workdir}/plotFigures
 	ln -sfr $(pwd)/.command.log !{params.logdir}/plotFigures.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/plotFigures.log
 	!{params.container_cmd} Rscript --vanilla !{params.container_script_dir}/Rscript_launcher.R \
@@ -951,12 +979,10 @@ shell:
 		--samtools-filter !{params.samtools_filter} \
 		--software-file !{params.container_software_file} \
 		--blastident !{params.blastident} \
-		--ngenes !{params.ntopgenes}
+		--ngenes !{params.ntopgenes} \
+		!{ANNOTATE_ARG}
 	rm -f !{params.logdir}/plotManhattanbowtie.log && cp $(pwd)/.command.log !{params.logdir}/plotManhattanbowtie.log
 	'''
-	/* Temporarily removed since default values cannot be explicitly specified \
-	!{params.annotateGeneFile} \
-	!{params.override_signif} */
 }
 
 // Step 7: Generate HTML report
@@ -970,6 +996,8 @@ shell:
 if(!SKIP[7])
 	'''
 	echo "Step 7: Generating HTML report"
+	# Recorded here so that changing a figure-only parameter reruns this task under -resume
+	echo "Figure parameters: ntopgenes=!{params.ntopgenes} blastident=!{params.blastident} annotateGeneFile=!{params.containsKey('annotateGeneFile') ? params.annotateGeneFile : ''}"
 	ln -sfr $(pwd) !{params.workdir}/genReport 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genReport
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genReport.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genReport.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-report.py \
@@ -1004,6 +1032,8 @@ shell:
 if(!SKIP[7])
 	'''
 	echo "Step 7B: Generating HTML gene report"
+	# Recorded here so that changing a figure-only parameter reruns this task under -resume
+	echo "Figure parameters: ntopgenes=!{params.ntopgenes} blastident=!{params.blastident} annotateGeneFile=!{params.containsKey('annotateGeneFile') ? params.annotateGeneFile : ''}"
 	ln -sfr $(pwd) !{params.workdir}/genGeneReport.!{hitnum} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genGeneReport.!{hitnum}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genGeneReport.!{hitnum}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genGeneReport.!{hitnum}.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-gene-report.py \
@@ -1038,6 +1068,8 @@ shell:
 if(!SKIP[7])
 	'''
 	echo "Step 7B: Generating HTML protein report"
+	# Recorded here so that changing a figure-only parameter reruns this task under -resume
+	echo "Figure parameters: ntopgenes=!{params.ntopgenes} blastident=!{params.blastident} annotateGeneFile=!{params.containsKey('annotateGeneFile') ? params.annotateGeneFile : ''}"
 	ln -sfr $(pwd) !{params.workdir}/genProteinReport.!{hitnum} 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genProteinReport.!{hitnum}
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genProteinReport.!{hitnum}.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genProteinReport.!{hitnum}.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-protein-report.py \
@@ -1071,6 +1103,8 @@ shell:
 if(!SKIP[7])
 	'''
 	echo "Step 7C: Generating HTML unmapped report"
+	# Recorded here so that changing a figure-only parameter reruns this task under -resume
+	echo "Figure parameters: ntopgenes=!{params.ntopgenes} blastident=!{params.blastident} annotateGeneFile=!{params.containsKey('annotateGeneFile') ? params.annotateGeneFile : ''}"
 	ln -sfr $(pwd) !{params.workdir}/genUnmappedReport 2>/dev/null || ln -sf $(pwd) !{params.workdir}/genUnmappedReport
 	ln -sfr $(pwd)/.command.log !{params.logdir}/genUnmappedReport.log 2>/dev/null || ln -sf $(pwd)/.command.log !{params.logdir}/genUnmappedReport.log
 	!{params.container_cmd} !{params.container_script_dir}/gen-unmapped-report.py \
@@ -1124,6 +1158,7 @@ if(params.containsKey('min_count')) {
 	params.plot_min_genomes = 1
 }
 println 'kmer_min_count:          ' + params.kmer_min_count
+println 'min_contig_length:       ' + (params.containsKey('min_contig_length') ? params.min_contig_length : 0)
 println 'plot_min_genomes:        ' + params.plot_min_genomes
 params.nucmerident = 90
 println 'nucmerident:             ' + params.nucmerident
@@ -1136,11 +1171,10 @@ println 'blastident:              ' + params.blastident
 // N7: how long a merging task (steps 2, 3, 5A) waits for files written by other tasks
 params.merge_wait_minutes = 100
 println 'merge_wait_minutes:      ' + params.merge_wait_minutes
-//Neither yet implemented because of problem explicitly specifying NULL annotateGeneFile:
-//params.annotateGeneFile = "NULL"
-//println 'annotateGeneFile:        ' + params.annotateGeneFile
-//params.override_signif = "FALSE"
-//println 'override_signif:         ' + params.override_signif
+// annotateGeneFile has no default: set it to draw close-ups for chosen genes instead of the top ntopgenes
+params.override_signif = "FALSE"
+println 'override_signif:         ' + params.override_signif
+if(params.containsKey('annotateGeneFile')) println 'annotateGeneFile:        ' + params.annotateGeneFile
 println ''
 // Input files
 println 'Input files'
@@ -1221,6 +1255,10 @@ println 'container_logdir:        ' + params.container_logdir
 println 'workdir:                 ' + params.workdir
 // The covariate file option of the scripts that take one (empty without a covariate file)
 COVARIATE_ARG = params.container_covariate_file ? "--covariate-file " + params.container_covariate_file : ""
+// Optional: contigs shorter than min_contig_length are ignored when counting (default 0 keeps all; 10 x the k-mer length is a sensible choice)
+MINLEN_ARG = params.containsKey('min_contig_length') ? "--min-contig-length " + params.min_contig_length : ""
+// Optional: genes (or geneA:geneB intergenic regions) to draw close-ups for, instead of the top ntopgenes
+ANNOTATE_ARG = params.container_annotateGeneFile ? "--annotate-gene-file " + params.container_annotateGeneFile + " --override-signif " + params.override_signif : ""
 PHENO_ARG = params.container_pheno_file ? "--pheno-file " + params.container_pheno_file : ""
 println ''
 // Checks before anything is written; then the workflow's own files
@@ -1244,43 +1282,47 @@ workflow.onComplete {
 	}
 }
 
+// A process whose steps are all skipped is not submitted at all (each submission is a Slurm job that would only
+// print "Skipping Step n"); downstream processes get an immediately available token in its place
+def RUNS(List steps) { steps.any { !SKIP[it] } }
+
 workflow {
 	if(params.kmer_type.toString().toLowerCase()=="nucleotide") {
 		// Step 1: Counting kmers
 		// n-fold parallelization
-		countkmers(Channel.of(1..params.n))
+		if(RUNS([1])) countkmers(Channel.of(1..params.n))
 
 		// Step 2: Creating unique kmer list
 		// Parallel pyramid (p-fold)
-		createfullkmerlist(countkmers.out.done.collect(), Channel.of(1..params.p))
+		if(RUNS([2])) createfullkmerlist((RUNS([1]) ? countkmers.out.done : Channel.value(true)).collect(), Channel.of(1..params.p))
 
 		// Step 3: Creating kmer presence/absence patterns and kinship matrix
 		// Parallel pyramid (maxp-fold)
-		stringlist2patternandkinship(createfullkmerlist.out.done.collect(), Channel.of(1..params.maxp))
+		if(RUNS([3])) stringlist2patternandkinship((RUNS([2]) ? createfullkmerlist.out.done : Channel.value(true)).collect(), Channel.of(1..params.maxp))
 
 		// Step 4: Running GEMMA
 		// maxp-fold parallelization
-		prepareGemma(stringlist2patternandkinship.out.done.collect())
-		rungemma(prepareGemma.out.done.collect(), Channel.of(1..params.maxp))
-		cleanupGemma(rungemma.out.done.collect())
+		if(RUNS([4])) prepareGemma((RUNS([3]) ? stringlist2patternandkinship.out.done : Channel.value(true)).collect())
+		if(RUNS([4])) rungemma((RUNS([4]) ? prepareGemma.out.done : Channel.value(true)).collect(), Channel.of(1..params.maxp))
+		if(RUNS([4])) cleanupGemma((RUNS([4]) ? rungemma.out.done : Channel.value(true)).collect())
 
 		// Step 5: Running contig alignment (no merging)
 		// n-fold parallelization
 		// Could branch from step 2 (not 4)
 		//kmercontigalign(createfullkmerlist.out.done.collect(), Channel.of(1..params.n))
-		kmercontigalign(rungemma.out.done.collect(), Channel.of(1..params.n))
+		if(RUNS([5])) kmercontigalign((RUNS([4]) ? rungemma.out.done : Channel.value(true)).collect(), Channel.of(1..params.n))
 
 		// Step 5A: Merge contig alignments
 		// p5-fold parallelization
-		kmercontigalignmerge(kmercontigalign.out.done.collect(), Channel.of(1..params.p5))
+		if(RUNS([5])) kmercontigalignmerge((RUNS([5]) ? kmercontigalign.out.done : Channel.value(true)).collect(), Channel.of(1..params.p5))
 
 		// Step 6: Plotting figures using contig alignment positions
 		// One core
-		plotManhattan(cleanupGemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
+		if(RUNS([6])) plotManhattan((RUNS([4]) ? cleanupGemma.out.done : Channel.value(true)).collect(), (RUNS([5]) ? kmercontigalignmerge.out.done : Channel.value(true)).collect())
 
 		// Step 6, figures: drawn in R
 		// One core
-		plotFigures(plotManhattan.out.done)
+		if(RUNS([6])) plotFigures(plotManhattan.out.done)
 
 		// Step 5B: Running bowtie2 (nucleotide kmers only)
 		// One core
@@ -1293,64 +1335,64 @@ workflow {
 		
 		// Step 7: Generate HTML report
 		//   One process
-		genReport(plotFigures.out.done)
+		if(RUNS([7])) genReport((RUNS([6]) ? plotFigures.out.done : Channel.value(true)))
 
 		// Step 7B: Generate HTML gene report
 		//   Linear parallelization
-		genGeneReport(genReport.out.done, Channel.of(1..params.ntopgenes))
+		if(RUNS([7])) genGeneReport(genReport.out.done, Channel.of(1..params.ntopgenes))
 
 		// Step 7C: Generate HTML unmapped reads report
 		//   One process
-		genUnmappedReport(genGeneReport.out.done.collect())
+		if(RUNS([7])) genUnmappedReport(genGeneReport.out.done.collect())
 
 	} else if(params.kmer_type.toString().toLowerCase()=="protein") {
 		// Step 1: Counting kmers
 		// n-fold parallelization
-		countkmers(Channel.of(1..params.n))
+		if(RUNS([1])) countkmers(Channel.of(1..params.n))
 
 		// Step 2: Creating unique kmer list
 		// Parallel pyramid (p-fold)
-		createfullkmerlist(countkmers.out.done.collect(), Channel.of(1..params.p))
+		if(RUNS([2])) createfullkmerlist((RUNS([1]) ? countkmers.out.done : Channel.value(true)).collect(), Channel.of(1..params.p))
 
 		// Step 3: Creating kmer presence/absence patterns and kinship matrix
 		// Parallel pyramid (maxp-fold)
-		stringlist2patternandkinship(createfullkmerlist.out.done.collect(), Channel.of(1..params.maxp))
+		if(RUNS([3])) stringlist2patternandkinship((RUNS([2]) ? createfullkmerlist.out.done : Channel.value(true)).collect(), Channel.of(1..params.maxp))
 
 		// Step 4: Running GEMMA
 		// maxp-fold parallelization
-		prepareGemma(stringlist2patternandkinship.out.done.collect())
-		rungemma(prepareGemma.out.done.collect(), Channel.of(1..params.maxp))
-		cleanupGemma(rungemma.out.done.collect())
+		if(RUNS([4])) prepareGemma((RUNS([3]) ? stringlist2patternandkinship.out.done : Channel.value(true)).collect())
+		if(RUNS([4])) rungemma((RUNS([4]) ? prepareGemma.out.done : Channel.value(true)).collect(), Channel.of(1..params.maxp))
+		if(RUNS([4])) cleanupGemma((RUNS([4]) ? rungemma.out.done : Channel.value(true)).collect())
 
 		// Step 5: Running contig alignment (no merging)
 		// n-fold parallelization
 		// Could branch from step 2 (not 4)
 		//kmercontigalign(createfullkmerlist.out.done.collect(), Channel.of(1..params.n))
-		kmercontigalign(rungemma.out.done.collect(), Channel.of(1..params.n))
+		if(RUNS([5])) kmercontigalign((RUNS([4]) ? rungemma.out.done : Channel.value(true)).collect(), Channel.of(1..params.n))
 
 		// Step 5A: Merge contig alignments
 		// p5-fold parallelization
-		kmercontigalignmerge(kmercontigalign.out.done.collect(), Channel.of(1..params.p5))
+		if(RUNS([5])) kmercontigalignmerge((RUNS([5]) ? kmercontigalign.out.done : Channel.value(true)).collect(), Channel.of(1..params.p5))
 
 		// Step 6: Plotting figures using contig alignment positions
 		// One core
-		plotManhattan(cleanupGemma.out.done.collect(), kmercontigalignmerge.out.done.collect())
+		if(RUNS([6])) plotManhattan((RUNS([4]) ? cleanupGemma.out.done : Channel.value(true)).collect(), (RUNS([5]) ? kmercontigalignmerge.out.done : Channel.value(true)).collect())
 
 		// Step 6, figures: drawn in R
 		// One core
-		plotFigures(plotManhattan.out.done)
+		if(RUNS([6])) plotFigures(plotManhattan.out.done)
 
 		// Step 7: Generate HTML report
 		//   One process
-		genReport(plotFigures.out.done)
+		if(RUNS([7])) genReport((RUNS([6]) ? plotFigures.out.done : Channel.value(true)))
 
 		// Step 7B: Generate HTML protein report
 		//   Linear parallelization
-		genProteinReport(genReport.out.done, Channel.of(1..params.ntopgenes))
+		if(RUNS([7])) genProteinReport(genReport.out.done, Channel.of(1..params.ntopgenes))
 
 		// Step 7C: Generate HTML unmapped reads report
 		//   One process
-		genUnmappedReport(genProteinReport.out.done.collect())
+		if(RUNS([7])) genUnmappedReport(genProteinReport.out.done.collect())
 
 	} else {
 		throw new Exception("params.kmer_type must be nucleotide or protein")

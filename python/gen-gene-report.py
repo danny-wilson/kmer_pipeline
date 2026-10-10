@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 import rcompat
+import sequence_functions as sf
 from rcompat import r_s3 as s3
 
 NL = "\n"
@@ -66,13 +67,14 @@ def kmer_table_html(columns, rows, thr_signif, signif_col="Signif", all_bold=Fal
     lines = ["  <div class='divkmertab'>", "  <table class='kmertab'>", "    <tr>",
              "      <th>" + "</th><th>".join(columns) + "</th>", "    </tr>"]
     for r in rows:
-        cells = [rstr(r[c]) for c in columns]
+        cells = [sf.kmer_qc_html(r[c]) if c == "kmer" else rstr(r[c]) for c in columns]
         sig = rcompat.r_as_numeric(r[signif_col]) if r[signif_col] is not None else None
         if all_bold or (sig is not None and sig >= thr_signif):
             lines += ["    <tr>", "      <td><b>" + "</b></td><td><b>".join(cells) + "</b></tr>", "    </tr>"]
         else:
             lines += ["    <tr>", "      <td>" + "</td><td>".join(cells) + "</tr>", "    </tr>"]
-    lines += ["  </table>", "  </div>", NL]
+    legend = sf.kmer_qc_legend([r["kmer"] for r in rows if "kmer" in r])
+    lines += ["  </table>", "  </div>"] + ([legend] if legend else []) + [NL]
     return NL.join(lines)
 
 
@@ -221,9 +223,12 @@ def run(args, protein):
         "  the " + is_maf_text3 + " threshold (although the significance",
         "  threshold is not updated since we do not recommend reporting low-" + is_maf_text3 + " kmers",
         "  as significant).</p>", NL])
-    html_body = gr.slideshow(html_body, [filename_Manhattan_maf, filename_Manhattan_maf0],
-                             ["Kmers mapping to the region, filtered by " + is_maf_text3 + ".",
-                              "Kmers mapping to the region. No " + is_maf_text3 + " filter."], "")
+    # The filtered plot is not drawn when no kmer passes the threshold
+    plots = [(f, c) for f, c in ((filename_Manhattan_maf, "Kmers mapping to the region, filtered by " + is_maf_text3 + "."),
+                                 (filename_Manhattan_maf0, "Kmers mapping to the region. No " + is_maf_text3 + " filter."))
+             if os.path.exists(f)]
+    if plots:
+        html_body = gr.slideshow(html_body, [f for f, _ in plots], [c for _, c in plots], "")
     html_body = NL.join([html_body, NL])
 
     def rdir(pattern):

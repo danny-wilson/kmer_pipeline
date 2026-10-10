@@ -164,6 +164,14 @@ def test_unknown_parameters(tmp_path):
     assert any("'queue' is not used" in w for w in out["warnings"])
 
 
+def test_the_kebab_case_alias_nextflow_adds_for_a_known_parameter_is_not_unknown(tmp_path):
+    out = preflight(tmp_path, tmp_path / "a", user_params=["annotateGeneFile", "annotate-gene-file"])
+    assert out["errors"] == [] and out["warnings"] == []
+    # an alias of a name that is not a parameter is still reported
+    out = preflight(tmp_path, tmp_path / "b", user_params=["kmerMinCount", "kmer-min-count"])
+    assert sum("did you mean 'kmer_min_count'" in e for e in out["errors"]) == 2
+
+
 def test_resume(tmp_path):
     analysis = tmp_path / "kmergwas"
     preflight(tmp_path, analysis, session="s1")
@@ -326,3 +334,26 @@ def test_pheno_file_checks(tmp_path):
     assert any("pheno_file, ID G2: 'R'" in e for e in out["errors"])
     assert any("1 IDs of pheno_file are not in id_file" in w for w in out["warnings"])
     assert any("4 genomes of id_file have no phenotype" in w for w in out["warnings"])
+
+
+def test_resume_figure_only_parameters_may_change(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    base = {"kmer_min_count": 1, "ntopgenes": "20", "blastident": "70"}
+    preflight(tmp_path, analysis, session="s1")
+    make_run(analysis)
+    out = preflight(tmp_path, analysis, resume=True, session="s1", params={**base, "ntopgenes": "5", "blastident": "80"})
+    assert out["errors"] == []
+
+
+def test_min_contig_length_must_be_a_whole_number(tmp_path):
+    out = preflight(tmp_path, tmp_path / "a", params={"kmer_min_count": 1, "min_contig_length": "-5"})
+    assert any("min_contig_length" in e for e in out["errors"])
+    assert preflight(tmp_path, tmp_path / "b", params={"kmer_min_count": 1, "min_contig_length": "310"})["errors"] == []
+
+
+def test_resume_refuses_a_changed_min_contig_length(tmp_path):
+    analysis = tmp_path / "kmergwas"
+    preflight(tmp_path, analysis, session="s1", params={"kmer_min_count": 1, "min_contig_length": "0"})
+    make_run(analysis)
+    out = preflight(tmp_path, analysis, resume=True, session="s1", params={"kmer_min_count": 1, "min_contig_length": "310"})
+    assert "min_contig_length" in out["errors"][0]

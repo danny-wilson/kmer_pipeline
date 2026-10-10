@@ -680,7 +680,7 @@ run_manhattan_single_protein = function(which_kmers_no_result = NULL, res = NULL
 	
 	# First with no limit on y-axis
 	plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos, ypos = ypos, all_translations = ref_gene_i$all_translations, beta_col = beta_col, bonferroni = bonferroni, ylim_max = NULL, x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
-	plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos[whichMAthreshold,,drop=FALSE], ypos = ypos[whichMAthreshold], all_translations = ref_gene_i$all_translations, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = NULL, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
+	if(length(whichMAthreshold)>0) plot_singleframe_manhattan_protein(prefix = prefix, genes_name = gene_name, correct_or_wrong = correct_or_wrong, j = j, xpos = xpos[whichMAthreshold,,drop=FALSE], ypos = ypos[whichMAthreshold], all_translations = ref_gene_i$all_translations, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = NULL, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_gene_i$ref_start_i, end = ref_gene_i$ref_end_i, ref_length = ref_length, kmer_length = kmer_length)
 
 	# Then limit to ylim = 50 for those with ylim > 100
 	if(max(as.numeric(ypos))>100){
@@ -720,7 +720,7 @@ run_manhattan_single_nucleotide = function(which_kmers_no_result = NULL, res = N
 	prefix = paste0(output_dir, prefix, "_", kmer_type, kmer_length, "_", ref.name)
 	# First with no limit on y-axis
 	plot_singleframe_manhattan_nucleotide(prefix = prefix, genes_name = gene_name, xpos = xpos, ypos = ypos, ref_fa = ref_gene_i$ref_gene_i, beta_col = beta_col, bonferroni = bonferroni, ylim_max = NULL, x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_start_i, end = ref_end_i)
-	plot_singleframe_manhattan_nucleotide(prefix = prefix, genes_name = gene_name, xpos = xpos[whichMAthreshold,,drop=FALSE], ypos = ypos[whichMAthreshold], ref_fa = ref_gene_i$ref_gene_i, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = NULL, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_start_i, end = ref_end_i)
+	if(length(whichMAthreshold)>0) plot_singleframe_manhattan_nucleotide(prefix = prefix, genes_name = gene_name, xpos = xpos[whichMAthreshold,,drop=FALSE], ypos = ypos[whichMAthreshold], ref_fa = ref_gene_i$ref_gene_i, beta_col = beta_col[whichMAthreshold], bonferroni = bonferroni, ylim_max = NULL, maname = paste0("_",macormaf,minor_allele_threshold), x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_start_i, end = ref_end_i)
 	
 	if(max(as.numeric(ypos))>100){
 		plot_singleframe_manhattan_nucleotide(prefix = prefix, genes_name = gene_name, xpos = xpos, ypos = ypos, ref_fa = ref_gene_i$ref_gene_i, beta_col = beta_col, bonferroni = bonferroni, ylim_max = 50, x.adjust = 999, ref_gb_full = ref_gb_full, start = ref_start_i, end = ref_end_i)
