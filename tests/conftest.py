@@ -6,11 +6,17 @@ kmer_pipeline image, where the tests are installed in /usr/share/kmer_pipeline/t
 Run them with the image's Python, e.g. from a checkout:
     apptainer exec --cleanenv kmer_pipeline.sif python3 -m pytest -p no:cacheprovider tests
 """
+import glob
 import os
+import shutil
 import subprocess
 import sys
 
 import pytest
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: a real pipeline run inside the image (NEXTFLOW_RUNS and gemma needed)")
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(TESTS_DIR)
@@ -53,3 +59,34 @@ def run_script(name, *args, cwd=None):
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     return subprocess.run([sys.executable, os.path.join(SCRIPTS_DIR, name), *args],
                           capture_output=True, text=True, cwd=cwd, env=env)
+
+
+# The image's compiled C++ tools (built separately; not part of this checkout). Kept in sync
+# with the Dockerfile's build list.
+CPP_TOOLS = ("kmerlist2pattern", "pattern2kinship", "patterncounts", "patternmerge", "sort_strings",
+            "stringlist2count", "stringlist2pattern")
+
+
+def stage_checkout(dest):
+    """A flat scriptpath directory, as the image installs scripts in /usr/local/bin: this
+    checkout's R and Python scripts, report assets, kmer_pipeline.nf, and symlinks to the
+    image's C++ tools (not part of this checkout, so not staged from it). Python port of the
+    private porting project's stage.sh, built from the working tree rather than `git archive`,
+    so uncommitted test changes are exercised too."""
+    os.makedirs(dest, exist_ok=True)
+    for pattern in ("*.R", "*.Rscript"):
+        for f in glob.glob(os.path.join(REPO_DIR, pattern)):
+            out = os.path.join(dest, os.path.basename(f))
+            shutil.copy(f, out)
+            os.chmod(out, 0o755)
+    for f in glob.glob(os.path.join(SCRIPTS_DIR, "*.py")):
+        out = os.path.join(dest, os.path.basename(f))
+        shutil.copy(f, out)
+        os.chmod(out, 0o755)
+    for name in ("report.css", "report.js", "kmer_pipeline.nf"):
+        shutil.copy(os.path.join(REPO_DIR, name), os.path.join(dest, name))
+    for tool in CPP_TOOLS:
+        link = os.path.join(dest, tool)
+        if not os.path.exists(link):
+            os.symlink(os.path.join("/usr/local/bin", tool), link)
+    return dest
