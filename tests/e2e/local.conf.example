@@ -16,7 +16,10 @@ KMER_E2E_NEXTFLOW_VERSION=22.04.5
 #
 # Optional:
 # Shell snippet run before Nextflow (e.g. to put a newer Java than the host
-# default on PATH). Left empty if the host Java is already new enough.
+# default on PATH). Left empty if the host Java is already new enough. Quote
+# it if it contains spaces -- this file is sourced by bash, so an unquoted
+# value with spaces is parsed as a command, not a single string:
+#   KMER_E2E_PRE="export PATH=/path/to/newer/java/bin:$PATH"
 KMER_E2E_PRE=
 # Local disk for unpacking a SIF build (fast, non-shared storage; not the
 # scratch root above, which may be a shared/networked filesystem).

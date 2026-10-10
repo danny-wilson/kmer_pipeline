@@ -21,11 +21,14 @@ trap 'rm -rf "$TMP"' EXIT
 
 mkdir "$TMP/context"
 git -C "$REPO" archive "$SHA" | tar -x -C "$TMP/context"
-# .dockerignore: .git (git archive leaves it out anyway), docs, pycache/
-# pytest-cache, and the e2e local config/SIF patterns. If this changes,
-# update this check deliberately rather than silently building a different
-# context from what a real `docker build` would see.
-WANT=$'.git\ndocs\n**/__pycache__\n**/.pytest_cache\ntests/e2e/local.conf\n*.sif'
+# .dockerignore: .git (git archive leaves it out anyway), docs, and the
+# pycache/pytest-cache patterns, as of this port. This check is pinned to
+# the COMMIT being archived, not to this checkout's current working tree
+# (e.g. Part C's own later addition of two e2e-specific lines, once merged,
+# changes it again) -- update it deliberately when it genuinely changes,
+# rather than silently building a different context from what a real
+# `docker build` would see.
+WANT=$'.git\ndocs\n**/__pycache__\n**/.pytest_cache'
 [ "$(cat "$TMP/context/.dockerignore")" = "$WANT" ] || { echo ".dockerignore changed: update this script" >&2; exit 1; }
 rm -rf "$TMP/context/docs"
 python3 "$HERE/dockerfile2def.py" "$TMP/context/Dockerfile" "$TMP/context" "$VERSION" > "${OUT%.sif}.def"
