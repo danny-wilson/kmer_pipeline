@@ -61,7 +61,7 @@ def hash_run(run_dir, rules):
     return out
 
 
-def generate(runs, manifest_path):
+def generate(runs, manifest_path, commit=None, nextflow_version=None, image_digest=None):
     rules = read_manifest(manifest_path)
     rows = []
     for name, run_dir in runs:
@@ -70,6 +70,12 @@ def generate(runs, manifest_path):
     rows.sort()
     print("# golden_hashes.tsv -- sha256, class exact/strip/numeric/visual")
     print(f"# generated {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
+    print(f"# commit: {commit or '(not given)'}")
+    print(f"# nextflow version: {nextflow_version or '(not given)'}")
+    print(f"# image digest: {image_digest or '(not given)'}")
+    print("# regenerate with: golden_hashes.py generate "
+          + " ".join(f"--run {n} $KMER_E2E_ROOT/goldens/<label>-<sha7>/maxp2/{n}/stage7" for n, _ in runs)
+          + " --commit <sha> --nextflow-version <version> --image-digest <digest> > tests/e2e/golden_hashes.tsv")
     print(HEADER)
     for row in rows:
         print("\t".join(row))
@@ -127,13 +133,16 @@ def main():
     ap.add_argument("--run", action="append", nargs=2, metavar=("NAME", "DIR"), default=[])
     ap.add_argument("--manifest", default=os.path.join(HERE, "manifest.tsv"))
     ap.add_argument("--visual-advisory", action="store_true")
+    ap.add_argument("--commit", help="generate: the commit the goldens were made from, for the TSV header")
+    ap.add_argument("--nextflow-version", help="generate: for the TSV header")
+    ap.add_argument("--image-digest", help="generate: the toolchain image's public registry digest, for the TSV header")
     args = ap.parse_args()
     runs = [(n, d) for n, d in args.run]
     if not runs:
         sys.exit("at least one --run NAME DIR is required")
 
     if args.mode == "generate":
-        generate(runs, args.manifest)
+        generate(runs, args.manifest, args.commit, args.nextflow_version, args.image_digest)
         return
 
     if not args.tsv:
