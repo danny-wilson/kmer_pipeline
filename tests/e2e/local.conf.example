@@ -1,0 +1,24 @@
+# tests/e2e/local.conf (gitignored): shell KEY=value lines, sourced by bash and
+# parsed by e2e_config.py. Copy this file to tests/e2e/local.conf and fill it in,
+# or set the same names as environment variables (which take precedence). No
+# host path, cluster name, or other local detail belongs in a committed file;
+# that is exactly what local.conf keeps out of the repo.
+#
+# Required:
+KMER_E2E_ROOT=/path/to/scratch/kmer_pipeline
+KMER_E2E_SIF=/path/to/scratch/kmer_pipeline/images/kmer_pipeline.sif
+# The commit the toolchain image's C++ tools, Dockerfile and dependencies were
+# built from. stage.sh warns if a staged commit's C++/Makefile/Dockerfile have
+# since diverged from this commit (the harness can't detect a regression there).
+KMER_E2E_IMAGE_COMMIT=0000000000000000000000000000000000000000
+KMER_E2E_NEXTFLOW=/path/to/scratch/kmer_pipeline/bin/nextflow-22.04.5
+KMER_E2E_NEXTFLOW_VERSION=22.04.5
+#
+# Optional:
+# Shell snippet run before Nextflow (e.g. to put a newer Java than the host
+# default on PATH). Left empty if the host Java is already new enough.
+KMER_E2E_PRE=
+# Local disk for unpacking a SIF build (fast, non-shared storage; not the
+# scratch root above, which may be a shared/networked filesystem).
+KMER_E2E_LOCAL_TMP=/tmp
+KMER_E2E_NICE=10
