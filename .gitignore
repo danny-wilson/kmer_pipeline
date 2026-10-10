@@ -35,3 +35,11 @@
 kmer_pipeline_manual.pdf
 __pycache__/
 .pytest_cache/
+
+# tests/e2e: local config and everything a run or a SIF build writes
+tests/e2e/local.conf
+.nextflow/
+.nextflow.log*
+work/
+nxf-tmp.*
+*.sif

@@ -1,0 +1,31 @@
+# Output manifest. Tab-separated: pattern, class, regex for "strip". First
+# matching pattern wins; patterns are fnmatch-style against paths relative to
+# the analysis directory ("*" also matches "/"). A file matching no pattern is
+# an error (there is deliberately no catch-all), so a new output type must be
+# classified here on purpose rather than silently passing as "exact".
+#   exact   identical content (after gzip decompression for .gz)
+#   strip   identical after deleting lines that match the pattern's regex
+#   numeric identical apart from numbers that differ by at most the relative
+#           tolerance in the regex column (unused in this manifest so far)
+#   visual  must exist in both; content compared as bytes by golden_hashes.py,
+#           with --visual-advisory to downgrade a mismatch to a warning
+#   ignore  not compared, and may exist on one side only (logs vary in number)
+log.*/*	ignore
+# Run manifest: session IDs, times, host, process ID
+*.run_manifest.json	ignore
+nextflow.out	ignore
+# Genome-wide summary stats (Manhattan_functions.write_summary_json)
+*.summary.json	exact
+*.png	visual
+# Figure data for plot_figures.R: no R counterpart of its own, but it is the
+# data that fully determines every figure, so it is exact, not ignored.
+*_figures/figure_data/*	exact
+*.html	strip	^\s*\w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}\.
+*_gemma/output/*.log.txt.gz	strip	computation time|time on|Command Line Input
+*.txt	exact
+*.txt.gz	exact
+*.tsv	exact
+*.tsv.gz	exact
+*.fa.gz	exact
+*.css	exact
+*.js	exact

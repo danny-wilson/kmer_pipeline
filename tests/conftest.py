@@ -22,6 +22,14 @@ TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(TESTS_DIR)
 EXAMPLE_DIR = os.path.join(REPO_DIR, "example")
 
+# tests/e2e holds golden-output comparisons: they need an e2e config (local.conf
+# or the same keys as environment variables) and are never run by a plain
+# `pytest tests`. test_golden_hashes.py needs neither, so it lives under tests/
+# instead of tests/e2e/, and is unaffected by this.
+collect_ignore = []
+if not os.environ.get("KMER_E2E_ROOT") and not os.path.exists(os.path.join(TESTS_DIR, "e2e", "local.conf")):
+    collect_ignore.append("e2e")
+
 
 def _scripts_dir():
     env = os.environ.get("KMER_PIPELINE_SCRIPTS")

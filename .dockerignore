@@ -2,3 +2,5 @@
 docs
 **/__pycache__
 **/.pytest_cache
+tests/e2e/local.conf
+*.sif
