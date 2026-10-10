@@ -84,3 +84,35 @@ def test_rerun_into_an_existing_analysis_stops(tmp_path):
     assert "defined multiple times" not in out
     assert rc != 0 and "set overwrite = true" in out, out[-3000:]
     assert (kmer_dir / "702.kmer31.txt.gz").exists()
+
+
+def test_symlinked_base_dir_is_accepted(tmp_path):
+    """base_dir given as a symlink, with the inputs given in the real (target) spelling: the
+    two spellings of the same place must be treated as equal, not rejected as outside base_dir."""
+    base = make_base(tmp_path)
+    link = tmp_path / "link"
+    link.symlink_to(base)
+    cfg_path = base / "nextflow.config"
+    cfg_path.write_text(cfg_path.read_text().replace(f'base_dir = "{base}"', f'base_dir = "{link}"'))
+    # Reuse the existing-analysis trick so the run stops deterministically at a known preflight
+    # check, proving path resolution succeeded before ever reaching it.
+    kmer_dir = base / "tb20" / "kmergwas" / "nucleotidekmer31"
+    kmer_dir.mkdir(parents=True)
+    (kmer_dir / "702.kmer31.txt.gz").write_text("x\n")
+    rc, out = run(base)
+    assert "Error converting from user_path" not in out, out[-3000:]
+    assert "is not beneath base_dir" not in out, out[-3000:]
+    assert rc != 0 and "set overwrite = true" in out, out[-3000:]
+
+
+def test_input_outside_base_dir_fails_clearly(tmp_path):
+    base = make_base(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    bad_ref = outside / "Mtub_H37Rv_NC000962.3.fasta"
+    shutil.copy(os.path.join(EXAMPLE_DIR, "Mtub_H37Rv_NC000962.3.fasta"), bad_ref)
+    cfg_path = base / "nextflow.config"
+    cfg_path.write_text(cfg_path.read_text().replace(
+        f'ref_fa = "{base}/tb20/Mtub_H37Rv_NC000962.3.fasta"', f'ref_fa = "{bad_ref}"'))
+    rc, out = run(base)
+    assert rc != 0 and "is not beneath base_dir" in out, out[-3000:]

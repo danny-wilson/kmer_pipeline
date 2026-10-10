@@ -38,6 +38,39 @@ def test_kmers_without_a_blast_result_get_a_maf(tmp_path):
     assert t.col("maf") == pytest.approx([6 / 30, 3 / 30])
 
 
+def test_get_kmers_noresult_returns_none_when_everything_matched(tmp_path):
+    kmers = af.Table(["kmer", "negLog10", "beta", "mac"], [["GGGT", 1.0, 0.3, 2]])
+    res = af.Table(["kmer", "origkmer"], [["GGGT", "GGGT"]])
+    assert af.get_kmers_noresult([res], kmers, "p", 1, ["gene"], "nucleotide", 4, str(tmp_path) + "/", "ref", 30) is None
+
+
+def test_get_kmers_noresult_writes_the_table_it_returns(tmp_path):
+    kmers = af.Table(["kmer", "negLog10", "beta", "mac"], [["AAAC", 5.0, 0.1, 3], ["GGGT", 1.0, 0.3, 2]])
+    res = af.Table(["kmer", "origkmer"], [["GGGT", "GGGT"]])
+    out_dir = str(tmp_path) + "/"
+    t = af.get_kmers_noresult([res], kmers, "p", 1, ["my_gene"], "nucleotide", 4, out_dir, "ref", 30)
+    path = out_dir + "p_nucleotide4_ref_top_gene_1_my_gene_no_blast_result_or_poor_alignment.txt"
+    written = af.read_table_header(path)
+    assert written.columns == t.columns
+    assert written.col("kmer") == t.col("kmer")
+    assert written.col("maf") == pytest.approx(t.col("maf"))
+
+
+def test_run_manhattan_allframes_includes_no_blast_kmers_under_threshold(monkeypatch):
+    expected = []
+    monkeypatch.setattr(af, "FIGURES", type("F", (), {"expect": lambda self, path: expected.append(path)})())
+    res = af.Table(["negLog10", "maf"], [[5.0, 0.5]])
+    # Without the no-BLAST k-mer, nothing in the thresholded set exceeds 100, so no ylim50 variant.
+    af.run_manhattan_allframes([res], "/p", "gene", None, 0.1, "maf")
+    assert not any("ylim50" in p for p in expected)
+    # A no-BLAST k-mer passing the MAF threshold, with negLog10 > 100, must push the thresholded
+    # set's max over 100 too -- it was dropped from the threshold list before the fix.
+    expected.clear()
+    no_result = af.Table(["negLog10", "maf"], [[150.0, 0.5]])
+    af.run_manhattan_allframes([res], "/p", "gene", no_result, 0.1, "maf")
+    assert any(p.endswith("_allframes_Manhattan_ylim50_maf0.1.png") for p in expected)
+
+
 def test_a_gene_whose_only_threshold_kmers_lack_a_blast_result_still_has_points():
     res = af.Table(["negLog10", "mac", "maf"], [[2.0, 1, 1 / 30]])
     none = af.Table(["kmer", "negLog10", "beta", "mac", "maf"], [["AAAC", 50.0, 0.1, 6, 0.2]])
