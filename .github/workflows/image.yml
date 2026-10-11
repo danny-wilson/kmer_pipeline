@@ -77,7 +77,7 @@ jobs:
           else
             echo "cache_to=type=gha,scope=${scope}" >> "$GITHUB_OUTPUT"
           fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.no-cache }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs['no-cache'] }}" = "true" ]; then
             echo "no_cache=true" >> "$GITHUB_OUTPUT"
           else
             echo "no_cache=false" >> "$GITHUB_OUTPUT"
