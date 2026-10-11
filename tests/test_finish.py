@@ -29,7 +29,7 @@ import groovy.json.JsonOutput
 params.output_prefix = "{PREFIX}"
 params.kmer_type = "{TYPE}"
 params.kmer_length = {K}
-params.analysis_dir = "{analysis_dir}"
+ANALYSIS_DIR = "{analysis_dir}"
 {block}
 finish("{session_id}", "{status}")
 """)
@@ -78,7 +78,7 @@ import groovy.json.JsonOutput
 params.output_prefix = "{PREFIX}"
 params.kmer_type = "{TYPE}"
 params.kmer_length = {K}
-params.analysis_dir = "{analysis}"
+ANALYSIS_DIR = "{analysis}"
 {block}
 finish(UUID.fromString("{uuid_str}"), "finished")
 """)

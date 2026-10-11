@@ -105,6 +105,30 @@ def test_symlinked_base_dir_is_accepted(tmp_path):
     assert rc != 0 and "set overwrite = true" in out, out[-3000:]
 
 
+def test_relative_paths_and_trailing_slash_are_accepted(tmp_path):
+    """analysis_dir with a trailing slash, and analysis_dir/id_file/ref_fa given as paths
+    relative to the launch directory (base, since run() invokes nextflow with cwd=base):
+    absPath() must resolve all of these correctly, not just an absolute as-written path
+    (guards P47)."""
+    base = make_base(tmp_path)
+    cfg_path = base / "nextflow.config"
+    text = cfg_path.read_text()
+    text = text.replace(f'analysis_dir = "{base}/tb20/kmergwas"', 'analysis_dir = "tb20/kmergwas/"')
+    text = text.replace(f'id_file = "{base}/tb20/id_file.txt"', 'id_file = "tb20/id_file.txt"')
+    text = text.replace(f'ref_fa = "{base}/tb20/Mtub_H37Rv_NC000962.3.fasta"', 'ref_fa = "tb20/Mtub_H37Rv_NC000962.3.fasta"')
+    cfg_path.write_text(text)
+    # Reuse the existing-analysis trick so the run stops deterministically at a known preflight
+    # check, proving path resolution succeeded before ever reaching it.
+    kmer_dir = base / "tb20" / "kmergwas" / "nucleotidekmer31"
+    kmer_dir.mkdir(parents=True)
+    (kmer_dir / "702.kmer31.txt.gz").write_text("x\n")
+    rc, out = run(base)
+    assert "Error converting from user_path" not in out, out[-3000:]
+    assert "is not beneath base_dir" not in out, out[-3000:]
+    assert "does not exist" not in out, out[-3000:]
+    assert rc != 0 and "set overwrite = true" in out, out[-3000:]
+
+
 def test_input_outside_base_dir_fails_clearly(tmp_path):
     base = make_base(tmp_path)
     outside = tmp_path / "outside"
