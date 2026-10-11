@@ -76,7 +76,7 @@ def figures_dir_for(analysis_dir, kmer_type, kmer_length):
 
 
 def make_minimal_base(tmp_path, extra=""):
-    """The 4-genome subset, scriptpath pointing at a staged (not bare python/) directory, since
+    """The 4-genome subset, scriptpath pointing at a staged (not bare bin/) directory, since
     step 1 (countkmers) needs sort_strings and dsk colocated with the scripts."""
     base = tmp_path / "base"
     (base / "tb20").mkdir(parents=True)

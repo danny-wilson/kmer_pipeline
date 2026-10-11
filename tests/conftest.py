@@ -1,9 +1,9 @@
 """Shared set-up for the kmer_pipeline tests.
 
 The scripts under test are found in KMER_PIPELINE_SCRIPTS if it is set; otherwise in
-../python (a checkout of the repository) or, failing that, /usr/local/bin (the
-kmer_pipeline image, where the tests are installed in /usr/share/kmer_pipeline/tests).
-Run them with the image's Python, e.g. from a checkout:
+../bin (a checkout of the repository). The toolchain image is code-free (no pipeline
+scripts), so there is no image-installed fallback location any more. Run them with
+the image's Python, e.g. from a checkout:
     apptainer exec --cleanenv kmer_pipeline.sif python3 -m pytest -p no:cacheprovider tests
 """
 import glob
@@ -35,10 +35,7 @@ def _scripts_dir():
     env = os.environ.get("KMER_PIPELINE_SCRIPTS")
     if env:
         return os.path.abspath(env)
-    checkout = os.path.join(REPO_DIR, "python")
-    if os.path.isdir(checkout):
-        return checkout
-    return "/usr/local/bin"
+    return os.path.join(REPO_DIR, "bin")
 
 
 SCRIPTS_DIR = _scripts_dir()
@@ -76,14 +73,14 @@ CPP_TOOLS = ("kmerlist2pattern", "pattern2kinship", "patterncounts", "patternmer
 
 
 def stage_checkout(dest):
-    """A flat scriptpath directory, as the image installs scripts in /usr/local/bin: this
-    checkout's R and Python scripts, report assets, kmer_pipeline.nf, and symlinks to the
-    image's C++ tools (not part of this checkout, so not staged from it). Python port of the
-    private porting project's stage.sh, built from the working tree rather than `git archive`,
-    so uncommitted test changes are exercised too."""
+    """A flat scriptpath directory, mirroring bin/'s old flat layout in /usr/local/bin before
+    the code-free refactor: this checkout's R and Python scripts, report assets,
+    kmer_pipeline.nf, and symlinks to the image's C++ tools (not part of this checkout, so not
+    staged from it). Python port of the private porting project's stage.sh, built from the
+    working tree rather than `git archive`, so uncommitted test changes are exercised too."""
     os.makedirs(dest, exist_ok=True)
     for pattern in ("*.R", "*.Rscript"):
-        for f in glob.glob(os.path.join(REPO_DIR, pattern)):
+        for f in glob.glob(os.path.join(SCRIPTS_DIR, pattern)):
             out = os.path.join(dest, os.path.basename(f))
             shutil.copy(f, out)
             os.chmod(out, 0o755)
@@ -91,8 +88,9 @@ def stage_checkout(dest):
         out = os.path.join(dest, os.path.basename(f))
         shutil.copy(f, out)
         os.chmod(out, 0o755)
-    for name in ("report.css", "report.js", "kmer_pipeline.nf"):
-        shutil.copy(os.path.join(REPO_DIR, name), os.path.join(dest, name))
+    for name in ("report.css", "report.js"):
+        shutil.copy(os.path.join(SCRIPTS_DIR, name), os.path.join(dest, name))
+    shutil.copy(os.path.join(REPO_DIR, "kmer_pipeline.nf"), os.path.join(dest, "kmer_pipeline.nf"))
     for tool in CPP_TOOLS:
         link = os.path.join(dest, tool)
         if not os.path.exists(link):
