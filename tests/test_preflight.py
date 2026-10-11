@@ -44,14 +44,12 @@ def id_file(tmp_path, genomes=GENOMES):
 
 
 def preflight(tmp_path, analysis, run_steps=range(1, 8), overwrite=False, resume=False, session="s1",
-              user_params=(), params=None, inputs=None, ids=None, finish=None, covs=""):
+              user_params=(), params=None, inputs=None, ids=None, covs=""):
     args = ["--analysis-dir", str(analysis), "--output-prefix", PREFIX, "--kmer-type", TYPE, "--kmer-length", str(K),
             "--session-id", session, "--run-steps", ",".join(map(str, run_steps)),
             "--overwrite", str(overwrite).lower(), "--resume", str(resume).lower(), "--pid", "999999999",
             "--user-params", ",".join(user_params), "--params-json", json.dumps(params or {"kmer_min_count": 1}),
             "--input-files", json.dumps(inputs or {}), "--id-file", ids or id_file(tmp_path), "--covariate-file", covs]
-    if finish:
-        args += ["--finish", finish]
     result = run_script("preflight.py", *args)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -153,7 +151,10 @@ def test_reused_step3_made_with_another_kmer_min_count(tmp_path):
     analysis = tmp_path / "kmergwas"
     preflight(tmp_path, analysis, params={"kmer_min_count": 1})  # manifest of a full run
     make_run(analysis)
-    preflight(tmp_path, analysis, finish="finished")
+    manifest_path = analysis / f"{P}.run_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["status"] = "finished"  # finish() is now pure Groovy (kmer_pipeline.nf); set it directly
+    manifest_path.write_text(json.dumps(manifest))
     out = preflight(tmp_path, analysis, run_steps=[4, 6, 7], overwrite=True, params={"kmer_min_count": 2})
     assert any("kmer_min_count" in e for e in out["errors"])
 
@@ -192,12 +193,6 @@ def test_a_live_run_blocks_overwrite(tmp_path):
     out = preflight(tmp_path, analysis, overwrite=True)
     assert "may still be running" in out["errors"][0] and out["deleted"] == []
 
-
-def test_finish(tmp_path):
-    analysis = tmp_path / "kmergwas"
-    preflight(tmp_path, analysis, session="s1")
-    preflight(tmp_path, analysis, session="s1", finish="finished")
-    assert json.loads((analysis / f"{P}.run_manifest.json").read_text())["status"] == "finished"
 
 
 def test_every_workflow_parameter_is_known():

@@ -250,27 +250,65 @@ def read_container_script_dir() {
 	rows.collectEntries( {[it[0],it[1]]} )["scriptpath"]
 }
 
-// Read the name of the reference genome
-def read_ref_name() {
-	cmd = "${params.container_cmd} ${params.container_script_dir}/get_ref_name.py --fasta-file ${params.container_ref_fa}"
-	proc = cmd.execute()
-	sout = new StringBuilder()
-	ref_name_read_error = new StringBuilder()
-	proc.waitForProcessOutput(sout, ref_name_read_error)
-	assert ref_name_read_error.toString()==""
-	assert sout.toString()!=""
-	params.ref_name = sout.toString().trim()
+// The first word of the first FASTA record's header (after '>'), decompressing gzip as
+// rcompat.r_open does. Pure-Groovy port of get_ref_name.py; bzip2/xz are no longer supported
+// here - no decoder for either is available on Nextflow's own classpath (unlike rcompat.r_open's
+// Python stdlib bz2/lzma), so a bzip2/xz-compressed ref_fa must be decompressed first.
+def ref_name_from_fasta(path) {
+	def raw = new File(path).bytes
+	byte[] content
+	if(raw.size() >= 2 && (raw[0] & 0xFF) == 0x1f && (raw[1] & 0xFF) == 0x8b) {
+		content = new java.util.zip.GZIPInputStream(new ByteArrayInputStream(raw)).bytes
+	} else if(raw.size() >= 3 && (raw[0] & 0xFF) == 0x42 && (raw[1] & 0xFF) == 0x5a && (raw[2] & 0xFF) == 0x68) {
+		throw new Exception("ref_fa ${path} is bzip2-compressed, which is no longer supported directly - decompress it first")
+	} else if(raw.size() >= 6 && (raw[0] & 0xFF) == 0xfd && (raw[1] & 0xFF) == 0x37 && (raw[2] & 0xFF) == 0x7a && (raw[3] & 0xFF) == 0x58 && (raw[4] & 0xFF) == 0x5a && (raw[5] & 0xFF) == 0x00) {
+		throw new Exception("ref_fa ${path} is xz-compressed, which is no longer supported directly - decompress it first")
+	} else {
+		content = raw
+	}
+	// The first line, as bytes: LF, CRLF and CR (alone) all end it - found byte-wise, before any
+	// UTF-8 decoding, so bytes later in the file (never looked at) cannot cause a spurious error.
+	int lineEnd = content.length
+	for(int i = 0; i < content.length; i++) {
+		if(content[i] == (byte)0x0a || content[i] == (byte)0x0d) { lineEnd = i; break }
+	}
+	// The first space-delimited token within that line, also byte-wise: Python's str.split(" ")[0]
+	// (not Groovy's tokenize(), which collapses repeated whitespace differently) on the raw line,
+	// keeping a leading empty token from a leading space rather than discarding it. Splitting before
+	// decoding, rather than decoding the whole line and then splitting, matters for UTF-8 validity
+	// below: Python's own check only re-encodes this already-extracted token, so bytes elsewhere on
+	// the line (e.g. after a space, in a trailing comment) are never looked at either.
+	int tokenEnd = lineEnd
+	for(int i = 0; i < lineEnd; i++) {
+		if(content[i] == (byte)0x20) { tokenEnd = i; break }
+	}
+	byte[] tokenBytes = java.util.Arrays.copyOfRange(content, 0, tokenEnd)
+	def decoder = java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+		.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+		.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+	def firstToken
+	try {
+		firstToken = decoder.decode(java.nio.ByteBuffer.wrap(tokenBytes)).toString()
+	} catch(java.nio.charset.CharacterCodingException e) {
+		throw new Exception("ref_fa ${path}'s reference name is not valid UTF-8")
+	}
+	if(!firstToken.startsWith(">")) throw new Exception("reference fasta file does not begin with a name starting with >")
+	return firstToken.substring(1)
 }
 
-// Get sample size (irrespective of phenotype)
+// Read the name of the reference genome
+def read_ref_name() {
+	params.ref_name = ref_name_from_fasta(params.ref_fa)
+}
+
+// Get sample size (irrespective of phenotype): the number of data rows already held in
+// DEPLOYMENT_FILES.id_list (read_id_file()'s result), not a container wc -l on a file the
+// script itself wrote. Zero data rows is an explicit error here, not a silent fall-through to
+// Channel.of(1..0), which Groovy evaluates as the descending range [1, 0].
 def get_n() {
-	cmd = "${params.container_cmd} wc -l ${params.container_id_file}"
-	proc = cmd.execute()
-	outputStream = new StringBuffer();
-	proc.waitForProcessOutput(outputStream, System.err)
-	Scanner scn = new Scanner(outputStream.toString())
-	assert(scn.hasNextInt())
-	return scn.nextInt()-1
+	def n = DEPLOYMENT_FILES.id_list.id.size()
+	if(n == 0) throw new Exception("id_file ${params.id_file} has no data rows")
+	return n
 }
 
 // Read main input file
@@ -1274,9 +1312,35 @@ params.p5 = (int)Math.max(1, Math.min(Math.ceil(params.n/5), params.maxp))
 println 'p5:                      ' + params.p5
 
 // Record in the run manifest whether the run finished
+// Record the end of the run in the run manifest: update it only if it exists and its stored
+// "session" matches this run's session (both normalized to String first - workflow.sessionId is
+// a UUID, the manifest's "session" is a String, and comparing a UUID to a String is always
+// false, guards P5). Pure-Groovy port of preflight.py's finish(); the atomic write (a temp file,
+// then a rename) matches write_manifest()'s. JSON is written with explicit UTF-8; the
+// formatting difference from Python's indent=1, sort_keys=True is accepted - only preflight.py
+// reads this file, via json.load, and the e2e manifest ignores it.
+def finish(sessionId, status) {
+	def prefixFull = "${params.output_prefix}_${params.kmer_type}${params.kmer_length}"
+	def path = "${params.analysis_dir}/${prefixFull}.run_manifest.json"
+	def manifestFile = new File(path)
+	def manifest
+	try {
+		manifest = new groovy.json.JsonSlurper().parse(manifestFile)
+	} catch(Exception e) {
+		manifest = null
+	}
+	if(manifest != null && manifest.session?.toString() == sessionId.toString()) {
+		manifest.status = status
+		manifest.finished = java.time.OffsetDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ"))
+		def tmp = new File(path + ".tmp")
+		tmp.write(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + "\n", "UTF-8")
+		java.nio.file.Files.move(tmp.toPath(), manifestFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+	}
+}
+
 workflow.onComplete {
 	try {
-		preflight(["--finish", workflow.success ? "finished" : "failed"])
+		finish(workflow.sessionId, workflow.success ? "finished" : "failed")
 	} catch(Exception e) {
 		println "Warning: could not record the end of the run in the run manifest: ${e.message}"
 	}

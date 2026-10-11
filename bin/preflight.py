@@ -15,7 +15,8 @@
 
 Prints one JSON object on stdout: {"errors": [...], "warnings": [...], "deleted": [...]}; the
 workflow stops if there are errors. Exit status is 0 unless the checks themselves fail.
-With --finish, records the end of the run in the manifest instead."""
+Recording the end of a run in the manifest is now kmer_pipeline.nf's own finish(), pure Groovy,
+not a mode of this script (PLAN.md Part B, B3)."""
 import argparse
 import difflib
 import hashlib
@@ -435,17 +436,6 @@ def finish_check(errors, warnings, deleted, manifest_path, manifest, args, param
     return {"errors": errors, "warnings": warnings, "deleted": deleted}
 
 
-def finish(args):
-    prefix_full = f"{args.output_prefix}_{args.kmer_type}{args.kmer_length}"
-    path = os.path.join(args.analysis_dir, prefix_full + ".run_manifest.json")
-    manifest = read_manifest(path)
-    if manifest is not None and manifest.get("session") == args.session_id:
-        manifest["status"] = args.finish
-        manifest["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-        write_manifest(path, manifest)
-    return {"errors": [], "warnings": [], "deleted": []}
-
-
 def main():
     parser = argparse.ArgumentParser(description="preflight.py checks before kmer_pipeline.nf runs",
                                      allow_abbrev=False)
@@ -467,9 +457,8 @@ def main():
     parser.add_argument("--precomputed-dir", default="")
     parser.add_argument("--precomputed-prefix", default="")
     parser.add_argument("--ref-name", default="")
-    parser.add_argument("--finish", default=None, help="record the end of the run: finished or failed")
     args = parser.parse_args()
-    result = finish(args) if args.finish else check(args)
+    result = check(args)
     sys.stdout.write(json.dumps(result) + "\n")
 
 
