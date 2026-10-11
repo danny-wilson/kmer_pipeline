@@ -168,6 +168,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           mkdir -p /tmp/renv-probe
+          chmod 777 /tmp/renv-probe
           cp plot_figures.R Rscript_launcher.R /tmp/renv-probe/
           docker run --rm -v /tmp/renv-probe:/renv-probe -w /renv-probe kmer_pipeline:ci bash -c '
             R -e "install.packages(\"renv\", repos=c(CRAN=\"https://cloud.r-project.org\"))" &&
