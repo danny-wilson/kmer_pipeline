@@ -21,6 +21,8 @@ def pytest_configure(config):
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(TESTS_DIR)
 EXAMPLE_DIR = os.path.join(REPO_DIR, "example")
+CONF_DIR = os.path.join(REPO_DIR, "conf")
+SOFTWARE_LOCATION_TEMPLATE = os.path.join(CONF_DIR, "software_location.txt")
 
 # tests/e2e holds golden-output comparisons: they need an e2e config (local.conf
 # or the same keys as environment variables) and are never run by a plain

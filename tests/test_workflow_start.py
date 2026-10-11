@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from conftest import EXAMPLE_DIR, REPO_DIR, SCRIPTS_DIR
+from conftest import EXAMPLE_DIR, REPO_DIR, SCRIPTS_DIR, SOFTWARE_LOCATION_TEMPLATE
 from test_parameters import NEXTFLOW_RUNS
 
 NF = os.path.join(REPO_DIR, "kmer_pipeline.nf")
@@ -25,9 +25,9 @@ def make_base(tmp_path, extra=""):
     (base / "tb20" / "id_file.txt").write_text("\n".join(rows) + "\n")
     for f in ("Mtub_H37Rv_NC000962.3.fasta", "Mtub_H37Rv_NC000962.3.gb"):
         shutil.copy(os.path.join(EXAMPLE_DIR, f), base / "tb20" / f)
-    sw = open(os.path.join(EXAMPLE_DIR, "pipeline_software_location.txt")).read().split("\n")
-    sw = [f"scriptpath\t{SCRIPTS_DIR}" if line.startswith("scriptpath\t") else line for line in sw]
-    (base / "software.txt").write_text("\n".join(sw))
+    sw = open(SOFTWARE_LOCATION_TEMPLATE).read().rstrip("\n").split("\n")
+    sw.append(f"scriptpath\t{SCRIPTS_DIR}")
+    (base / "software.txt").write_text("\n".join(sw) + "\n")
     (base / "nextflow.config").write_text(f"""params {{
 	base_dir = "{base}"
 	output_prefix = "tb20"

@@ -1,5 +1,5 @@
 name	path
-scriptpath	/usr/local/bin
+toolpath	/usr/local/bin
 dsk	/usr/local/bin/dsk
 dsk2ascii	/usr/local/bin/dsk2ascii
 R	/opt/conda/bin/R

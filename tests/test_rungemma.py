@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from conftest import EXAMPLE_DIR, run_script
+from conftest import SOFTWARE_LOCATION_TEMPLATE, run_script
 
 import rungemma
 
@@ -40,7 +40,7 @@ def make_inputs(tmp_path, phenos, patterns, libraries=None):
     wrapper = tmp_path / "gemma.sh"
     wrapper.write_text(WRAPPER.format(capture=capture))
     wrapper.chmod(0o755)
-    rows = open(os.path.join(EXAMPLE_DIR, "pipeline_software_location.txt")).read().rstrip("\n").split("\n")
+    rows = open(SOFTWARE_LOCATION_TEMPLATE).read().rstrip("\n").split("\n")
     rows = [f"gemma\t{wrapper}" if r.startswith("gemma\t") else r for r in rows]
     if libraries:  # replaces the example's gemma_libraries entry (/usr/lib)
         rows = [r for r in rows if not r.startswith("gemma_libraries\t")] + [f"gemma_libraries\t{libraries}"]

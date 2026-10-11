@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-from conftest import EXAMPLE_DIR, REPO_DIR, SCRIPTS_DIR, stage_checkout
+from conftest import EXAMPLE_DIR, REPO_DIR, SCRIPTS_DIR, SOFTWARE_LOCATION_TEMPLATE, stage_checkout
 from test_parameters import NEXTFLOW_RUNS
 
 NF = os.path.join(REPO_DIR, "kmer_pipeline.nf")
@@ -42,9 +42,9 @@ def add_params(base, lines):
 
 
 def write_software_file(base, scriptpath):
-    sw = open(os.path.join(EXAMPLE_DIR, "pipeline_software_location.txt")).read().split("\n")
-    sw = [f"scriptpath\t{scriptpath}" if line.startswith("scriptpath\t") else line for line in sw]
-    (base / "software.txt").write_text("\n".join(sw))
+    sw = open(SOFTWARE_LOCATION_TEMPLATE).read().rstrip("\n").split("\n")
+    sw.append(f"scriptpath\t{scriptpath}")
+    (base / "software.txt").write_text("\n".join(sw) + "\n")
 
 
 def write_config(base, params_block):

@@ -633,26 +633,32 @@ def main():
     names = [rcompat.r_as_character(v) for v in software_paths["name"]]
     paths = [rcompat.r_as_character(v) for v in software_paths["path"]]
     # Children are Python scripts run with this interpreter; software files keep the "R" entry
-    required_software = ["R", "scriptpath"]
+    required_software = ["R"]
     if any(r not in names for r in required_software):
         r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
     python_path = sys.executable
 
-    script_location = [pth for nm, pth in zip(names, paths) if nm.lower() == "scriptpath"][0]
+    # scriptpath defaults to this script's own directory; toolpath defaults to scriptpath
+    scriptpath_hits = [pth for nm, pth in zip(names, paths) if nm.lower() == "scriptpath"]
+    script_location = scriptpath_hits[0] if scriptpath_hits else os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(script_location):
         r_stop("Error: script location directory specified in the software paths file doesn't exist", "\n")
+    toolpath_hits = [pth for nm, pth in zip(names, paths) if nm.lower() == "toolpath"]
+    tool_location = toolpath_hits[0] if toolpath_hits else script_location
+    if not os.path.isdir(tool_location):
+        r_stop("Error: tool location directory specified in the software paths file doesn't exist", "\n")
 
-    def tool(name, what):
-        path = script_location + "/" + name
+    def tool(name, what, location=tool_location):
+        path = location + "/" + name
         if not os.path.exists(path):
-            r_stop("Error: " + what + " path doesn't exist - check pipeline script location in the software file", "\n")
+            r_stop("Error: " + what + " path doesn't exist - check pipeline tool/script location in the software file", "\n")
         return path
     stringlist2patternpath = tool("stringlist2pattern", "stringlist2pattern")
     kmerlist2patternpath = tool("kmerlist2pattern", "kmerlist2pattern")
     patternmergepath = tool("patternmerge", "patternmerge")
     patterncountspath = tool("patterncounts", "patterncounts")
     pattern2kinshippath = tool("pattern2kinship", "pattern2kinship")
-    pattern2presencecountscript = tool("pattern2presencecount.py", "pattern2presencecount.py")
+    pattern2presencecountscript = tool("pattern2presencecount.py", "pattern2presencecount.py", location=script_location)
 
     # Report variables
     r_cat("#############################################", "\n")
