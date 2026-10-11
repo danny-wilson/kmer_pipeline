@@ -1,0 +1,236 @@
+name: image
+
+# Builds the code-free toolchain image (Dockerfile), checks it against the committed environment
+# manifests under docker/env/ (captured once from the previously-published dannywilson/kmer_pipeline:
+# 2026-10-06 image), and — only on an img-* tag push — publishes it to Docker Hub. This workflow never
+# runs tests/ or tests/e2e/ (CI test wiring is a later sub-project); it only builds, checks and publishes
+# the image itself.
+#
+# One job, sequential steps, not separate build/check/publish jobs: separate GitHub Actions jobs run on
+# separate runners with separate Docker daemons, so "check the image build produced" and "publish the
+# exact artefact check tested" are only true if they share one job's loaded image throughout.
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'C\+\+/**'
+      - 'Makefile'
+      - 'docker/**'
+      - '.github/workflows/image.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'C\+\+/**'
+      - 'Makefile'
+      - 'docker/**'
+      - '.github/workflows/image.yml'
+    tags:
+      - 'img-*'
+  schedule:
+    # Weekly, to keep the Actions cache warm. Only a cold (workflow_dispatch, no-cache) build actually
+    # detects upstream mirror drift; a warm scheduled build re-fetches nothing.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      no-cache:
+        description: 'Force a cold build (ignore the Actions cache)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Determine cache scope and version
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            scope="pr-${{ github.event.number }}"
+          else
+            scope="main"
+          fi
+          echo "cache_from=type=gha,scope=${scope}" >> "$GITHUB_OUTPUT"
+          # cache-to writes to this same scope (pr-<N> or main) unconditionally. A PR's scope is a
+          # distinct, isolated gha cache namespace from "main"'s (confirmed via A6 - see STATE.md), so a
+          # PR build writing its own scope cannot evict or touch "main"'s entries; it only lets further
+          # pushes to the *same* PR reuse this PR's own previous build. (An earlier version of this logic
+          # left cache_to empty on pull_request, on the mistaken assumption that scoping needed this to
+          # avoid cross-scope eviction - A6 found every PR build was cold as a result, since no PR build
+          # ever wrote anything for a later one to import.)
+          echo "cache_to=type=gha,scope=${scope}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs['no-cache'] }}" = "true" ]; then
+            echo "no_cache=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no_cache=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "${{ github.ref }}" == refs/tags/img-* ]]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          no-cache: ${{ steps.vars.outputs.no_cache }}
+          cache-from: ${{ steps.vars.outputs.cache_from }}
+          cache-to: ${{ steps.vars.outputs.cache_to }}
+          build-args: |
+            KMER_PIPELINE_VERSION=${{ steps.vars.outputs.version }}
+          tags: kmer_pipeline:ci
+          provenance: false
+
+      - name: Code-free assertion
+        run: |
+          set -eux
+          docker run --rm kmer_pipeline:ci bash -c '
+            ! ls /usr/local/bin/*.py >/dev/null 2>&1 &&
+            test ! -e /usr/local/bin/kmer_pipeline.nf &&
+            test ! -e /usr/local/bin/report.js &&
+            test ! -e /usr/local/bin/report.css &&
+            test ! -e /usr/local/bin/plot_figures.R &&
+            test ! -e /usr/local/bin/Rscript_launcher.R &&
+            test ! -d /usr/share/kmer_pipeline
+          '
+
+      - name: C++ tools and gemma present and executable
+        run: |
+          set -eux
+          for bin in kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern gemma; do
+            docker run --rm kmer_pipeline:ci test -x /usr/local/bin/$bin
+          done
+
+      - name: Capture environment manifest from this build
+        run: |
+          mkdir -p /tmp/env-report
+          docker run --rm kmer_pipeline:ci dpkg -l > /tmp/env-report/dpkg.txt
+          docker run --rm kmer_pipeline:ci conda list > /tmp/env-report/conda.txt
+          docker run --rm kmer_pipeline:ci pip freeze > /tmp/env-report/pip.txt
+          docker run --rm kmer_pipeline:ci Rscript -e 'write.csv(installed.packages()[,c("Package","Version")], stdout(), row.names=FALSE)' > /tmp/env-report/r-packages.txt
+          {
+            for tool_cmd in "bowtie2:--version" "blastn:-version" "nucmer:--version" "samtools:--version" "python3:--version" "java:-version" "nextflow:-version" "R:--version"; do
+              tool=${tool_cmd%%:*}; flag=${tool_cmd#*:}
+              echo "=== $tool $flag ==="
+              docker run --rm kmer_pipeline:ci bash -c "$tool $flag" 2>&1 | head -5
+              echo
+            done
+            echo "=== dsk (no --version flag; presence/executable + binary sha256 checked separately) ==="
+            docker run --rm kmer_pipeline:ci dsk 2>&1 | head -3
+            echo
+            echo "=== gemma (no -version flag; prints version banner with no args) ==="
+            docker run --rm kmer_pipeline:ci gemma 2>&1 | head -5
+          } > /tmp/env-report/tool-versions.txt
+
+      - name: Tier-1 equivalence (must match docker/env/*.txt exactly)
+        run: |
+          set -o pipefail
+          status=0
+          for f in dpkg.txt conda.txt pip.txt r-packages.txt tool-versions.txt; do
+            if ! diff -u "docker/env/$f" "/tmp/env-report/$f" > "/tmp/env-report/$f.diff"; then
+              echo "::group::Tier-1/2 report for $f (see docker/env/$f for the fixed 2026-10-06 reference)"
+              cat "/tmp/env-report/$f.diff"
+              echo "::endgroup::"
+            fi
+          done
+          echo "Tier-1/2 report complete. Classification (which differences are Tier-1, which are"
+          echo "accepted Tier-2) is done by hand against docker/env/tier2-accepted.txt, not auto-failed"
+          echo "here - see PLAN.md Part A, A4/A9 and OQ-S3-9."
+
+      - name: Tier-2 auto-accept check against the committed baseline
+        if: hashFiles('docker/env/tier2-accepted.txt') != ''
+        run: |
+          echo "docker/env/tier2-accepted.txt exists; compare /tmp/env-report/dpkg.txt against it by hand"
+          echo "(full automated diff added once this baseline exists, at A9)."
+
+      - name: renv probe (feeds OQ-S3-4; nothing committed here)
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p /tmp/renv-probe
+          chmod 777 /tmp/renv-probe
+          cp plot_figures.R Rscript_launcher.R /tmp/renv-probe/
+          docker run --rm -v /tmp/renv-probe:/renv-probe -w /renv-probe kmer_pipeline:ci bash -c '
+            R -e "install.packages(\"renv\", repos=c(CRAN=\"https://cloud.r-project.org\"))" &&
+            R -e "renv::init(bare = TRUE); renv::snapshot()"
+          '
+          echo "--- renv.lock ---"
+          cat /tmp/renv-probe/renv.lock || echo "(no renv.lock produced)"
+
+      - name: Equivalence against dannywilson/kmer_pipeline:2026-10-06
+        run: |
+          docker pull dannywilson/kmer_pipeline:2026-10-06
+          echo "--- dpkg diff vs 2026-10-06 (expected: only this build's own additions, if any) ---"
+          docker run --rm dannywilson/kmer_pipeline:2026-10-06 dpkg -l > /tmp/env-report/dpkg-2026-10-06.txt
+          diff -u /tmp/env-report/dpkg-2026-10-06.txt /tmp/env-report/dpkg.txt || true
+
+      - name: Binary-hash equivalence, stripped (Tier-2 path-independent check, guards P6)
+        run: |
+          set -eux
+          mkdir -p /tmp/bin-new /tmp/bin-ref
+          new_id=$(docker create kmer_pipeline:ci)
+          ref_id=$(docker create dannywilson/kmer_pipeline:2026-10-06)
+          status=0
+          for bin in kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern gemma; do
+            docker cp "${new_id}:/usr/local/bin/${bin}" "/tmp/bin-new/${bin}"
+            docker cp "${ref_id}:/usr/local/bin/${bin}" "/tmp/bin-ref/${bin}"
+            objcopy --strip-debug "/tmp/bin-new/${bin}" "/tmp/bin-new/${bin}.stripped"
+            objcopy --strip-debug "/tmp/bin-ref/${bin}" "/tmp/bin-ref/${bin}.stripped"
+            new_hash=$(sha256sum "/tmp/bin-new/${bin}.stripped" | cut -d' ' -f1)
+            ref_hash=$(sha256sum "/tmp/bin-ref/${bin}.stripped" | cut -d' ' -f1)
+            if [ "$new_hash" = "$ref_hash" ]; then
+              echo "OK   $bin: $new_hash"
+            else
+              echo "DIFF $bin: new=$new_hash ref=$ref_hash"
+              status=1
+            fi
+          done
+          docker rm "$new_id" "$ref_id" >/dev/null
+          if [ "$status" -ne 0 ]; then
+            echo "::error::One or more C++/gemma binaries differ from the 2026-10-06 reference after stripping debug info"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: startsWith(github.ref, 'refs/tags/img-')
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/img-')
+        run: |
+          set -eux
+          docker tag kmer_pipeline:ci "dannywilson/kmer_pipeline:${{ steps.vars.outputs.version }}"
+          local_config=$(docker image inspect kmer_pipeline:ci --format '{{.Id}}')
+          docker push "dannywilson/kmer_pipeline:${{ steps.vars.outputs.version }}"
+          pushed_digest=$(docker buildx imagetools inspect "dannywilson/kmer_pipeline:${{ steps.vars.outputs.version }}" --raw | python3 -c "import sys,json; print(json.load(sys.stdin)['config']['digest'])")
+          echo "Local image config digest:  $local_config"
+          echo "Pushed manifest config digest: $pushed_digest"
+          if [ "$local_config" != "$pushed_digest" ]; then
+            echo "::error::Published image config digest does not match the locally built image"
+            exit 1
+          fi
+          echo "### Published \`dannywilson/kmer_pipeline:${{ steps.vars.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Config digest: \`$pushed_digest\`" >> "$GITHUB_STEP_SUMMARY"
