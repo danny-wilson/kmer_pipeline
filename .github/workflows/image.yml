@@ -15,7 +15,7 @@ on:
     paths:
       - 'Dockerfile'
       - '.dockerignore'
-      - 'C++/**'
+      - 'C\+\+/**'
       - 'Makefile'
       - 'docker/**'
       - '.github/workflows/image.yml'
@@ -24,7 +24,7 @@ on:
     paths:
       - 'Dockerfile'
       - '.dockerignore'
-      - 'C++/**'
+      - 'C\+\+/**'
       - 'Makefile'
       - 'docker/**'
       - '.github/workflows/image.yml'
