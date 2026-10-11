@@ -95,7 +95,10 @@ RUN wget -q -O v0.1.tar.gz https://github.com/danny-wilson/gemma0.93b/archive/re
 # R packages, version-pinned via remotes (2.4.2, matching the 2026-10-06 image exactly). genoPlotR/ade4
 # are kept for Tier-1 equivalence even though the pipeline's own R scripts no longer call them directly
 # (OQ-S3-7: removing them is deferred to a later sub-project).
-RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))" \
+RUN wget -q https://cran.r-project.org/src/contrib/Archive/remotes/remotes_2.4.2.tar.gz \
+	&& echo "f2ef875f24a485bf4f55a8c830f87cdd5db868f9a8cdb624dc452d0bf66ba516  remotes_2.4.2.tar.gz" | sha256sum -c - \
+	&& R CMD INSTALL remotes_2.4.2.tar.gz \
+	&& rm -f remotes_2.4.2.tar.gz \
 	&& R -e "if (as.character(packageVersion('remotes')) != '2.4.2') stop('unexpected remotes version: ', packageVersion('remotes'))" \
 	&& R -e "remotes::install_version('sp', version = '1.5-0', upgrade = FALSE, repos='https://cloud.r-project.org')" \
 	&& R -e "remotes::install_version('pixmap', version = '0.4-12', upgrade = FALSE, repos='https://cloud.r-project.org')" \
