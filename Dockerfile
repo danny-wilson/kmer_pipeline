@@ -27,9 +27,10 @@ WORKDIR /tmp
 
 # openjdk-11 and gcc-9/g++-9 at the exact versions the 2026-10-06 image has are no longer served by the
 # live Ubuntu archive (superseded by later security updates). Fetched instead from a snapshot.ubuntu.com
-# mirror by exact version, checksum-verified, and installed with dpkg before apt resolves anything else
-# — so the meta-packages below (default-jdk, g++) bind to these exact versions, not whatever is currently
-# the live-archive candidate.
+# mirror by exact version, checksum-verified, and installed via `apt-get install` on the local .deb files
+# (not `dpkg -i`, which skips Recommends resolution and left these packages open to replacement by the
+# live-archive candidate when the meta-packages below were installed) then held with `apt-mark hold`, so
+# the meta-packages (default-jdk, g++) bind to these exact, already-installed versions.
 RUN set -eux; \
 	for spec in \
 		"o/openjdk-lts openjdk-11-jdk_11.0.16+8-0ubuntu1~20.04_amd64.deb 1e03e1e2c0136efe480b7d41aa5041fae054986faa1a15a78d455ba4a391ab11" \
@@ -47,11 +48,11 @@ RUN set -eux; \
 		echo "${sha}  ${fname}" | sha256sum -c -; \
 	done; \
 	apt-get update --fix-missing; \
-	dpkg -i gcc-9-base_*.deb gcc-9_*.deb g++-9_*.deb \
-		openjdk-11-jre-headless_*.deb openjdk-11-jre_*.deb \
-		openjdk-11-jdk-headless_*.deb openjdk-11-jdk_*.deb \
-		|| true; \
-	apt-get install -yf; \
+	apt-get install -y ./gcc-9-base_*.deb ./gcc-9_*.deb ./g++-9_*.deb \
+		./openjdk-11-jre-headless_*.deb ./openjdk-11-jre_*.deb \
+		./openjdk-11-jdk-headless_*.deb ./openjdk-11-jdk_*.deb; \
+	apt-mark hold gcc-9-base gcc-9 g++-9 \
+		openjdk-11-jre-headless openjdk-11-jre openjdk-11-jdk-headless openjdk-11-jdk; \
 	rm -f /tmp/*.deb
 
 # The rest of the toolchain, pinned exactly as in the 2022-10-26 recipe. default-jdk and g++ are thin
@@ -116,6 +117,12 @@ RUN cd /tmp/kmer_pipeline \
 	&& make \
 	&& install kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern /usr/local/bin \
 	&& cd / && rm -rf /tmp/kmer_pipeline
+
+# Nextflow, from a checksummed release download (the all-in-one self-executing jar).
+RUN wget -q -O nextflow https://github.com/nextflow-io/nextflow/releases/download/v22.04.5/nextflow-22.04.5-all \
+	&& echo "2e9c5bd25191fe888fce3ea3fa5c926708918244603e0ca32bb157d0149e8e6e  nextflow" | sha256sum -c - \
+	&& chmod a+x nextflow \
+	&& mv nextflow /usr/local/bin/
 
 # The Python packages missing from the base image, without upgrading any it has (unchanged from the
 # 2026-10-06 recipe). pytest is environment, used by tests/, not pipeline code.
