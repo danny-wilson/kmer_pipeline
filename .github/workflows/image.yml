@@ -69,14 +69,14 @@ jobs:
             scope="main"
           fi
           echo "cache_from=type=gha,scope=${scope}" >> "$GITHUB_OUTPUT"
-          # cache-to only on main pushes, schedule and workflow_dispatch - not on pull_request, so a PR
-          # build cannot evict another scope's entries (and before this workflow first merges, "main"
-          # has no cache to evict anyway).
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "cache_to=" >> "$GITHUB_OUTPUT"
-          else
-            echo "cache_to=type=gha,scope=${scope}" >> "$GITHUB_OUTPUT"
-          fi
+          # cache-to writes to this same scope (pr-<N> or main) unconditionally. A PR's scope is a
+          # distinct, isolated gha cache namespace from "main"'s (confirmed via A6 - see STATE.md), so a
+          # PR build writing its own scope cannot evict or touch "main"'s entries; it only lets further
+          # pushes to the *same* PR reuse this PR's own previous build. (An earlier version of this logic
+          # left cache_to empty on pull_request, on the mistaken assumption that scoping needed this to
+          # avoid cross-scope eviction - A6 found every PR build was cold as a result, since no PR build
+          # ever wrote anything for a later one to import.)
+          echo "cache_to=type=gha,scope=${scope}" >> "$GITHUB_OUTPUT"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs['no-cache'] }}" = "true" ]; then
             echo "no_cache=true" >> "$GITHUB_OUTPUT"
           else
