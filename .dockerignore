@@ -1,6 +1,7 @@
-.git
-docs
-**/__pycache__
-**/.pytest_cache
-tests/e2e/local.conf
-*.sif
+# Allow-list: only what the toolchain build needs can reach the build context. This is the control that
+# keeps the image code-free — a stray `COPY bin/` or `COPY kmer_pipeline.nf` line in the Dockerfile would
+# fail at build time, since those paths are never in the context to begin with (checked in CI).
+*
+!C++/
+!Makefile
+!docker/
