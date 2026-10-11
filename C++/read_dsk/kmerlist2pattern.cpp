@@ -1,5 +1,6 @@
 // Read a gzipped list of kmers and a list of gzipped kmer count files and define patterns for each listed kmer
 // *** Assumes list and kmer files are all sorted ***
+// (comment-only touch, A6 cache test)
 #include <stdio.h>
 #include <map>
 #include <iostream>
