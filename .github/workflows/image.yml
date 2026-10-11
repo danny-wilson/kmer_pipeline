@@ -184,6 +184,33 @@ jobs:
           docker run --rm dannywilson/kmer_pipeline:2026-10-06 dpkg -l > /tmp/env-report/dpkg-2026-10-06.txt
           diff -u /tmp/env-report/dpkg-2026-10-06.txt /tmp/env-report/dpkg.txt || true
 
+      - name: Binary-hash equivalence, stripped (Tier-2 path-independent check, guards P6)
+        run: |
+          set -eux
+          mkdir -p /tmp/bin-new /tmp/bin-ref
+          new_id=$(docker create kmer_pipeline:ci)
+          ref_id=$(docker create dannywilson/kmer_pipeline:2026-10-06)
+          status=0
+          for bin in kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern gemma; do
+            docker cp "${new_id}:/usr/local/bin/${bin}" "/tmp/bin-new/${bin}"
+            docker cp "${ref_id}:/usr/local/bin/${bin}" "/tmp/bin-ref/${bin}"
+            objcopy --strip-debug "/tmp/bin-new/${bin}" "/tmp/bin-new/${bin}.stripped"
+            objcopy --strip-debug "/tmp/bin-ref/${bin}" "/tmp/bin-ref/${bin}.stripped"
+            new_hash=$(sha256sum "/tmp/bin-new/${bin}.stripped" | cut -d' ' -f1)
+            ref_hash=$(sha256sum "/tmp/bin-ref/${bin}.stripped" | cut -d' ' -f1)
+            if [ "$new_hash" = "$ref_hash" ]; then
+              echo "OK   $bin: $new_hash"
+            else
+              echo "DIFF $bin: new=$new_hash ref=$ref_hash"
+              status=1
+            fi
+          done
+          docker rm "$new_id" "$ref_id" >/dev/null
+          if [ "$status" -ne 0 ]; then
+            echo "::error::One or more C++/gemma binaries differ from the 2026-10-06 reference after stripping debug info"
+            exit 1
+          fi
+
       - name: Log in to Docker Hub
         if: startsWith(github.ref, 'refs/tags/img-')
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
