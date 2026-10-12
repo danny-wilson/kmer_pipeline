@@ -161,6 +161,30 @@ def test_verify_fails_on_a_classified_file_present_but_absent_from_the_tsv(tmp_p
     assert any("new_exact_file.txt" in p and "NOT IN TSV" in p for p in problems)
 
 
+def test_path_class_hashes_equal_across_different_base_dirs(tmp_path):
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text("*.txt\tpath\n")
+    run_a, run_b = str(tmp_path / "a" / "run"), str(tmp_path / "b" / "run")
+    write(os.path.join(run_a, "f.txt"), "root=/run/a/base dir\n")
+    write(os.path.join(run_b, "f.txt"), "root=/elsewhere/b/base dir\n")
+    rules = golden_hashes.read_manifest(str(manifest))
+    ha = golden_hashes.hash_run(run_a, rules, prefix="/run/a/base")
+    hb = golden_hashes.hash_run(run_b, rules, prefix="/elsewhere/b/base")
+    assert ha["f.txt"] == hb["f.txt"]
+
+
+def test_path_class_hash_differs_on_a_byte_outside_the_prefix(tmp_path):
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text("*.txt\tpath\n")
+    run_a, run_b = str(tmp_path / "a" / "run"), str(tmp_path / "b" / "run")
+    write(os.path.join(run_a, "f.txt"), "root=/run/a/base dir\n")
+    write(os.path.join(run_b, "f.txt"), "root=/elsewhere/b/base DIFFERENT\n")
+    rules = golden_hashes.read_manifest(str(manifest))
+    ha = golden_hashes.hash_run(run_a, rules, prefix="/run/a/base")
+    hb = golden_hashes.hash_run(run_b, rules, prefix="/elsewhere/b/base")
+    assert ha["f.txt"] != hb["f.txt"]
+
+
 def test_a_listed_but_missing_png_still_fails_under_visual_advisory(tmp_path, manifest):
     run = make_run(tmp_path)
     import io

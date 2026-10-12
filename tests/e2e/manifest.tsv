@@ -10,10 +10,22 @@
 #   visual  must exist in both; content compared as bytes by golden_hashes.py,
 #           with --visual-advisory to downgrade a mismatch to a warning
 #   ignore  not compared, and may exist on one side only (logs vary in number)
+#   path    identical after each side's own base_dir is replaced by
+#           "@BASE_DIR@" (compare.py --prefix-a/--prefix-b, golden_hashes.py
+#           --prefix NAME=BASE_DIR); above the generic patterns these files
+#           would otherwise fall into, since the first matching pattern wins
 log.*/*	ignore
 # Run manifest: session IDs, times, host, process ID
 *.run_manifest.json	ignore
 nextflow.out	ignore
+# These 5 files per dataset embed the run's own base_dir (identity host=
+# container paths, since B4's refactor): above the generic *.txt/figure_data
+# patterns below, which would otherwise classify them exact.
+*.container_id_file.txt	path
+*_kmers_filepaths.txt	path
+*_kmergenealign/*_kmergenecombination_filepaths.txt	path
+*_figures/figure_data/params.tsv	path
+*_figures/figure_data/expected_figures.txt	path
 # Genome-wide summary stats (Manhattan_functions.write_summary_json)
 *.summary.json	exact
 *.png	visual

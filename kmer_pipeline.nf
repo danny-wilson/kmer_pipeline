@@ -42,12 +42,27 @@ def resolvePath(p) {
 // canonical=true (used for base_dir/analysis_dir) additionally resolves through symlinks, via
 // resolvePath()'s existing walk-up logic (not a raw toRealPath(), which throws on a path that
 // doesn't exist yet) - a user's base_dir is routinely reached through one on a shared HPC
-// filesystem. canonical=false (the
-// default; used for assembly-ish paths: ref_fa, ref_gb, id_list paths, software_file) keeps
-// toAbsolutePath().normalize() only, so a symlinked assembly in a shared store isn't silently
-// followed outside base_dir (guards P36/P52).
+// filesystem. canonical=false (the default; used for assembly-ish paths: ref_fa, ref_gb, id_list
+// paths, software_file) keeps toAbsolutePath().normalize() only EXCEPT for the base_dir prefix
+// itself: if p, as written, is beneath params.base_dir as written (the common case - e.g. every
+// id_file/ref_fa interpolated from "$base_dir/..." in a config file, before this script ever
+// runs), that prefix is rewritten to the already-canonicalized BASE_DIR, since nextflow.config
+// binds only BASE_DIR's own (canonical) spelling into the container, not params.base_dir's raw
+// one - found as a real bug, not assumed, by running a profile-based container invocation with
+// base_dir given in exactly this routine, symlinked-HPC-path shape (guards B9/P36/P52): without
+// this, the container could not find the file at all, "No such file or directory", even though
+// checkBeneathBaseDir() correctly accepted the path. Anything beyond that prefix, and any path
+// NOT beneath base_dir as written at all (a symlinked assembly in a shared store elsewhere, bound
+// via extra_binds), is left exactly as the user wrote it, unresolved - still guarding P36/P52,
+// since nothing outside the base_dir prefix is ever followed through a symlink here.
 def absPath(p, canonical = false) {
-	canonical ? resolvePath(p.toString()).toString() : Paths.get(p.toString()).toAbsolutePath().normalize().toString()
+	if(canonical) return resolvePath(p.toString()).toString()
+	def written = Paths.get(p.toString()).toAbsolutePath().normalize()
+	def written_base = Paths.get(params.base_dir.toString()).toAbsolutePath().normalize()
+	if(written.startsWith(written_base)) {
+		return Paths.get(BASE_DIR).resolve(written_base.relativize(written)).toString()
+	}
+	written.toString()
 }
 
 // Checks, canonicalized paths and the derived id file. No container command to build any more:

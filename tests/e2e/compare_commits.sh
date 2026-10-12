@@ -52,9 +52,16 @@ done
 [ "$status" -ne 0 ] && exit "$status"
 
 for run in nucleotide31 protein11; do
+  # Each side's own run_dir (base_dir), for the manifest's "path" class (B9): without this, the
+  # 5 path-bearing files per dataset would always DIFFER, since BEFORE/AFTER are different runs.
+  before_meta="$KMER_E2E_ROOT/goldens/$BEFORE_LABEL-${BEFORE:0:7}/maxp2/$run/metadata.json"
+  after_meta="$KMER_E2E_ROOT/goldens/$AFTER_LABEL-${AFTER:0:7}/maxp2/$run/metadata.json"
+  before_prefix=$([ -f "$before_meta" ] && python3 -c "import json; print(json.load(open('$before_meta')).get('run_dir',''))" || true)
+  after_prefix=$([ -f "$after_meta" ] && python3 -c "import json; print(json.load(open('$after_meta')).get('run_dir',''))" || true)
   for k in 1 2 3 4 5 6 7; do
     out=$(python3 "$HERE/compare.py" "$KMER_E2E_ROOT/goldens/$BEFORE_LABEL-${BEFORE:0:7}/maxp2/$run/stage$k" \
-      "$KMER_E2E_ROOT/goldens/$AFTER_LABEL-${AFTER:0:7}/maxp2/$run/stage$k") || status=1
+      "$KMER_E2E_ROOT/goldens/$AFTER_LABEL-${AFTER:0:7}/maxp2/$run/stage$k" \
+      --prefix-a "$before_prefix" --prefix-b "$after_prefix") || status=1
     echo "== $run stage$k: $(echo "$out" | tail -n 1)"
     echo "$out" | sed '$d'
   done

@@ -17,14 +17,12 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SHA=${1:?usage: resume_rules_test.sh SHA}
 STAGING=$KMER_E2E_ROOT/staging/$SHA
 [ -d "$STAGING" ] || "$HERE/stage.sh" "$SHA" > /dev/null
+NF=$STAGING/kmer_pipeline.nf
 BASE=$KMER_E2E_ROOT/runs/resume_rules/${SHA:0:7}
 [ -e "$BASE" ] && { echo "$BASE exists" >&2; exit 1; }
 mkdir -p "$BASE/tb20"
-(cd "$BASE/tb20" && apptainer exec --containall --cleanenv "$KMER_E2E_SIF" \
-  bash -c 'cd /usr/share/kmer_pipeline/example && tar -c .' | tar -x)
-sed -i "s,/usr/share/kmer_pipeline/example/,$BASE/tb20/,g" "$BASE/tb20/id_file.txt"
-cp "$STAGING/kmer_pipeline.nf" "$BASE/"
-sed "s,^scriptpath\t.*,scriptpath\t$STAGING," "$STAGING/pipeline_software_location.txt" > "$BASE/software.txt"
+cp -r "$STAGING/example/." "$BASE/tb20/"
+chmod -R u+w "$BASE/tb20"
 config() {  # $1 analysis folder name, $2 extra lines
 	cat > "$BASE/nextflow.config" <<EOF
 params {
@@ -37,10 +35,6 @@ params {
 	ref_fa = "\$base_dir/\$output_prefix/Mtub_H37Rv_NC000962.3.fasta"
 	ref_gb = "\$base_dir/\$output_prefix/Mtub_H37Rv_NC000962.3.gb"
 	maxp = 2
-	container_type = "singularity"
-	container_file = "$KMER_E2E_SIF"
-	software_file = "$BASE/software.txt"
-	container_args = "--bind $STAGING --env PYTHONNOUSERSITE=1"
 $2
 }
 executor.queueSize = params.maxp
@@ -57,7 +51,7 @@ run() {  # $1 name, $2 expectation (ok|refused), $3 grep pattern for the expecte
          # $4 expect_submitted (optional), $5 expect_cached (optional), rest: nextflow args
 	local name=$1 want=$2 pat=$3 expect_submitted=${4:-} expect_cached=${5:-}
 	shift 5
-	"$KMER_E2E_NEXTFLOW" run kmer_pipeline.nf -ansi-log false "$@" > "$name.out" 2>&1; local rc=$?
+	"$KMER_E2E_NEXTFLOW" run "$NF" -profile apptainer --container "$KMER_E2E_SIF" -ansi-log false "$@" > "$name.out" 2>&1; local rc=$?
 	local submitted=$(grep -c "Submitted process" "$name.out")
 	local cached=$(grep -c "Cached process" "$name.out")
 	local got=ok; [ $rc -ne 0 ] && got=refused
