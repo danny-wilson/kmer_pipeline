@@ -47,9 +47,15 @@ def make_base(tmp_path, extra=""):
 
 
 def run(base):
-    shutil.copy(NF, base / "kmer_pipeline.nf")
+    # Run the repo's own kmer_pipeline.nf by its real path (PLAN.md Part B, B8), rather than
+    # copying just the .nf into base: Nextflow's projectDir - and therefore bin/'s automatic
+    # PATH entry, and every bare-name script call that relies on it - is always the main
+    # script's own directory, regardless of cwd (which stays base, for base_dir-relative
+    # resolution). Copying only the .nf would lose bin/ entirely, silently falling back to
+    # whatever script of the same name happens to be on PATH otherwise (the toolchain image's
+    # own stale copy, in every real run).
     env = dict(os.environ, NXF_OPTS="-Dnxf.ansi.log=false")
-    r = subprocess.run(["nextflow", "run", "kmer_pipeline.nf", "-ansi-log", "false"], cwd=base, env=env,
+    r = subprocess.run(["nextflow", "run", NF, "-ansi-log", "false"], cwd=base, env=env,
                        capture_output=True, text=True, timeout=600)
     return r.returncode, r.stdout + r.stderr
 
@@ -138,10 +144,9 @@ def test_preflight_error_leaves_a_trace_of_only_preflight(tmp_path, first_step):
         path = analysis / f
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("x\n")
-    shutil.copy(NF, base / "kmer_pipeline.nf")
     trace = base / "trace.tsv"
     env = dict(os.environ, NXF_OPTS="-Dnxf.ansi.log=false")
-    r = subprocess.run(["nextflow", "run", "kmer_pipeline.nf", "-with-trace", str(trace)],
+    r = subprocess.run(["nextflow", "run", NF, "-with-trace", str(trace)],
                        cwd=base, env=env, capture_output=True, text=True, timeout=600)
     out = r.stdout + r.stderr
     assert r.returncode != 0 and "set overwrite = true" in out, out[-3000:]
@@ -172,7 +177,7 @@ def test_overwrite_deletes_before_the_rerun_step_starts(tmp_path):
     assert "Deleted" in out, out[-3000:]
     # Whatever countkmers itself does next (it is step 1, so it runs for real) is not this test's
     # concern - only that preflight's own deletion already happened before it could start.
-    assert not stale_marker.exists() or stale_marker.read_text() != "stale\n", out[-3000:]
+    assert not stale_marker.exists() or stale_marker.read_bytes() != b"stale\n", out[-3000:]
 
 
 def test_preflight_stderr_lands_in_command_err(tmp_path):
@@ -191,6 +196,10 @@ def test_preflight_stderr_lands_in_command_err(tmp_path):
     assert marker in nf_text
     nf_text = nf_text.replace(marker, 'echo "a preflight warning, on stderr" >&2\n' + marker)
     (base / "kmer_pipeline.nf").write_text(nf_text)
+    # This copy needs modified content, so it can't run NF by path (B8); projectDir is then base
+    # itself, so bin/ needs to be reachable there too, for the bare preflight.py call to resolve
+    # to this checkout rather than the toolchain image's own stale copy.
+    (base / "bin").symlink_to(SCRIPTS_DIR)
     with open(base / "nextflow.config", "a") as fh:
         for s in range(2, 8):
             fh.write(f"params.skip{s} = true\n")
@@ -250,10 +259,9 @@ def test_resume_reruns_preflight_not_cached(tmp_path):
     with open(base / "nextflow.config", "a") as fh:
         for s in range(1, 8):
             fh.write(f"params.skip{s} = true\n")
-    shutil.copy(NF, base / "kmer_pipeline.nf")
     env = dict(os.environ, NXF_OPTS="-Dnxf.ansi.log=false")
     trace1 = base / "trace1.tsv"
-    r1 = subprocess.run(["nextflow", "run", "kmer_pipeline.nf", "-with-trace", str(trace1)],
+    r1 = subprocess.run(["nextflow", "run", NF, "-with-trace", str(trace1)],
                         cwd=base, env=env, capture_output=True, text=True, timeout=120)
     out1 = r1.stdout + r1.stderr
     assert r1.returncode == 0, out1[-3000:]
@@ -262,7 +270,7 @@ def test_resume_reruns_preflight_not_cached(tmp_path):
     assert row1[status_col] == "COMPLETED", out1[-3000:]
 
     trace2 = base / "trace2.tsv"
-    r2 = subprocess.run(["nextflow", "run", "kmer_pipeline.nf", "-with-trace", str(trace2), "-resume"],
+    r2 = subprocess.run(["nextflow", "run", NF, "-with-trace", str(trace2), "-resume"],
                         cwd=base, env=env, capture_output=True, text=True, timeout=120)
     out2 = r2.stdout + r2.stderr
     assert r2.returncode == 0, out2[-3000:]

@@ -20,25 +20,19 @@ from test_parameters import NEXTFLOW_RUNS
 
 NF = os.path.join(REPO_DIR, "kmer_pipeline.nf")
 GEMMA_PRESENT = os.path.exists("/usr/local/bin/gemma")
-pytestmark = [
-    pytest.mark.skipif(not NEXTFLOW_RUNS or not os.path.exists(NF), reason="needs Nextflow and the .nf"),
-    # PLAN.md Part B, B4: process scripts now call scripts by bare name (countkmers.py, not
-    # !{params.container_script_dir}/countkmers.py), relying on Nextflow's own bin/-next-to-the-
-    # main-script PATH resolution. run() below only copies kmer_pipeline.nf, not bin/, so every
-    # bare-name call here resolves to the OLD image-baked /usr/local/bin copy instead of this
-    # checkout's own scripts - confirmed directly (STATE.md) by reproducing the same scenario
-    # with bin/ copied alongside the .nf, which resolves correctly. Fixing run() itself is PLAN.md's
-    # own B8 ("run the repo's kmer_pipeline.nf by path from the temporary base_dir, rather than
-    # copying the .nf alone, which would lose bin/"), not a B4 regression - xfail until then.
-    pytest.mark.xfail(reason="B8 will fix run()'s fixture to stage bin/ alongside kmer_pipeline.nf", strict=False),
-]
+pytestmark = pytest.mark.skipif(not NEXTFLOW_RUNS or not os.path.exists(NF), reason="needs Nextflow and the .nf")
 
 GENOME_IDS = ("702", "725", "791", "10084")  # the 4-genome subset test_workflow_start.py also uses
 
 
 def run_nf(base, timeout=600, extra_args=()):
+    # Run the repo's own kmer_pipeline.nf by its real path (PLAN.md Part B, B8), not a copy in
+    # base: projectDir - and therefore bin/'s automatic PATH entry, and every bare-name script
+    # call that relies on it - is always the main script's own directory, regardless of cwd
+    # (kept at base, for base_dir-relative resolution). A copy would lose bin/ entirely, silently
+    # falling back to the toolchain image's own stale copy of the same-named script.
     env = dict(os.environ, NXF_OPTS="-Dnxf.ansi.log=false")
-    r = subprocess.run(["nextflow", "run", "kmer_pipeline.nf", "-ansi-log", "false", *extra_args], cwd=base, env=env,
+    r = subprocess.run(["nextflow", "run", NF, "-ansi-log", "false", *extra_args], cwd=base, env=env,
                        capture_output=True, text=True, timeout=timeout)
     return r.returncode, r.stdout + r.stderr
 
@@ -59,7 +53,6 @@ def write_software_file(base, scriptpath):
 
 def write_config(base, params_block):
     (base / "nextflow.config").write_text("params {\n" + params_block + "}\n")
-    shutil.copy(NF, base / "kmer_pipeline.nf")
 
 
 def read_top_genes(analysis_dir, n=None):
@@ -427,7 +420,9 @@ def test_stage7_alone_reports_every_gene_and_submits_nothing_else(full_run):
 
     trace = read_trace(full_run / "trace3.txt")
     names = {process_name(r) for r in trace}
-    assert names <= {"genReport", "genGeneReport", "genUnmappedReport"}, names
+    # preflight (PLAN.md Part B, B4) is now a real process, run on every invocation - it always
+    # appears in the trace, unlike the old pre-workflow Groovy call it replaced.
+    assert names <= {"preflight", "genReport", "genGeneReport", "genUnmappedReport"}, names
 
     for gene in genes:
         report = glob.glob(str(analysis_dir / "**" / f"*.report_{gene}.html"), recursive=True)
@@ -455,7 +450,8 @@ def test_stage7_alone_reports_every_gene_protein(full_run_protein):
 
     trace = read_trace(full_run_protein / "trace3p.txt")
     names = {process_name(r) for r in trace}
-    assert names <= {"genReport", "genProteinReport", "genUnmappedReport"}, names
+    # preflight (PLAN.md Part B, B4) is now a real process, run on every invocation.
+    assert names <= {"preflight", "genReport", "genProteinReport", "genUnmappedReport"}, names
     for gene in genes:
         report = glob.glob(str(analysis_dir / "**" / f"*.report_{gene}.html"), recursive=True)
         assert len(report) == 1, (gene, report)
