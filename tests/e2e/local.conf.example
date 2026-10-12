@@ -21,6 +21,15 @@ KMER_E2E_NEXTFLOW_VERSION=22.04.5
 # value with spaces is parsed as a command, not a single string:
 #   KMER_E2E_PRE="export PATH=/path/to/newer/java/bin:$PATH"
 KMER_E2E_PRE=
+# A code-stripped derivative of KMER_E2E_SIF (build_codefree_derivative.sh
+# KMER_E2E_SIF), with no pipeline scripts in /usr/local/bin and no
+# /usr/share/kmer_pipeline: tests that resolve a script by bare name (relying
+# on bin/ being next to kmer_pipeline.nf) must use this, not KMER_E2E_SIF, or
+# a bug in that resolution can silently pass by falling back to the image's
+# own stale copy (guards P2). Checks that read fixed reference data out of
+# the image itself (e.g. make_reference.sh's byte-identity assertion) still
+# want the plain KMER_E2E_SIF, which keeps that data.
+KMER_E2E_CODEFREE_SIF=
 # Local disk for unpacking a SIF build (fast, non-shared storage; not the
 # scratch root above, which may be a shared/networked filesystem).
 KMER_E2E_LOCAL_TMP=/tmp
