@@ -34,15 +34,12 @@ import rcompat
 # Every parameter kmer_pipeline.nf reads (including implied ones the manual allows to override)
 KNOWN_PARAMS = {
     "analysis_dir", "analysis_file", "annotateGeneFile", "base_dir", "blastident", "bowtie_parameters",
-    "container_analysis_dir", "container_analysis_file", "container_args", "container_cmd",
-    "container_covariate_file", "container_file", "container_id_file", "container_logdir", "container_mount",
-    "container_ref_fa", "container_ref_gb", "container_script_dir", "container_software_file", "container_type",
-    "container_user_id_file", "container_annotateGeneFile",
-    "covariate_file", "default_script_dir", "default_software_file", "gene_lookup_file", "id_file",
+    "container",  # nextflow.config's own default (B7); a repo-config key, excluded from USER_KEYS
+    "covariate_file", "default_software_file", "gene_lookup_file", "id_file",
     "kmerFilePrefix", "kmergenecombination", "kmer_length", "kmer_min_count", "kmer_type", "logdir", "maxp",
     "merge_wait_minutes", "min_contig_length", "min_count", "minor_allele_threshold", "n", "ntopgenes",
     "nucmerident", "output_prefix", "overwrite", "override_signif", "p", "p5", "pheno_file", "plot_min_genomes", "precomputed_dir",
-    "precomputed_prefix", "container_pheno_file", "container_precomputed_dir", "ref_fa", "ref_gb", "ref_name",
+    "precomputed_prefix", "ref_fa", "ref_gb", "ref_name",
     "samtools_filter", "skip1", "skip2", "skip3", "skip4", "skip5", "skip6", "skip7", "software_file", "workdir",
 }
 

@@ -9,8 +9,14 @@ import java.io.PrintWriter;
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
-// The parameters the user set (config files and command line), before any default is assigned
-USER_KEYS = new TreeSet(params.keySet())
+// The parameters the user set (config files and command line), before any default is assigned.
+// Excludes nextflow.config's own repo-config keys (guards against them looking user-set just
+// because they are defaults): container and extra_binds (B7) are set there, not by a user, unless
+// a user's own -c file/-params-file/--param overrides one - which is then indistinguishable from
+// the repo's own default at this point and is accepted as a rare, acceptable false negative (a
+// user who overrides --container is extremely unlikely to also misspell it).
+REPO_CONFIG_KEYS = ['container', 'extra_binds'] as Set
+USER_KEYS = new TreeSet(params.keySet() - REPO_CONFIG_KEYS)
 
 // Set (once) inside the preflight process's own .map{} closure, only once preflight.py's checks
 // have actually passed; read in workflow.onComplete to decide whether to update the run manifest
