@@ -155,6 +155,8 @@ def deployment_write() {
 
 // D5: every assembly in id_file exists, can be read, and starts as a FASTA file (gzipped or not).
 // Checked here, on the user's file system, where the paths in id_file are.
+// id_list['paths'] is already absolute here, resolved by read_id_file() through the same
+// absPath() call (guards P8) - nothing further to resolve, just existence/readability checks.
 def check_assemblies(id_list) {
 	def problems = []
 	id_list['paths'].eachWithIndex { path, k ->
@@ -270,13 +272,30 @@ def get_n() {
 }
 
 // Read main input file
+// Read main input file (id_file: id, paths, pheno, tab-separated). A relative path in the paths
+// column resolves against id_file's own directory, not the launch directory as before - a
+// deliberate, user-visible change (guards P27), noted in the manual's migration notes; through
+// absPath(), same as everything else that becomes an absolute path. CRLF is already handled by
+// readLines() (confirmed directly, not assumed); a single trailing blank line is dropped rather
+// than treated as a malformed row; any other wrong column count names the line (1-based,
+// including the header); zero data rows is caught later, by get_n() (guards P21).
 def read_id_file() {
 	def id_file = new File(params.id_file)
-	assert id_file.readLines().head().split('\t')*.toLowerCase() == ['id','paths','pheno']
-	def rows = id_file.readLines().tail()*.split('\t')
-	id = rows.collect( { row -> row[0] })
-	paths = rows.collect( { row -> row[1] })
-	pheno = rows.collect( { row -> row[2] })
+	def id_file_dir = id_file.getAbsoluteFile().getParentFile().toPath()
+	def lines = id_file.readLines()
+	if(lines && lines.last().trim() == "") lines = lines[0..-2]
+	if(!lines) throw new Exception("id_file ${params.id_file} is empty")
+	def header = lines[0].split('\t', -1)*.toLowerCase()
+	if(header != ['id','paths','pheno']) throw new Exception("id_file ${params.id_file} line 1 must be the header id, paths, pheno (tab-separated), not: ${lines[0]}")
+	id = []; paths = []; pheno = []
+	for(int i = 1; i < lines.size(); i++) {
+		def cols = lines[i].split('\t', -1)
+		if(cols.size() != 3) throw new Exception("id_file ${params.id_file} line ${i + 1} has ${cols.size()} tab-separated column(s), not 3: ${lines[i]}")
+		id << cols[0]
+		def p = Paths.get(cols[1])
+		paths << absPath(p.isAbsolute() ? p : id_file_dir.resolve(p))
+		pheno << cols[2]
+	}
 	ret = [id: id, paths: paths, pheno: pheno]
 }
 
