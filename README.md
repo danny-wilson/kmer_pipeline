@@ -55,6 +55,6 @@ For instructions on running the Nextflow pipeline, including the *Mycobacterium 
 ## Running the Jupyter Data Science Notebook
 The image is also a Jupyter Data Science Notebook. To launch it with Docker
 
-    docker container run --name kmer -p 8888:8888 -v $MNT_DIR:/home/jovyan dannywilson/kmer_pipeline:2026-10-06
+    docker container run --name kmer -p 8888:8888 -v $MNT_DIR:/home/jovyan dannywilson/kmer_pipeline:img-2026-10-20
 
-where $MNT_DIR represents the local directory outside the container you wish to access inside the container from /home/jovyan. Having launched the container, navigate to the user interface in a web browser by following one of the URLs provided at the command line. (No floating `latest` tag is published; use a specific date or `img-` tag.)
+where $MNT_DIR represents the local directory outside the container you wish to access inside the container from /home/jovyan. Having launched the container, navigate to the user interface in a web browser by following one of the URLs provided at the command line. (No floating `latest` tag is published; check `nextflow.config` for the current `img-` tag.)
