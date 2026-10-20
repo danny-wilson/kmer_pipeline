@@ -347,6 +347,7 @@ def test_createfullkmerlist_resolves_siblings_via_scriptpath_not_toolpath(tmp_pa
     those sibling scripts must not matter; only scriptpath's content does."""
     analysis_dir = tmp_path / "analysis"
     analysis_dir.mkdir()
+    (analysis_dir / "nucleotidekmer31").mkdir()  # createfullkmerlist.py checks this exists first
     id_file = tmp_path / "id_file.txt"
     id_file.write_text("id\n1\n")
     scriptdir = _isolated_script_dir(tmp_path, "createfullkmerlist.py", [])
@@ -354,10 +355,35 @@ def test_createfullkmerlist_resolves_siblings_via_scriptpath_not_toolpath(tmp_pa
     shutil.copy(os.path.join(SCRIPTS_DIR, "proteinkmermerge.py"), scriptdir / "proteinkmermerge.py")
     tooldir = tmp_path / "tools"  # deliberately empty - createfullkmerlist.py must never look here
     tooldir.mkdir()
-    sw = _software_file(tmp_path, [("scriptpath", str(scriptdir)), ("toolpath", str(tooldir))])
+    sw = _software_file(tmp_path, [("R", "/usr/bin/R"), ("scriptpath", str(scriptdir)), ("toolpath", str(tooldir))])
     result = _run(scriptdir / "createfullkmerlist.py",
                   "--task-id", "1", "--n", "1", "--p", "1", "--output-prefix", "x",
                   "--analysis-dir", str(analysis_dir), "--id-file", str(id_file),
                   "--kmer-type", "nucleotide", "--kmer-length", "31", "--software-file", sw)
+    assert "doesn't exist" not in result.stderr, result.stderr
+    assert "missing required software path" not in result.stderr, result.stderr
     assert "nucleotidekmermerge.py path doesn't exist" not in result.stderr, result.stderr
     assert "proteinkmermerge.py path doesn't exist" not in result.stderr, result.stderr
+
+
+def test_createfullkmerlist_no_scriptpath_defaults_to_own_directory(tmp_path):
+    """The committed conf/software_location.txt has no scriptpath row at all (B2) - every other
+    script already defaults scriptpath to its own directory in that case; this one was missed
+    (found as a real bug, B10, by actually running the committed software file, not a test's own
+    synthetic one that always added scriptpath)."""
+    analysis_dir = tmp_path / "analysis"
+    analysis_dir.mkdir()
+    (analysis_dir / "nucleotidekmer31").mkdir()  # createfullkmerlist.py checks this exists first
+    id_file = tmp_path / "id_file.txt"
+    id_file.write_text("id\n1\n")
+    scriptdir = _isolated_script_dir(tmp_path, "createfullkmerlist.py", [])
+    shutil.copy(os.path.join(SCRIPTS_DIR, "nucleotidekmermerge.py"), scriptdir / "nucleotidekmermerge.py")
+    shutil.copy(os.path.join(SCRIPTS_DIR, "proteinkmermerge.py"), scriptdir / "proteinkmermerge.py")
+    sw = _software_file(tmp_path, [("R", "/usr/bin/R")])
+    result = _run(scriptdir / "createfullkmerlist.py",
+                  "--task-id", "1", "--n", "1", "--p", "1", "--output-prefix", "x",
+                  "--analysis-dir", str(analysis_dir), "--id-file", str(id_file),
+                  "--kmer-type", "nucleotide", "--kmer-length", "31", "--software-file", sw)
+    assert "doesn't exist" not in result.stderr, result.stderr
+    assert "missing required software path" not in result.stderr, result.stderr
+    assert "nucleotidekmermerge.py path doesn't exist" not in result.stderr, result.stderr

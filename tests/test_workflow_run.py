@@ -20,7 +20,8 @@ from test_parameters import NEXTFLOW_RUNS
 
 NF = os.path.join(REPO_DIR, "kmer_pipeline.nf")
 GEMMA_PRESENT = os.path.exists("/usr/local/bin/gemma")
-pytestmark = pytest.mark.skipif(not NEXTFLOW_RUNS or not os.path.exists(NF), reason="needs Nextflow and the .nf")
+pytestmark = [pytest.mark.slow,
+              pytest.mark.skipif(not NEXTFLOW_RUNS or not os.path.exists(NF), reason="needs Nextflow and the .nf")]
 
 GENOME_IDS = ("702", "725", "791", "10084")  # the 4-genome subset test_workflow_start.py also uses
 
