@@ -243,6 +243,26 @@ def test_three_representative_error_messages_are_unchanged(tmp_path, key, bad_va
     assert rc != 0 and expected in out, out[-3000:]
 
 
+@pytest.mark.parametrize("key, value", [
+    ("container_type", "singularity"),
+    ("container_file", "/some/old/kmer_pipeline_2026-10-06.sif"),
+    ("container_args", "--bind /scratch"),
+    ("container_cmd", "singularity exec"),
+    ("container_mount", "/mnt"),
+    ("container_script_dir", "/usr/local/bin"),
+])
+def test_legacy_container_key_is_a_guided_migration_error(tmp_path, key, value):
+    """PLAN.md Part C, C2 (OQ-S3-5: a clean break with a guided error, not silent acceptance):
+    any of the six pre-refactor container_* keys stops the run before anything else happens -
+    no analysis_dir, no workdir/logdir - with exit status 1 and a message naming the key and
+    pointing at -profile/-params-file/-c and the manual's migration section."""
+    base = make_base(tmp_path, extra=f'\t{key} = "{value}"')
+    rc, out = run(base)
+    assert rc == 1, (rc, out[-3000:])
+    assert key in out and "-profile" in out and "docs/manual.md" in out, out[-3000:]
+    assert not (base / "tb20" / "kmergwas").exists(), "analysis_dir must not be created"
+
+
 def test_resume_reruns_preflight_not_cached(tmp_path):
     """preflight must never show CACHED under -resume, since a cached preflight would silently
     skip the resume-validity checks. All steps skipped, so the first run succeeds with nothing but

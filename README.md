@@ -32,22 +32,29 @@ The container was written using [Docker](https://www.docker.com) and based on th
 The zstr headers are licensed under the MIT license. The myutils headers are licensed under the GNU Lesser General Public License Version 3. All other code is licensed under the GNU General Public License v3.0.
 
 ## Installation
-To download a prebuilt [Docker](https://www.docker.com) image
+Clone this repository (the pipeline code: `kmer_pipeline.nf`, `nextflow.config`, `bin/`, `example/`)
 
-    docker pull dannywilson/kmer_pipeline:2026-10-06
+    git clone --depth 1 -b <release> https://github.com/danny-wilson/kmer_pipeline.git
 
-The image is built for x86-64 (amd64) Linux. On a Mac with Apple Silicon, Docker runs it under emulation: first type `export DOCKER_DEFAULT_PLATFORM=linux/amd64` in the same terminal, or the pipeline stops at its first step.
+and either run it with Nextflow against the toolchain image (`-profile apptainer`/`docker`; see
+[the manual](docs/manual.md)), or, with no Nextflow installed, run it through the image's own
+bundled Nextflow. Either way, to download a prebuilt [Docker](https://www.docker.com) image
 
-To build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) container
+    docker pull dannywilson/kmer_pipeline@sha256:<digest>
 
-    singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-06
+or build a [Singularity](https://sylabs.io/guides/3.3/user-guide/index.html) container
+
+    singularity pull -F docker://dannywilson/kmer_pipeline@sha256:<digest>
+
+*Check `nextflow.config` for the digest it currently pins.* The image is built for x86-64 (amd64)
+Linux. On a Mac with Apple Silicon, Docker runs it under emulation: first type `export DOCKER_DEFAULT_PLATFORM=linux/amd64` in the same terminal, or the pipeline stops at its first step.
 
 ## Running the Nextflow pipeline
 For instructions on running the Nextflow pipeline, including the *Mycobacterium tuberculosis* example, see [the manual](docs/manual.md), also available [as a PDF](https://github.com/danny-wilson/kmer_pipeline/releases/latest/download/kmer_pipeline_manual.pdf).
 
 ## Running the Jupyter Data Science Notebook
-To launch as a Jupyter Data Science Notebook using Docker
+The image is also a Jupyter Data Science Notebook. To launch it with Docker
 
-    docker container run --name kmer -p 8888:8888 -v $MNT_DIR:/home/jovyan dannywilson/kmer_pipeline:latest
-  
-where $MNT_DIR represents the local directory outside the container you wish to access inside the container from /home/jovyan. Having launched the container, navigate to the user interface in a web browser by following one of the URLs provided at the command line.
+    docker container run --name kmer -p 8888:8888 -v $MNT_DIR:/home/jovyan dannywilson/kmer_pipeline:2026-10-06
+
+where $MNT_DIR represents the local directory outside the container you wish to access inside the container from /home/jovyan. Having launched the container, navigate to the user interface in a web browser by following one of the URLs provided at the command line. (No floating `latest` tag is published; use a specific date or `img-` tag.)

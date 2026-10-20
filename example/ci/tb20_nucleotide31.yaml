@@ -1,0 +1,14 @@
+# Params file for CI's docker-profile smoke check only (.github/workflows/docker-smoke.yml,
+# PLAN.md Part C, C1/OQ-S3-6): the same TB20 dataset as example/tb20_nucleotide31.yaml, cut down
+# to 4 genomes (example/ci/id_file.txt) so a full 7-stage run finishes quickly. Not meant for
+# correctness checking (4 genomes is too few for a real GWAS) -- only that the pipeline runs to
+# completion, under both the launcher (no profile) and -profile docker.
+base_dir: .
+output_prefix: tb20
+analysis_dir: example/ci/run
+kmer_type: nucleotide
+kmer_length: 31
+id_file: example/ci/id_file.txt
+ref_fa: example/Mtub_H37Rv_NC000962.3.fasta
+ref_gb: example/Mtub_H37Rv_NC000962.3.gb
+maxp: 2

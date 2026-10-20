@@ -1,0 +1,21 @@
+# Params file for the TB20 example dataset (CRYPTIC 2022, PLOS Biology 20: e3001755; candidate
+# genes: rpoB PE_PGRS52 Rv0115a Rv0374c Rv0481c Rv0537c Rv2060 Rv2819c Rv3060c Rv3352c Rv3551
+# Rv3592 Rv3831 drrB lpqW ltp4 moaA2 murF uvrA vapB16), nucleotide k=31.
+#
+# Paths are relative to wherever you launch `nextflow run` from (-params-file resolves them
+# against the launch directory, not this file's own location). This file assumes you're running
+# from the root of a kmer_pipeline clone, as in docs/manual.md's quickstart. For your own data,
+# copy this file and point base_dir/id_file/ref_fa/ref_gb at your own paths instead; see
+# docs/manual.md's "Configuration" section for every other analysis parameter and its default.
+#
+# Container and executor are set separately: -profile apptainer/docker/slurm/sge (nextflow.config)
+# and, for anything beyond the local executor, a site file (example/site.config).
+base_dir: .
+output_prefix: tb20
+analysis_dir: tb20_nucleotide31
+kmer_type: nucleotide
+kmer_length: 31
+id_file: example/id_file.txt
+ref_fa: example/Mtub_H37Rv_NC000962.3.fasta
+ref_gb: example/Mtub_H37Rv_NC000962.3.gb
+maxp: 2
