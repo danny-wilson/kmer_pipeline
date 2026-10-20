@@ -22,10 +22,5 @@ def test_script_help(script):
     assert result.returncode == 0, result.stderr
     assert "usage:" in result.stdout
 
-
-def test_get_ref_name(example_dir):
-    result = run_script("get_ref_name.py", "--fasta-file",
-                        os.path.join(example_dir, "Mtub_H37Rv_NC000962.3.fasta"))
-    assert result.returncode == 0, result.stderr
-    assert result.stderr == ""
-    assert result.stdout == "NC_000962.3"
+# get_ref_name.py was ported to pure Groovy (kmer_pipeline.nf's ref_name_from_fasta(), PLAN.md
+# Part B, B3) and deleted; see tests/test_ref_name.py.

@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Build a staging directory from a kmer_pipeline commit. Usage: stage.sh COMMIT
-# Output: $KMER_E2E_ROOT/staging/SHA/ containing the commit's pipeline scripts
-# (mode 755), report css/js, kmer_pipeline.nf, symlinks to the image's C++
-# tools, a software-file template and a STAGED_SHA stamp. Bind it into the
-# container at the same path.
+# Build a staging directory from a kmer_pipeline commit: a plain git archive,
+# nothing flattened or renamed. Usage: stage.sh COMMIT
+# Output: $KMER_E2E_ROOT/staging/SHA/, the commit's own tree (bin/,
+# kmer_pipeline.nf, nextflow.config, conf/, example/, a STAGED_SHA stamp).
+# Run it with "nextflow run $DEST/kmer_pipeline.nf ..." directly -- Nextflow
+# puts $DEST/bin on PATH automatically (it's next to the main script), and the
+# committed conf/software_location.txt's toolpath still finds the compiled
+# C++ tools in the container image itself, unchanged by which commit is
+# staged (B9: bin/ is now native, so there is nothing left to symlink or
+# flatten here, unlike the pre-refactor layout this script used to mimic).
 set -euo pipefail
 { # read whole script before running, so edits can't affect a running copy
 
@@ -11,7 +16,6 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=config.sh
 . "$HERE/config.sh"
 REPO=${KMER_E2E_REPO:-$(cd "$HERE/../.." && git rev-parse --show-toplevel)}
-CPP_TOOLS="kmerlist2pattern pattern2kinship patterncounts patternmerge sort_strings stringlist2count stringlist2pattern"
 
 SHA=$(git -C "$REPO" rev-parse --verify "${1:?usage: stage.sh COMMIT}^{commit}")
 DEST=$KMER_E2E_ROOT/staging/$SHA
@@ -29,13 +33,8 @@ TMP=$(mktemp -d "$KMER_E2E_ROOT/staging/.tmp.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
 git -C "$REPO" archive "$SHA" | tar -x -C "$TMP"
-mkdir -p "$DEST"
-# Scripts are installed flat, as the Dockerfile installs them in /usr/local/bin
-shopt -s nullglob
-for f in "$TMP"/*.R "$TMP"/*.Rscript "$TMP"/python/*.py; do install -m 755 "$f" "$DEST/"; done
-install -m 644 "$TMP/report.css" "$TMP/report.js" "$TMP/kmer_pipeline.nf" "$DEST/"
-install -m 644 "$TMP/example/pipeline_software_location.txt" "$DEST/"
-for t in $CPP_TOOLS; do ln -s "/usr/local/bin/$t" "$DEST/$t"; done
+mv "$TMP" "$DEST"
+chmod -R u+w,go-w "$DEST"
 echo "$SHA" > "$DEST/STAGED_SHA"
 chmod -R a-w "$DEST"
 echo "$DEST"

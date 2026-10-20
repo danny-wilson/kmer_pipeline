@@ -15,20 +15,25 @@ import subprocess
 
 import pytest
 
-from conftest import EXAMPLE_DIR, REPO_DIR, SCRIPTS_DIR, stage_checkout
+from conftest import EXAMPLE_DIR, REPO_DIR, SCRIPTS_DIR, SOFTWARE_LOCATION_TEMPLATE, stage_checkout
 from test_parameters import NEXTFLOW_RUNS
 
 NF = os.path.join(REPO_DIR, "kmer_pipeline.nf")
 GEMMA_PRESENT = os.path.exists("/usr/local/bin/gemma")
-pytestmark = pytest.mark.skipif(not NEXTFLOW_RUNS or not os.path.exists(NF),
-                                reason="needs Nextflow and the .nf")
+pytestmark = [pytest.mark.slow,
+              pytest.mark.skipif(not NEXTFLOW_RUNS or not os.path.exists(NF), reason="needs Nextflow and the .nf")]
 
 GENOME_IDS = ("702", "725", "791", "10084")  # the 4-genome subset test_workflow_start.py also uses
 
 
 def run_nf(base, timeout=600, extra_args=()):
+    # Run the repo's own kmer_pipeline.nf by its real path (PLAN.md Part B, B8), not a copy in
+    # base: projectDir - and therefore bin/'s automatic PATH entry, and every bare-name script
+    # call that relies on it - is always the main script's own directory, regardless of cwd
+    # (kept at base, for base_dir-relative resolution). A copy would lose bin/ entirely, silently
+    # falling back to the toolchain image's own stale copy of the same-named script.
     env = dict(os.environ, NXF_OPTS="-Dnxf.ansi.log=false")
-    r = subprocess.run(["nextflow", "run", "kmer_pipeline.nf", "-ansi-log", "false", *extra_args], cwd=base, env=env,
+    r = subprocess.run(["nextflow", "run", NF, "-ansi-log", "false", *extra_args], cwd=base, env=env,
                        capture_output=True, text=True, timeout=timeout)
     return r.returncode, r.stdout + r.stderr
 
@@ -42,14 +47,13 @@ def add_params(base, lines):
 
 
 def write_software_file(base, scriptpath):
-    sw = open(os.path.join(EXAMPLE_DIR, "pipeline_software_location.txt")).read().split("\n")
-    sw = [f"scriptpath\t{scriptpath}" if line.startswith("scriptpath\t") else line for line in sw]
-    (base / "software.txt").write_text("\n".join(sw))
+    sw = open(SOFTWARE_LOCATION_TEMPLATE).read().rstrip("\n").split("\n")
+    sw.append(f"scriptpath\t{scriptpath}")
+    (base / "software.txt").write_text("\n".join(sw) + "\n")
 
 
 def write_config(base, params_block):
     (base / "nextflow.config").write_text("params {\n" + params_block + "}\n")
-    shutil.copy(NF, base / "kmer_pipeline.nf")
 
 
 def read_top_genes(analysis_dir, n=None):
@@ -76,7 +80,7 @@ def figures_dir_for(analysis_dir, kmer_type, kmer_length):
 
 
 def make_minimal_base(tmp_path, extra=""):
-    """The 4-genome subset, scriptpath pointing at a staged (not bare python/) directory, since
+    """The 4-genome subset, scriptpath pointing at a staged (not bare bin/) directory, since
     step 1 (countkmers) needs sort_strings and dsk colocated with the scripts."""
     base = tmp_path / "base"
     (base / "tb20").mkdir(parents=True)
@@ -417,7 +421,9 @@ def test_stage7_alone_reports_every_gene_and_submits_nothing_else(full_run):
 
     trace = read_trace(full_run / "trace3.txt")
     names = {process_name(r) for r in trace}
-    assert names <= {"genReport", "genGeneReport", "genUnmappedReport"}, names
+    # preflight (PLAN.md Part B, B4) is now a real process, run on every invocation - it always
+    # appears in the trace, unlike the old pre-workflow Groovy call it replaced.
+    assert names <= {"preflight", "genReport", "genGeneReport", "genUnmappedReport"}, names
 
     for gene in genes:
         report = glob.glob(str(analysis_dir / "**" / f"*.report_{gene}.html"), recursive=True)
@@ -445,7 +451,8 @@ def test_stage7_alone_reports_every_gene_protein(full_run_protein):
 
     trace = read_trace(full_run_protein / "trace3p.txt")
     names = {process_name(r) for r in trace}
-    assert names <= {"genReport", "genProteinReport", "genUnmappedReport"}, names
+    # preflight (PLAN.md Part B, B4) is now a real process, run on every invocation.
+    assert names <= {"preflight", "genReport", "genProteinReport", "genUnmappedReport"}, names
     for gene in genes:
         report = glob.glob(str(analysis_dir / "**" / f"*.report_{gene}.html"), recursive=True)
         assert len(report) == 1, (gene, report)

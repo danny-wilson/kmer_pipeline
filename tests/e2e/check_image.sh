@@ -6,16 +6,23 @@
 #     (the local-file hash, checked against the digest recorded when the image
 #     was pulled -- see KMER_E2E_IMAGE_COMMIT and the project's own provenance
 #     record -- not re-derived here by re-pulling the registry).
-# Checks: every installed pipeline file equals the commit's, and no other
-# pipeline files remain; /usr/share/kmer_pipeline equals the commit's tree
-# less the installed files; the environment (PYTHONNOUSERSITE, LC_ALL);
-# Biopython and pytest import; every script runs --help.
+# Checks: the environment (PYTHONNOUSERSITE, LC_ALL); Biopython and pytest
+# import; every script in the commit's bin/ runs --help (via Nextflow's own
+# -profile apptainer --container, not a baked-in /usr/local/bin copy -- B9:
+# neither the code-free derivative nor the final image bakes the pipeline's
+# own scripts in any more, so there is nothing installed to md5sum against
+# the commit, and no /usr/share/kmer_pipeline either).
 # If $KMER_E2E_BASE_SIF is set, also checks: pip freeze and conda list
 # unchanged apart from the added packages; R's installed packages unchanged;
-# the C++ tools, external tools and Nextflow unchanged -- against that base
-# image. This comparison is skipped (not failed) if the key is unset, since a
-# "previous production image" baseline is a locally-kept asset, not something
-# every clone of this harness has.
+# Nextflow unchanged -- against that base image. This comparison is skipped
+# (not failed) if the key is unset, since a "previous production image"
+# baseline is a locally-kept asset, not something every clone of this harness
+# has. The C++/gemma/dsk tool binaries are reported, not failed, on a hash
+# difference (B9): they are expected to be byte-identical but a compiler can
+# legitimately produce a different binary from the same source (timestamps,
+# build-path strings), which is exactly what Part A's own Tier-2 auto-accept
+# rule (OQ-S3-9) already exists to handle -- this script is not where that
+# gets decided.
 #
 # NOTE: pip/conda/R package-version lists and tool lists here (and the
 # $ADDED list below) are a snapshot taken when this script was ported; they
@@ -68,36 +75,30 @@ if [ -n "${KMER_E2E_BASE_SIF:-}" ]; then
 	  ok "conda list = base + $(grep -c '^>' "$TMP/conda.diff") pypi packages"
   else bad "conda list"; cat "$TMP/conda.diff"; fi
   if diff "$TMP/base/R" "$TMP/new/R" > /dev/null; then ok "R packages unchanged ($(wc -l < "$TMP/new/R"))"; else bad "R packages"; diff "$TMP/base/R" "$TMP/new/R"; fi
-  if diff "$TMP/base/tools" "$TMP/new/tools" > /dev/null; then ok "C++ tools, external tools and Nextflow unchanged"; else bad "tools"; diff "$TMP/base/tools" "$TMP/new/tools"; fi
+  # C++/gemma/dsk/Nextflow: reported, not failed, on a hash difference (B9) -- Part A's own
+  # Tier-2 auto-accept rule (OQ-S3-9) is where a real difference gets decided, not here.
+  if diff "$TMP/base/tools" "$TMP/new/tools" > /dev/null; then ok "C++ tools, external tools and Nextflow unchanged"
+  else echo "note: tool binaries differ from the base image (Tier-2 -- see OQ-S3-9, not a failure here):"; diff "$TMP/base/tools" "$TMP/new/tools"; fi
 else
   echo "note: KMER_E2E_BASE_SIF not set -- skipping the pip/conda/R/tools comparison against a baseline image"
 fi
-
-# Installed pipeline files equal the commit's
-mkdir "$TMP/src"
-git -C "$REPO" archive "$SHA" | tar -x -C "$TMP/src"
-( shopt -s nullglob; cd "$TMP/src" && md5sum *.R *.Rscript kmer_pipeline.nf report.js report.css && cd python && md5sum *.py ) | sort -k2 > "$TMP/want.md5"
-run "$IMAGE" bash -c 'shopt -s nullglob; cd /usr/local/bin && md5sum *.R *.Rscript *.py kmer_pipeline.nf report.js report.css' | sort -k2 > "$TMP/got.md5"
-if diff "$TMP/want.md5" "$TMP/got.md5" > "$TMP/md5.diff"; then ok "installed scripts = $SHA ($(wc -l < "$TMP/got.md5") files)"; else bad "installed scripts"; cat "$TMP/md5.diff"; fi
-run "$IMAGE" bash -c 'cd /usr/local/bin && for f in *; do [ -x "$f" ] || echo "not executable: $f"; done' > "$TMP/exec"
-[ -s "$TMP/exec" ] && { bad "permissions"; cat "$TMP/exec"; } || ok "all of /usr/local/bin executable"
-
-# /usr/share/kmer_pipeline = commit tree less the installed files and docs/ (.dockerignore)
-( shopt -s nullglob; cd "$TMP/src" && rm -rf *.R *.Rscript python kmer_pipeline.nf report.js report.css docs && find . -type f | sort | xargs md5sum ) > "$TMP/share.want"
-run "$IMAGE" bash -c 'cd /usr/share/kmer_pipeline && find . -type f | sort | xargs md5sum' > "$TMP/share.got"
-if diff "$TMP/share.want" "$TMP/share.got" > "$TMP/share.diff"; then ok "/usr/share/kmer_pipeline = $SHA tree less installed files"; else bad "/usr/share/kmer_pipeline"; head -20 "$TMP/share.diff"; fi
 
 # Environment and imports (as Nextflow runs it: --containall --cleanenv)
 env_out=$(run "$IMAGE" bash -c 'echo "PYTHONNOUSERSITE=$PYTHONNOUSERSITE LC_ALL=$LC_ALL"')
 [ "$env_out" = "PYTHONNOUSERSITE=1 LC_ALL=en_US.UTF-8" ] && ok "environment: $env_out" || bad "environment: $env_out"
 imp=$(run "$IMAGE" python3 -c 'import Bio, pytest, numpy, pandas, scipy, jinja2; print(Bio.__version__, pytest.__version__, numpy.__version__, pandas.__version__, scipy.__version__, jinja2.__version__)')
 [ "$imp" = "1.83 7.4.4 1.21.6 1.4.2 1.8.1 3.1.2" ] && ok "imports: $imp" || bad "imports: $imp"
+# Every bin/*.py script runs --help, from the commit's own staged tree (B9: bin/ is native now,
+# nothing is installed into /usr/local/bin any more, in either the derivative or the final image)
+STAGING=$KMER_E2E_ROOT/staging/$SHA
+[ -d "$STAGING" ] || "$HERE/stage.sh" "$SHA" > /dev/null
 before=$problems
-for name in $(git -C "$REPO" ls-tree --name-only "$SHA" python/ | xargs -n1 basename); do
-	case $name in rcompat.py|sequence_functions.py|Manhattan_functions.py|alignmentfunctions.py|inventory.py|reference.py|report_assets.py) continue;; esac
-	run "$IMAGE" "/usr/local/bin/$name" --help > /dev/null 2>&1 || bad "$name --help"
+for name in $(git -C "$REPO" ls-tree --name-only "$SHA" bin/ | xargs -n1 basename); do
+	case $name in *.R|*.css|*.js) continue;; esac
+	case $name in rcompat.py|sequence_functions.py|Manhattan_functions.py|alignmentfunctions.py|inventory.py|reference.py) continue;; esac
+	apptainer exec --containall --cleanenv -B "$STAGING" "$IMAGE" "$STAGING/bin/$name" --help > /dev/null 2>&1 || bad "$name --help"
 done
-[ "$problems" -eq "$before" ] && ok "every script runs --help"
+[ "$problems" -eq "$before" ] && ok "every bin/*.py script runs --help"
 
 echo "$problems problems"
 [ "$problems" -eq 0 ]

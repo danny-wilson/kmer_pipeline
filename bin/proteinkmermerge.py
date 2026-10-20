@@ -126,16 +126,19 @@ def main():
     software_paths = rcompat.r_read_table(software_file, header=True, sep="\t", quote="")
     names = [rcompat.r_as_character(v) for v in software_paths["name"]]
     paths = [rcompat.r_as_character(v) for v in software_paths["path"]]
-    # Required software and script paths
-    required_software = ["scriptpath"]
-    if any(r not in names for r in required_software):
-        r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
-    script_location = [pth for nm, pth in zip(names, paths) if nm.lower() == "scriptpath"][0]
+    # Required software and script paths (scriptpath defaults to this script's own directory;
+    # toolpath defaults to scriptpath)
+    scriptpath_hits = [pth for nm, pth in zip(names, paths) if nm.lower() == "scriptpath"]
+    script_location = scriptpath_hits[0] if scriptpath_hits else os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(script_location):
         r_stop("Error: script location directory specified in the software paths file doesn't exist", "\n")
-    sort_strings = script_location + "/sort_strings"
+    toolpath_hits = [pth for nm, pth in zip(names, paths) if nm.lower() == "toolpath"]
+    tool_location = toolpath_hits[0] if toolpath_hits else script_location
+    if not os.path.isdir(tool_location):
+        r_stop("Error: tool location directory specified in the software paths file doesn't exist", "\n")
+    sort_strings = tool_location + "/sort_strings"
     if not os.path.exists(sort_strings):
-        r_stop("Error: sort_strings path doesn't exist - check pipeline script location in the software file", "\n")
+        r_stop("Error: sort_strings path doesn't exist - check pipeline tool location in the software file", "\n")
 
     # Read in sample IDs
     id_table = rcompat.r_read_table(id_file, header=True, sep="\t")

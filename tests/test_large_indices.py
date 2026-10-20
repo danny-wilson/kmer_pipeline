@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from conftest import EXAMPLE_DIR, run_script
+from conftest import SOFTWARE_LOCATION_TEMPLATE, run_script
 
 import kmercontigalignmerge
 import Manhattan_functions
@@ -48,7 +48,7 @@ exec /usr/local/bin/gemma "$@"
 
 
 def software_file(root, gemma):
-    rows = open(os.path.join(EXAMPLE_DIR, "pipeline_software_location.txt")).read().split("\n")
+    rows = open(SOFTWARE_LOCATION_TEMPLATE).read().split("\n")
     rows = [f"gemma\t{gemma}" if r.startswith("gemma\t") else r for r in rows]
     (root / "software.txt").write_text("\n".join(rows))
     return str(root / "software.txt")

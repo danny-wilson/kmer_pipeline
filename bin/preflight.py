@@ -15,7 +15,8 @@
 
 Prints one JSON object on stdout: {"errors": [...], "warnings": [...], "deleted": [...]}; the
 workflow stops if there are errors. Exit status is 0 unless the checks themselves fail.
-With --finish, records the end of the run in the manifest instead."""
+Recording the end of a run in the manifest is now kmer_pipeline.nf's own finish(), pure Groovy,
+not a mode of this script (PLAN.md Part B, B3)."""
 import argparse
 import difflib
 import hashlib
@@ -33,15 +34,12 @@ import rcompat
 # Every parameter kmer_pipeline.nf reads (including implied ones the manual allows to override)
 KNOWN_PARAMS = {
     "analysis_dir", "analysis_file", "annotateGeneFile", "base_dir", "blastident", "bowtie_parameters",
-    "container_analysis_dir", "container_analysis_file", "container_args", "container_cmd",
-    "container_covariate_file", "container_file", "container_id_file", "container_logdir", "container_mount",
-    "container_ref_fa", "container_ref_gb", "container_script_dir", "container_software_file", "container_type",
-    "container_user_id_file", "container_annotateGeneFile",
-    "covariate_file", "default_script_dir", "default_software_file", "gene_lookup_file", "id_file",
+    "container",  # nextflow.config's own default (B7); a repo-config key, excluded from USER_KEYS
+    "covariate_file", "default_software_file", "gene_lookup_file", "id_file",
     "kmerFilePrefix", "kmergenecombination", "kmer_length", "kmer_min_count", "kmer_type", "logdir", "maxp",
     "merge_wait_minutes", "min_contig_length", "min_count", "minor_allele_threshold", "n", "ntopgenes",
     "nucmerident", "output_prefix", "overwrite", "override_signif", "p", "p5", "pheno_file", "plot_min_genomes", "precomputed_dir",
-    "precomputed_prefix", "container_pheno_file", "container_precomputed_dir", "ref_fa", "ref_gb", "ref_name",
+    "precomputed_prefix", "ref_fa", "ref_gb", "ref_name",
     "samtools_filter", "skip1", "skip2", "skip3", "skip4", "skip5", "skip6", "skip7", "software_file", "workdir",
 }
 
@@ -435,17 +433,6 @@ def finish_check(errors, warnings, deleted, manifest_path, manifest, args, param
     return {"errors": errors, "warnings": warnings, "deleted": deleted}
 
 
-def finish(args):
-    prefix_full = f"{args.output_prefix}_{args.kmer_type}{args.kmer_length}"
-    path = os.path.join(args.analysis_dir, prefix_full + ".run_manifest.json")
-    manifest = read_manifest(path)
-    if manifest is not None and manifest.get("session") == args.session_id:
-        manifest["status"] = args.finish
-        manifest["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-        write_manifest(path, manifest)
-    return {"errors": [], "warnings": [], "deleted": []}
-
-
 def main():
     parser = argparse.ArgumentParser(description="preflight.py checks before kmer_pipeline.nf runs",
                                      allow_abbrev=False)
@@ -467,9 +454,8 @@ def main():
     parser.add_argument("--precomputed-dir", default="")
     parser.add_argument("--precomputed-prefix", default="")
     parser.add_argument("--ref-name", default="")
-    parser.add_argument("--finish", default=None, help="record the end of the run: finished or failed")
     args = parser.parse_args()
-    result = finish(args) if args.finish else check(args)
+    result = check(args)
     sys.stdout.write(json.dumps(result) + "\n")
 
 

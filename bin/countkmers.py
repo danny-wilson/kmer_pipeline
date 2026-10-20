@@ -218,7 +218,7 @@ def main():
 
     # Required software and script paths
     # Begin with software
-    required_software = ["scriptpath", "dsk", "dsk2ascii"]
+    required_software = ["dsk", "dsk2ascii"]
     if any(r not in names for r in required_software):
         r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
     dsk_path = software("dsk")
@@ -227,13 +227,17 @@ def main():
     dsk2ascii_path = software("dsk2ascii")
     if not os.path.exists(dsk2ascii_path):
         r_stop("Error: dsk2ascii path doesn't exist", "\n")
-    # Get the script location and then create missing paths
-    script_location = software("scriptpath")
+    # Get the script and tool locations (scriptpath defaults to this script's own directory;
+    # toolpath defaults to scriptpath) and then create missing paths
+    script_location = software("scriptpath") if "scriptpath" in names else os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(script_location):
         r_stop("Error: script location directory specified in the software paths file doesn't exist", "\n")
-    sort_strings = script_location + "/sort_strings"
+    tool_location = software("toolpath") if "toolpath" in names else script_location
+    if not os.path.isdir(tool_location):
+        r_stop("Error: tool location directory specified in the software paths file doesn't exist", "\n")
+    sort_strings = tool_location + "/sort_strings"
     if not os.path.exists(sort_strings):
-        r_stop("Error: sort_strings path doesn't exist - check pipeline script location in the software file", "\n")
+        r_stop("Error: sort_strings path doesn't exist - check pipeline tool location in the software file", "\n")
     sequence_functions_file = script_location + "/sequence_functions.py"
     if not os.path.exists(sequence_functions_file):
         r_stop("Error: sequence_functions.py path doesn't exist - check pipeline script location in the software file", "\n")

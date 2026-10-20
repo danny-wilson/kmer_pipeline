@@ -5,13 +5,17 @@ per-class normalization with compare.py, so a hash and a direct comparison can
 never disagree about what counts as a difference.
 
 Usage:
-  golden_hashes.py generate --run NAME DIR [--run NAME DIR ...] [--manifest FILE] > golden_hashes.tsv
-  golden_hashes.py verify TSV --run NAME DIR [--run NAME DIR ...] [--manifest FILE] [--visual-advisory]
+  golden_hashes.py generate --run NAME DIR [--run NAME DIR ...] [--prefix NAME=BASE_DIR ...]
+                             [--manifest FILE] > golden_hashes.tsv
+  golden_hashes.py verify TSV --run NAME DIR [--run NAME DIR ...] [--prefix NAME=BASE_DIR ...]
+                             [--manifest FILE] [--visual-advisory]
 
 generate hashes every classified (non-ignored) file under each named run
 directory: `exact`/`strip`/`numeric` classes hash the same normalized content
-compare.py would compare (gzip-decompressed, strip-lines-removed); `visual`
-(PNG) hashes the raw bytes.
+compare.py would compare (gzip-decompressed, strip-lines-removed); `path`
+hashes content with that run's own `--prefix NAME=...` replaced by
+"@BASE_DIR@" (no prefix given means no substitution); `visual` (PNG) hashes
+the raw bytes.
 
 verify re-hashes the given run directories and compares against the TSV. It
 fails if: a TSV row's path is missing from the run; a classified, non-ignored
@@ -29,12 +33,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from compare import classify, content, list_files, read_manifest, strip_lines  # noqa: E402
+from compare import classify, content, list_files, normalize_path_class, read_manifest, strip_lines  # noqa: E402
 
 HEADER = "run\tpath\tclass\tsha256"
 
 
-def hash_one(run_dir, rel, cls, regex):
+def hash_one(run_dir, rel, cls, regex, prefix=None):
     if cls == "visual":
         with open(os.path.join(run_dir, rel), "rb") as fh:
             data = fh.read()
@@ -42,12 +46,14 @@ def hash_one(run_dir, rel, cls, regex):
         data = content(os.path.join(run_dir, rel))
         if cls == "strip":
             data = strip_lines(data, regex)
+        elif cls == "path":
+            data = normalize_path_class(data, prefix)
         elif cls == "numeric":
             return "-"
     return hashlib.sha256(data).hexdigest()
 
 
-def hash_run(run_dir, rules):
+def hash_run(run_dir, rules, prefix=None):
     """{rel_path: (class, sha256_or_'-')} for every classified, non-ignored file."""
     out = {}
     for rel in sorted(list_files(run_dir)):
@@ -57,15 +63,16 @@ def hash_run(run_dir, rules):
         _, cls, regex = rule
         if cls == "ignore":
             continue
-        out[rel] = (cls, hash_one(run_dir, rel, cls, regex))
+        out[rel] = (cls, hash_one(run_dir, rel, cls, regex, prefix))
     return out
 
 
-def generate(runs, manifest_path, commit=None, nextflow_version=None, image_digest=None):
+def generate(runs, manifest_path, commit=None, nextflow_version=None, image_digest=None, prefixes=None):
+    prefixes = prefixes or {}
     rules = read_manifest(manifest_path)
     rows = []
     for name, run_dir in runs:
-        for rel, (cls, digest) in hash_run(run_dir, rules).items():
+        for rel, (cls, digest) in hash_run(run_dir, rules, prefixes.get(name)).items():
             rows.append((name, rel, cls, digest))
     rows.sort()
     print("# golden_hashes.tsv -- sha256, class exact/strip/numeric/visual")
@@ -93,13 +100,14 @@ def read_tsv(path):
     return rows
 
 
-def verify(tsv_path, runs, manifest_path, visual_advisory):
+def verify(tsv_path, runs, manifest_path, visual_advisory, prefixes=None):
+    prefixes = prefixes or {}
     rules = read_manifest(manifest_path)
     want = read_tsv(tsv_path)
     problems, warnings = [], []
     seen = set()
     for name, run_dir in runs:
-        got = hash_run(run_dir, rules)
+        got = hash_run(run_dir, rules, prefixes.get(name))
         for rel, (cls, digest) in got.items():
             seen.add((name, rel))
             if (name, rel) not in want:
@@ -131,6 +139,8 @@ def main():
     ap.add_argument("mode", choices=["generate", "verify"])
     ap.add_argument("tsv", nargs="?", help="required for verify")
     ap.add_argument("--run", action="append", nargs=2, metavar=("NAME", "DIR"), default=[])
+    ap.add_argument("--prefix", action="append", metavar="NAME=BASE_DIR", default=[],
+                     help="that run's own base_dir, substituted by @BASE_DIR@ in 'path'-class files")
     ap.add_argument("--manifest", default=os.path.join(HERE, "manifest.tsv"))
     ap.add_argument("--visual-advisory", action="store_true")
     ap.add_argument("--commit", help="generate: the commit the goldens were made from, for the TSV header")
@@ -140,14 +150,18 @@ def main():
     runs = [(n, d) for n, d in args.run]
     if not runs:
         sys.exit("at least one --run NAME DIR is required")
+    try:
+        prefixes = dict(p.split("=", 1) for p in args.prefix)
+    except ValueError:
+        sys.exit("--prefix takes NAME=BASE_DIR")
 
     if args.mode == "generate":
-        generate(runs, args.manifest, args.commit, args.nextflow_version, args.image_digest)
+        generate(runs, args.manifest, args.commit, args.nextflow_version, args.image_digest, prefixes)
         return
 
     if not args.tsv:
         sys.exit("verify needs the TSV path")
-    problems, warnings = verify(args.tsv, runs, args.manifest, args.visual_advisory)
+    problems, warnings = verify(args.tsv, runs, args.manifest, args.visual_advisory, prefixes)
     for w in warnings:
         print("WARNING:", w)
     for p in problems:

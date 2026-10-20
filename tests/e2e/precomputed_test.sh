@@ -23,15 +23,13 @@ NAME=${1:?}; SHA=${2:?}; PRE=${3:?}; PHENO_ID=${4:?}; FULL=${5:?}; COV=${6:-}
 STAGING=$KMER_E2E_ROOT/staging/$SHA
 BASE=$KMER_E2E_ROOT/runs/precomputed/$NAME
 [ -e "$BASE" ] && { echo "$BASE exists" >&2; exit 1; }
+NF=$STAGING/kmer_pipeline.nf
 mkdir -p "$BASE/tb20" "$BASE/pre"
-(cd "$BASE/tb20" && apptainer exec --containall --cleanenv "$KMER_E2E_SIF" \
-  bash -c 'cd /usr/share/kmer_pipeline/example && tar -c .' | tar -x)
-sed -i "s,/usr/share/kmer_pipeline/example/,$BASE/tb20/,g" "$BASE/tb20/id_file.txt"
+cp -r "$STAGING/example/." "$BASE/tb20/"
+chmod -R u+w "$BASE/tb20"
 cut -f1,3 "$PHENO_ID" > "$BASE/tb20/pheno_file.txt"
 rsync -a --exclude 'log.*' --exclude nextflow.out "$PRE/" "$BASE/pre/kmergwas/"
 (cd "$BASE/pre/kmergwas" && find . -type f | sort | xargs md5sum) > "$BASE/pre_before.md5"
-cp "$STAGING/kmer_pipeline.nf" "$BASE/"
-sed "s,^scriptpath\t.*,scriptpath\t$STAGING," "$STAGING/pipeline_software_location.txt" > "$BASE/software.txt"
 COV_LINE=""
 if [ -n "$COV" ]; then cp "$COV" "$BASE/tb20/covariates.txt"; COV_LINE="covariate_file = \"$BASE/tb20/covariates.txt\""; fi
 cat > "$BASE/nextflow.config" <<EOF
@@ -47,17 +45,13 @@ params {
 	ref_fa = "\$base_dir/\$output_prefix/Mtub_H37Rv_NC000962.3.fasta"
 	ref_gb = "\$base_dir/\$output_prefix/Mtub_H37Rv_NC000962.3.gb"
 	maxp = 2
-	container_type = "singularity"
-	container_file = "$KMER_E2E_SIF"
-	software_file = "$BASE/software.txt"
-	container_args = "--bind $STAGING --env PYTHONNOUSERSITE=1"
 	$COV_LINE
 }
 executor.queueSize = params.maxp
 executor.cpus = params.maxp
 EOF
 export NXF_HOME=$KMER_E2E_ROOT/nxf_home NXF_OPTS="-Dnxf.ansi.log=false"
-cd "$BASE" && "$KMER_E2E_NEXTFLOW" run kmer_pipeline.nf -ansi-log false > run.out 2>&1
+cd "$BASE" && "$KMER_E2E_NEXTFLOW" run "$NF" -profile apptainer --container "$KMER_E2E_SIF" -ansi-log false > run.out 2>&1
 echo "run exit $?" > result.txt
 (cd "$BASE/pre/kmergwas" && find . -type f | sort | xargs md5sum) > "$BASE/pre_after.md5"
 cmp -s "$BASE/pre_before.md5" "$BASE/pre_after.md5" && echo "precomputed_dir unchanged" >> result.txt \
@@ -66,7 +60,7 @@ cmp -s "$BASE/pre_before.md5" "$BASE/pre_after.md5" && echo "precomputed_dir unc
 mkdir -p "$BASE/full_467"
 (cd "$FULL" && find . -type f | sed 's|^\./||') | \
   apptainer exec --bind "$STAGING,$FULL" "$KMER_E2E_SIF" python3 -c "
-import sys; sys.path.insert(0, '$STAGING')
+import sys; sys.path.insert(0, '$STAGING/bin')
 import inventory
 inv = inventory.Inventory('tb20', 'nucleotide', 31)
 for line in sys.stdin:
@@ -75,7 +69,11 @@ for line in sys.stdin:
         print(p)" > "$BASE/full_467.txt"
 rsync -a --files-from="$BASE/full_467.txt" "$FULL/" "$BASE/full_467/"
 rsync -a --copy-links --exclude 'work.*' --exclude 'log.*' --exclude '*.container_id_file.txt' --exclude '*.analysis_file.txt' "$BASE/tb20/kmergwas/" "$BASE/new/"
-python3 "$HERE/compare.py" "$BASE/full_467" "$BASE/new" > compare.txt 2>&1
+# FULL's own run_dir (base_dir), for the manifest's "path" class (B9) -- FULL and this run are
+# different run directories, so without this the path-bearing files would always DIFFER.
+full_meta="$(dirname "$FULL")/metadata.json"
+full_prefix=$([ -f "$full_meta" ] && python3 -c "import json; print(json.load(open('$full_meta')).get('run_dir',''))" || true)
+python3 "$HERE/compare.py" "$BASE/full_467" "$BASE/new" --prefix-a "$full_prefix" --prefix-b "$BASE" > compare.txt 2>&1
 echo "compare exit $? ($(tail -n 1 compare.txt))" >> result.txt
 cat result.txt
 exit

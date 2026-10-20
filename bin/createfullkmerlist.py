@@ -64,11 +64,17 @@ def main():
     paths = [rcompat.r_as_character(v) for v in software_paths["path"]]
     # The R original launched its children with the "R" entry's Rscript; the Python
     # children run with this interpreter, but software files keep the same entries.
-    required_software = ["R", "scriptpath"]
+    required_software = ["R"]
     if any(r not in names for r in required_software):
         r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
     python_path = sys.executable
-    script_location = [pth for nm, pth in zip(names, paths) if nm.lower() == "scriptpath"][0]
+    # scriptpath defaults to this script's own directory (matches every other script's sibling-
+    # script lookup, e.g. proteinkmermerge.py/kmercontigalignmerge.py) - this one was missed when
+    # bin/ became native and scriptpath stopped being required everywhere else (B2); found as a
+    # real bug by actually running the committed conf/software_location.txt, which has no
+    # scriptpath row, rather than a test's own synthetic one that always added it.
+    scriptpath_hits = [pth for nm, pth in zip(names, paths) if nm.lower() == "scriptpath"]
+    script_location = scriptpath_hits[0] if scriptpath_hits else os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(script_location):
         r_stop("Error: script location directory specified in the software paths file doesn't exist", "\n")
     proteinkmermergescript = script_location + "/proteinkmermerge.py"

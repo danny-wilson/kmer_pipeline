@@ -6,6 +6,9 @@ Usage: compare.py DIR_A DIR_B [--manifest manifest.tsv]
 Each file's path relative to its directory is matched against the manifest
 patterns in order; the first match decides its class:
   exact   identical content (after gzip decompression for .gz)
+  path    identical after replacing a run's own base_dir with the literal
+          string "@BASE_DIR@" on each side (--prefix-a/--prefix-b); a fixed,
+          literal substring substitution, not a path-canonicalization pass
   strip   identical after deleting lines that match the pattern's regex
   numeric identical apart from numbers that differ by at most the relative
           tolerance in the regex column
@@ -37,7 +40,7 @@ def read_manifest(path):
                 regex = float(fields[2])
             else:
                 regex = re.compile(fields[2]) if len(fields) > 2 and fields[2] else None
-            if cls not in ("exact", "strip", "numeric", "visual", "ignore"):
+            if cls not in ("exact", "path", "strip", "numeric", "visual", "ignore"):
                 sys.exit(f"bad class {cls!r} in manifest line: {line}")
             rules.append((pattern, cls, regex))
     return rules
@@ -91,7 +94,16 @@ def classify(rel, rules):
     return next((r for r in rules if fnmatch.fnmatch(rel, r[0])), None)
 
 
-def compare(dir_a, dir_b, manifest_path):
+def normalize_path_class(data, prefix):
+    """Replace a literal base_dir prefix with "@BASE_DIR@". A fixed substring
+    substitution only -- no canonicalization, so an un-collapsed double slash
+    in the golden (e.g. "kmergwas//") survives unchanged on both sides."""
+    if not prefix:
+        return data
+    return data.replace(prefix.encode(), b"@BASE_DIR@")
+
+
+def compare(dir_a, dir_b, manifest_path, prefix_a=None, prefix_b=None):
     rules = read_manifest(manifest_path)
     files_a, files_b = list_files(dir_a), list_files(dir_b)
     problems, counts = [], {}
@@ -114,6 +126,8 @@ def compare(dir_a, dir_b, manifest_path):
         b = content(os.path.join(dir_b, rel))
         if cls == "strip":
             a, b = strip_lines(a, regex), strip_lines(b, regex)
+        if cls == "path":
+            a, b = normalize_path_class(a, prefix_a), normalize_path_class(b, prefix_b)
         if cls == "numeric":
             if not numeric_equal(a, b, regex):
                 problems.append(f"DIFFERS ({cls}) {rel}: {first_difference(a, b)}")
@@ -128,8 +142,10 @@ def main():
     ap.add_argument("dir_a")
     ap.add_argument("dir_b")
     ap.add_argument("--manifest", default=os.path.join(HERE, "manifest.tsv"))
+    ap.add_argument("--prefix-a", default=None, help="dir_a's own base_dir, for the 'path' class")
+    ap.add_argument("--prefix-b", default=None, help="dir_b's own base_dir, for the 'path' class")
     args = ap.parse_args()
-    problems, counts, total = compare(args.dir_a, args.dir_b, args.manifest)
+    problems, counts, total = compare(args.dir_a, args.dir_b, args.manifest, args.prefix_a, args.prefix_b)
 
     for p in problems:
         print(p)

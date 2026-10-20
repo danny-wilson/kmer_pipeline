@@ -623,13 +623,17 @@ def run(script_path, description, merge_hook=None):
         return [pth for nm, pth in zip(names, paths) if nm.lower() == name][0]
     # Required software and script paths (R and genoPlotR are no longer used, but software
     # files keep their entries)
-    required_software = ["scriptpath", "R", "mummer", "genoPlotR"]
+    required_software = ["R", "mummer", "genoPlotR"]
     if any(r not in names for r in required_software):
         r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
     python_path = sys.executable
-    script_location = software("scriptpath")
+    # scriptpath defaults to this script's own directory; toolpath defaults to scriptpath
+    script_location = software("scriptpath") if "scriptpath" in names else os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(script_location):
         r_stop("Error: script location directory specified in the software paths file doesn't exist", "\n")
+    tool_location = software("toolpath") if "toolpath" in names else script_location
+    if not os.path.isdir(tool_location):
+        r_stop("Error: tool location directory specified in the software paths file doesn't exist", "\n")
     kmercontigalignmergepath = script_location + "/kmercontigalignmerge.py"
     if not os.path.exists(kmercontigalignmergepath):
         r_stop("Error: kmercontigalignmerge.py path doesn't exist - check pipeline script location in the software file", "\n")
@@ -645,9 +649,9 @@ def run(script_path, description, merge_hook=None):
     if not mummer_path.endswith("/"):
         mummer_path = mummer_path + "/"
 
-    sortstringspath = script_location + "/sort_strings"
+    sortstringspath = tool_location + "/sort_strings"
     if not os.path.exists(sortstringspath):
-        r_stop("Error: sort_strings path doesn't exist - check pipeline script location in the software file", "\n")
+        r_stop("Error: sort_strings path doesn't exist - check pipeline tool location in the software file", "\n")
 
     # Report variables
     r_cat("#############################################", "\n")
