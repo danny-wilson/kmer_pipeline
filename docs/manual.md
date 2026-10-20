@@ -1408,14 +1408,18 @@ container, Nextflow 22.04.5 is the tested version.
 
 **Testing**
 
-The Singularity examples were tested on the University of Oxford Biomedical Research Computing
-facility, which is supported by the Wellcome Trust Core Award Grant Number 203141/Z/16/Z and the
-NIHR Oxford BRC: Nextflow inside and outside the container (maxp 2) on a node with Intel Xeon
-E5-2640 v4 CPUs @ 2.40GHz, and Nextflow with the SLURM executor (maxp 30), using Apptainer
-1.4.5 (its `singularity` command), Java OpenJDK 11.0.20 and Nextflow 22.04.5 on Rocky Linux
-8.10. The Docker examples (Nextflow inside and outside the container) and the Jupyter notebook
-were tested on an Apple Silicon Mac under amd64 emulation, using Docker Desktop 4.20.1 (Docker
-24.0.2), Java (Temurin) 17.0.20 and Nextflow 22.04.5. Docker on a cluster has not been tested.
+The Apptainer/Singularity examples (launcher, host, and host-on-a-cluster) in this release were
+each run as written on the University of Oxford Biomedical Research Computing facility (Wellcome
+Trust Core Award Grant Number 203141/Z/16/Z, NIHR Oxford BRC), using Apptainer 1.4.5 (its
+`singularity` command), Java OpenJDK 11.0.20 and Nextflow 22.04.5 on Rocky Linux 8.10; the
+cluster example ran as real Slurm jobs. The `docker` profile and the launcher's Docker form are
+checked instead by CI (`.github/workflows/docker-smoke.yml`), on every change that could affect
+them, since Docker is not available on the facility above; Docker on a cluster is not covered at
+all — compute nodes on a shared cluster rarely run a Docker daemon available to ordinary users,
+which is why Apptainer/Singularity, not Docker, is the normal choice there. Releases up to
+2026-10-06 additionally tested the Docker examples and the Jupyter notebook on an Apple Silicon
+Mac under amd64 emulation (Docker Desktop 4.20.1, Docker 24.0.2, Java (Temurin) 17.0.20, Nextflow
+22.04.5); that testing predates this release's container model and is not re-verified here.
 Each example run gave the same results. The image is a 1.9 GiB download.
 
 ## Full list of pipeline scripts
