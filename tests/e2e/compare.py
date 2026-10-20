@@ -8,7 +8,12 @@ patterns in order; the first match decides its class:
   exact   identical content (after gzip decompression for .gz)
   path    identical after replacing a run's own base_dir with the literal
           string "@BASE_DIR@" on each side (--prefix-a/--prefix-b); a fixed,
-          literal substring substitution, not a path-canonicalization pass
+          literal substring substitution, not a path-canonicalization pass.
+          --extra-a/--extra-b (each "OLD=NEW") apply one further literal
+          substring substitution per side, after the @BASE_DIR@ one -- for
+          comparing two runs that also differ in a data-directory name below
+          base_dir itself (e.g. the launcher's own clone layout vs the e2e
+          harness's), not just in base_dir's own spelling (Part D, D3).
   strip   identical after deleting lines that match the pattern's regex
   numeric identical apart from numbers that differ by at most the relative
           tolerance in the regex column
@@ -94,16 +99,21 @@ def classify(rel, rules):
     return next((r for r in rules if fnmatch.fnmatch(rel, r[0])), None)
 
 
-def normalize_path_class(data, prefix):
-    """Replace a literal base_dir prefix with "@BASE_DIR@". A fixed substring
-    substitution only -- no canonicalization, so an un-collapsed double slash
-    in the golden (e.g. "kmergwas//") survives unchanged on both sides."""
-    if not prefix:
-        return data
-    return data.replace(prefix.encode(), b"@BASE_DIR@")
+def normalize_path_class(data, prefix, extra=None):
+    """Replace a literal base_dir prefix with "@BASE_DIR@", then optionally one
+    further literal (old, new) substring substitution (extra). Both are fixed
+    substring substitutions only -- no canonicalization, so an un-collapsed
+    double slash in the golden (e.g. "kmergwas//") survives unchanged on both
+    sides."""
+    if prefix:
+        data = data.replace(prefix.encode(), b"@BASE_DIR@")
+    if extra:
+        old, new = extra
+        data = data.replace(old.encode(), new.encode())
+    return data
 
 
-def compare(dir_a, dir_b, manifest_path, prefix_a=None, prefix_b=None):
+def compare(dir_a, dir_b, manifest_path, prefix_a=None, prefix_b=None, extra_a=None, extra_b=None):
     rules = read_manifest(manifest_path)
     files_a, files_b = list_files(dir_a), list_files(dir_b)
     problems, counts = [], {}
@@ -127,7 +137,8 @@ def compare(dir_a, dir_b, manifest_path, prefix_a=None, prefix_b=None):
         if cls == "strip":
             a, b = strip_lines(a, regex), strip_lines(b, regex)
         if cls == "path":
-            a, b = normalize_path_class(a, prefix_a), normalize_path_class(b, prefix_b)
+            a = normalize_path_class(a, prefix_a, extra_a)
+            b = normalize_path_class(b, prefix_b, extra_b)
         if cls == "numeric":
             if not numeric_equal(a, b, regex):
                 problems.append(f"DIFFERS ({cls}) {rel}: {first_difference(a, b)}")
@@ -144,8 +155,15 @@ def main():
     ap.add_argument("--manifest", default=os.path.join(HERE, "manifest.tsv"))
     ap.add_argument("--prefix-a", default=None, help="dir_a's own base_dir, for the 'path' class")
     ap.add_argument("--prefix-b", default=None, help="dir_b's own base_dir, for the 'path' class")
+    ap.add_argument("--extra-a", default=None, metavar="OLD=NEW",
+                     help="one further literal substitution for dir_a's 'path' class files, after @BASE_DIR@")
+    ap.add_argument("--extra-b", default=None, metavar="OLD=NEW",
+                     help="one further literal substitution for dir_b's 'path' class files, after @BASE_DIR@")
     args = ap.parse_args()
-    problems, counts, total = compare(args.dir_a, args.dir_b, args.manifest, args.prefix_a, args.prefix_b)
+    extra_a = tuple(args.extra_a.split("=", 1)) if args.extra_a else None
+    extra_b = tuple(args.extra_b.split("=", 1)) if args.extra_b else None
+    problems, counts, total = compare(args.dir_a, args.dir_b, args.manifest, args.prefix_a, args.prefix_b,
+                                       extra_a, extra_b)
 
     for p in problems:
         print(p)
