@@ -133,7 +133,7 @@ apptainer exec docker://dannywilson/kmer_pipeline@sha256:<digest> \
 **With Docker:**
 
 ```sh launcher-docker
-docker run --rm -u $(id -u):$(id -g) -e NXF_HOME=/tmp/.nextflow \
+docker run --rm --cgroupns=host -u $(id -u):$(id -g) -e NXF_HOME=/tmp/.nextflow \
     -v "$PWD":"$PWD" -w "$PWD" \
     dannywilson/kmer_pipeline@sha256:<digest> \
     nextflow run kmer_pipeline.nf -params-file example/tb20_nucleotide31.yaml
@@ -141,7 +141,9 @@ docker run --rm -u $(id -u):$(id -g) -e NXF_HOME=/tmp/.nextflow \
 
 *`-u $(id -u):$(id -g)` makes the output files yours, not root's; because that also makes the
 image's own `$HOME` unwritable, `NXF_HOME` points Nextflow's cache somewhere it can write
-instead.* Apptainer runs as your own user already, so it needs neither.
+instead. `--cgroupns=host` avoids a JDK 11/cgroups-v2 `NullPointerException` (confirmed in CI,
+`jdk.internal.platform.cgroupv2.CgroupV2Subsystem.getInstance`) when Nextflow's own startup reads
+container resource limits.* Apptainer runs as your own user already, so it needs neither.
 
 *Replace `<digest>` with whatever `nextflow.config` currently pins (or your own build/pull).* This
 runs the bundled `example/tb20_nucleotide31.yaml` dataset (the CRYPTIC 2022 TB data, nucleotide
