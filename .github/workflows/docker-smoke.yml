@@ -85,7 +85,8 @@ jobs:
           docker run --rm -u $(id -u):$(id -g) -e NXF_HOME=/tmp/.nextflow -e NXF_OPTS=-Dnxf.ansi.log=false \
             -v "$PWD":"$PWD" -w "$PWD" \
             kmer_pipeline:ci \
-            nextflow run kmer_pipeline.nf -ansi-log false -params-file example/ci/tb20_nucleotide31.yaml
+            nextflow run kmer_pipeline.nf -ansi-log false -params-file example/ci/tb20_nucleotide31.yaml \
+            || { echo "::group::.nextflow.log"; cat .nextflow.log || true; echo "::endgroup::"; exit 1; }
           test -s example/ci/run/tb20_nucleotide31.report.html
           rm -rf example/ci/run work .nextflow*
 
