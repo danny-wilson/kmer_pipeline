@@ -126,9 +126,16 @@ installed. This is the "quickstart" path: no `-profile`, no `--container` — th
 **With Apptainer/Singularity:**
 
 ```sh launcher-apptainer
-apptainer exec docker://dannywilson/kmer_pipeline@sha256:<digest> \
+apptainer exec --containall --cleanenv docker://dannywilson/kmer_pipeline@sha256:<digest> \
     nextflow run kmer_pipeline.nf -params-file example/tb20_nucleotide31.yaml
 ```
+
+*`--containall --cleanenv` isolates the container from the host's own environment and filesystem
+(matching what `-profile apptainer` already does for you via `nextflow.config`) — without it,
+Apptainer's default auto-mounts can leak through host state (confirmed: host fontconfig/font-cache
+state, causing every figure PNG to render with a small, consistent pixel-level difference from a
+`-profile apptainer` run of the same image and data — not a data or correctness difference, found
+and fixed at Part D's own D3 check).*
 
 **With Docker:**
 

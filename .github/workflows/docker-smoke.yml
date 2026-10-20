@@ -3,8 +3,12 @@ name: docker-smoke
 # PLAN.md Part C, C1 (OQ-S3-6: a CI smoke step, not a staging registry or deferred tests/
 # wiring): checks only that the two bootstrapping paths (the launcher image, and -profile docker)
 # actually work end to end -- not pipeline correctness, which the real goldens/tests/e2e cover
-# elsewhere. Builds the Dockerfile itself (image.yml's own publish isn't available to pull from
-# before Part D, and OQ-S3-8 rejected a staging registry), loads it locally, and never pushes.
+# elsewhere. Pulls the real, published, pinned toolchain image (nextflow.config's own
+# params.container) rather than building the Dockerfile itself (Part D, D4, guards P58): before
+# Part D published a real image, this workflow had no registry copy to pull from (OQ-S3-8 rejected
+# a staging registry) and built its own throwaway copy instead; now that a real pinned digest
+# exists, testing against it directly is both faster and more representative than a parallel
+# rebuild that could itself drift from the real, published artefact.
 #
 # Separate from image.yml, whose path filter excludes exactly the paths this workflow triggers
 # on: a pipeline-code change (bin/, *.nf, nextflow.config, conf/**, example/**) doesn't rebuild
@@ -40,12 +44,6 @@ jobs:
       - name: Check out
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          df -h /
-
       # Host Nextflow, pinned to the exact version and checksum the Dockerfile itself installs
       # (22.04.5 -- OQ-S3-1) -- the -profile docker scenario below runs this, not the image's own
       # bundled copy, since a host without Nextflow at all is exactly what the launcher scenario
@@ -64,20 +62,17 @@ jobs:
           distribution: temurin
           java-version: '11.0.16+8'
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      # nextflow.config's own params.container (docker:// form, for Apptainer); this workflow
+      # needs the bare docker.io reference instead, same digest.
+      - name: Resolve the pinned image reference from nextflow.config
+        id: image
+        run: |
+          set -euxo pipefail
+          ref=$(grep -oP "docker://\K\S+(?=')" nextflow.config | head -1)
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
-      # Reads image.yml's own "main" build cache (if warm) but never writes to it: this is a
-      # throwaway local build, not part of that workflow's own cache lineage.
-      - name: Build the toolchain image (load only, no push)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          cache-from: type=gha,scope=main
-          tags: kmer_pipeline:ci
-          provenance: false
+      - name: Pull the pinned toolchain image
+        run: docker pull "${{ steps.image.outputs.ref }}"
 
       - name: Launcher scenario (docs/manual.md's own quickstart docker command, verbatim)
         run: |
@@ -85,30 +80,29 @@ jobs:
           docker run --rm --cgroupns=host -u $(id -u):$(id -g) \
             -e NXF_HOME=/tmp/.nextflow -e NXF_OPTS='-Dnxf.ansi.log=false -XX:-UseContainerSupport' \
             -v "$PWD":"$PWD" -w "$PWD" \
-            kmer_pipeline:ci \
+            "${{ steps.image.outputs.ref }}" \
             nextflow run kmer_pipeline.nf -ansi-log false -params-file example/ci/tb20_nucleotide31.yaml \
             || { echo "::group::.nextflow.log"; cat .nextflow.log || true; echo "::endgroup::"; exit 1; }
           test -s example/ci/run/tb20_nucleotide31.report.html
           rm -rf example/ci/run work .nextflow*
 
-      - name: Docker-profile scenario (host Nextflow, -profile docker)
+      - name: Docker-profile scenario (host Nextflow, -profile docker, nextflow.config's own pinned default)
         run: |
           set -euxo pipefail
           # Same JDK 11/cgroups-v2 NullPointerException as the launcher scenario, confirmed here
           # to hit plain host Nextflow too (no docker run wrapping at all) - a host JVM issue on
           # this runner, not specific to being inside a container.
           export NXF_HOME="$PWD/.nxf-docker-home" NXF_OPTS='-Dnxf.ansi.log=false -XX:-UseContainerSupport'
-          nextflow run kmer_pipeline.nf -ansi-log false -profile docker --container kmer_pipeline:ci \
+          nextflow run kmer_pipeline.nf -ansi-log false -profile docker \
             -params-file example/ci/tb20_nucleotide31.yaml
           test -s example/ci/run/tb20_nucleotide31.report.html
 
-      # Guards the same false-pass route P2 closed elsewhere: if this silently fell back to
-      # nextflow.config's own default params.container (the published, code-bearing 2026-10-06
-      # image) instead of the --container override above, the run could still "pass" without
-      # ever having exercised the image this workflow just built.
-      - name: Confirm the docker-profile run actually used the image just built
+      # Guards the same false-pass route P2 closed elsewhere: confirms the run actually used
+      # nextflow.config's own pinned default (no --container override above any more), not some
+      # other image reached by accident.
+      - name: Confirm the docker-profile run actually used the pinned image
         run: |
           set -euxo pipefail
           # Nextflow's own task directories (not params.workdir, a separate pipeline-internal
           # concept) default to work/<hash>/<hash> under the launch directory.
-          grep -rlq 'kmer_pipeline:ci' work/*/*/.command.run
+          grep -rlq -- "${{ steps.image.outputs.ref }}" work/*/*/.command.run

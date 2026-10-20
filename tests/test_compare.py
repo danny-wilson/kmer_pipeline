@@ -66,3 +66,21 @@ def test_double_slashes_in_the_prefixed_text_are_preserved_not_collapsed(tmp_pat
     problems, counts, total = compare.compare(dir_a, dir_b, manifest,
                                                prefix_a="/run/a/base", prefix_b="/elsewhere/b/base")
     assert problems == []
+
+
+def test_extra_a_maps_a_second_path_component_after_base_dir(tmp_path):
+    """D3's launcher-vs-profile check (PLAN.md Part D): two runs can differ in a
+    data-directory name below base_dir itself (the launcher clone's "example/"
+    vs the e2e harness's "tb20/"), not just in base_dir's own spelling."""
+    manifest = make_manifest(tmp_path)
+    dir_a, dir_b = str(tmp_path / "a"), str(tmp_path / "b")
+    write(dir_a, "f.txt", "/run/a/base/example/702.fa.gz\n")
+    write(dir_b, "f.txt", "/elsewhere/b/base/tb20/702.fa.gz\n")
+    problems, counts, total = compare.compare(dir_a, dir_b, manifest,
+                                               prefix_a="/run/a/base", prefix_b="/elsewhere/b/base",
+                                               extra_a=("example/", "tb20/"))
+    assert problems == []
+    # Mutant-sensitivity: without extra_a, the same inputs must still fail.
+    problems2, _, _ = compare.compare(dir_a, dir_b, manifest,
+                                       prefix_a="/run/a/base", prefix_b="/elsewhere/b/base")
+    assert any("f.txt" in p for p in problems2)
