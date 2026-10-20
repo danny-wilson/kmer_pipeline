@@ -72,11 +72,22 @@ cp tb20/id_file.orig tb20/id_file.txt
 config kmergwas "	minor_allele_threshold = 0.05"
 run f2 refused "changed since that run: minor_allele_threshold" "" "" -resume
 config kmergwas "	merge_wait_minutes = 200"
-# preflight only (operational parameter, not a result-affecting one, so everything else is
-# unchanged and fully reused): submitted==1, cached==every other task from the full run.
-run f3 ok "" 1 "$((FULL_TASK_COUNT - 1))" -resume
+# B10 finding, investigated (not a pipeline regression; neither cache directive nor these
+# processes' own script text were touched by the refactor): the original "submitted==1" here
+# assumed merge_wait_minutes touches only preflight. In fact: preflight/prepareGemma/cleanupGemma
+# are all `cache false` by deliberate design (3, always resubmit, every -resume); merge_wait_minutes
+# is itself interpolated into createfullkmerlist/stringlist2patternandkinship/kmercontigalignmerge's
+# own script text, a genuine, correct cache miss for those 3 x2 tasks = 6; and once
+# kmercontigalignmerge reruns, Nextflow's default (non-"deep") caching cascades the invalidation
+# through plotFigures/genReport/genGeneReport(x20)/genUnmappedReport = 23 more, even though their
+# own script text and logical inputs are unchanged - an inefficiency (more compute than strictly
+# needed), not an output-correctness problem, confirmed deterministic (reproduced twice).
+# 3 + 6 + 23 = 32 submitted, matching FULL_TASK_COUNT - 63 exactly.
+run f3 ok "" 32 "$((FULL_TASK_COUNT - 32))" -resume
 config kmergwas ""; echo "resume = true" >> nextflow.config
-run g1 ok "" 1 "$((FULL_TASK_COUNT - 1))"
+# Nothing changed at all here, so only the 3 deliberately-`cache false` processes resubmit
+# (preflight, prepareGemma, cleanupGemma) - the original "submitted==1" missed the other two.
+run g1 ok "" 3 "$((FULL_TASK_COUNT - 3))"
 config kmergwas "	minor_allele_threshold = 0.05"; echo "resume = true" >> nextflow.config
 run g2 refused "changed since that run" "" ""
 config kmergwas_other ""
