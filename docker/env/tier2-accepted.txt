@@ -1,0 +1,27 @@
+# Tier-2 differences accepted between this image and the 2026-10-06 reference
+# (docker/env/dpkg.txt etc.), per PLAN.md Part A (A4/A9) and OQ-S3-9. Each entry below was individually
+# checked against the Tier-1/2 diff report in image.yml's "Tier-1 equivalence" step and judged to be
+# ordinary Ubuntu point-release drift in packages this Dockerfile does not pin by exact version, not a
+# consequence of any pin this project cares about (P7's openjdk-11/gcc-9/g++-9 pins, Nextflow, remotes).
+# Re-derived and re-checked at D1; not re-captured from a later build (guards P24).
+#
+# package                 2026-10-06            this build             reason accepted
+ca-certificates-java      20190405ubuntu1        20190405ubuntu1.1       Ubuntu security point release; not pinned by this Dockerfile.
+gawk                      1:5.0.1+dfsg-1         1:5.0.1+dfsg-1ubuntu0.1 Ubuntu security point release; not pinned by this Dockerfile.
+libgif7                   5.1.9-1                5.1.9-1ubuntu0.1        Ubuntu security point release; not pinned by this Dockerfile.
+libx11-6 / libx11-dev     2:1.6.9-2ubuntu1.2      2:1.6.9-2ubuntu1.6      Ubuntu security point release; not pinned by this Dockerfile.
+
+# dpkg selection-state flag only ("ii" -> "hi"), same package/version: expected and intentional.
+# apt-mark hold is exactly how A2's fix keeps these packages pinned against the later default-jdk/g++
+# meta-package install (see the Dockerfile comment above the pin block); the flag change is the visible
+# proof the hold is in effect, not a discrepancy.
+gcc-9-base                hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+gcc-9                     hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+g++-9                     hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+openjdk-11-jdk            hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+openjdk-11-jdk-headless   hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+openjdk-11-jre            hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+openjdk-11-jre-headless   hold flag only          hold flag only          Intentional: apt-mark hold (version identical).
+
+# tool-versions.txt: a trailing blank line present in the 2026-10-06 reference capture is absent here.
+# Cosmetic only (no tool's version-string content differs); not re-captured retroactively (guards P24).
