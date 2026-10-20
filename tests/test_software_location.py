@@ -410,7 +410,12 @@ def test_plotmanhattan_no_scriptpath_defaults_to_own_directory(tmp_path):
         (tmp_path / (os.path.basename(prefix) + suffix)).write_text("")
     (analysis_dir / "x_nucleotide31.patternmerge.presenceCount.txt.gz").write_text("")
     scriptdir = _isolated_script_dir(tmp_path, "plotManhattan.py", [])
-    for mod in ("sequence_functions.py", "Manhattan_functions.py", "alignmentfunctions.py", "kmercontigalignonly.py", "rcompat.py"):
+    # rcompat.py is not listed here: _isolated_script_dir() already copies it (every script
+    # imports it) - re-copying over the same destination fails if the source's own permissions
+    # (preserved by shutil.copy) are read-only, as a git-archive-staged checkout's are (found
+    # running this suite against a staged commit for the first time, D3a - not previously
+    # exercised, since every earlier run used a live checkout instead).
+    for mod in ("sequence_functions.py", "Manhattan_functions.py", "alignmentfunctions.py", "kmercontigalignonly.py"):
         shutil.copy(os.path.join(SCRIPTS_DIR, mod), scriptdir / mod)
     sw = _software_file(tmp_path, [("R", "/usr/bin/R"), ("genoPlotR", "/usr/bin"), ("blast", "/usr/bin")])
     result = _run(scriptdir / "plotManhattan.py",
