@@ -82,7 +82,8 @@ jobs:
       - name: Launcher scenario (docs/manual.md's own quickstart docker command, verbatim)
         run: |
           set -euxo pipefail
-          docker run --rm --cgroupns=host -u $(id -u):$(id -g) -e NXF_HOME=/tmp/.nextflow -e NXF_OPTS=-Dnxf.ansi.log=false \
+          docker run --rm --cgroupns=host -u $(id -u):$(id -g) \
+            -e NXF_HOME=/tmp/.nextflow -e NXF_OPTS='-Dnxf.ansi.log=false -XX:-UseContainerSupport' \
             -v "$PWD":"$PWD" -w "$PWD" \
             kmer_pipeline:ci \
             nextflow run kmer_pipeline.nf -ansi-log false -params-file example/ci/tb20_nucleotide31.yaml \
