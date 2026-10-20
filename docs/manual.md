@@ -484,6 +484,13 @@ version installed as your default). It needs Java 11-17 on the host — Java 21 
 launcher path (**Example commands: launcher**, above) sidesteps this: the image bundles its own
 pinned Java and Nextflow.
 
+**If Nextflow fails immediately with `Unexpected error [NullPointerException]`** naming
+`CgroupV2Subsystem` or similar: seen on GitHub Actions' own `ubuntu-latest` runners (both plain
+host Nextflow and inside a container there), a JDK 11/cgroups-v2 incompatibility in the JVM's own
+container-resource detection, which Nextflow does not need. Set
+`NXF_OPTS=-XX:-UseContainerSupport` (combine with any other `NXF_OPTS` value, space-separated)
+before running Nextflow.
+
 Tips:
 
 - **Checks before running**: the inputs are checked before anything runs, and every problem is

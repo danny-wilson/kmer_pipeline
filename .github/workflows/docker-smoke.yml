@@ -94,7 +94,10 @@ jobs:
       - name: Docker-profile scenario (host Nextflow, -profile docker)
         run: |
           set -euxo pipefail
-          export NXF_HOME="$PWD/.nxf-docker-home" NXF_OPTS=-Dnxf.ansi.log=false
+          # Same JDK 11/cgroups-v2 NullPointerException as the launcher scenario, confirmed here
+          # to hit plain host Nextflow too (no docker run wrapping at all) - a host JVM issue on
+          # this runner, not specific to being inside a container.
+          export NXF_HOME="$PWD/.nxf-docker-home" NXF_OPTS='-Dnxf.ansi.log=false -XX:-UseContainerSupport'
           nextflow run kmer_pipeline.nf -ansi-log false -profile docker --container kmer_pipeline:ci \
             -params-file example/ci/tb20_nucleotide31.yaml
           test -s example/ci/run/tb20_nucleotide31.report.html
