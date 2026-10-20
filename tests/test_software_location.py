@@ -387,3 +387,37 @@ def test_createfullkmerlist_no_scriptpath_defaults_to_own_directory(tmp_path):
     assert "doesn't exist" not in result.stderr, result.stderr
     assert "missing required software path" not in result.stderr, result.stderr
     assert "nucleotidekmermerge.py path doesn't exist" not in result.stderr, result.stderr
+
+
+def test_plotmanhattan_no_scriptpath_defaults_to_own_directory(tmp_path):
+    """plotManhattan.py had the identical gap to createfullkmerlist.py above (found in the same
+    B10 run, same root cause): required_software hard-included "scriptpath" with no fallback,
+    unlike every other script. Minimal inputs, just enough to reach the software-file check (the
+    real figure-drawing code after it is not exercised here)."""
+    analysis_dir = tmp_path / "analysis"
+    analysis_dir.mkdir()
+    ref_fa = tmp_path / "ref.fa"
+    ref_fa.write_text(">ref\nACGT\n")
+    ref_gb = tmp_path / "ref.gb"
+    ref_gb.write_text("LOCUS ref\n")
+    gene_lookup_file = tmp_path / "genes.txt"
+    gene_lookup_file.write_text("id\tname\n")
+    id_file = tmp_path / "id_file.txt"
+    id_file.write_text("id\n1\n")
+    prefix = str(tmp_path / "x")
+    for suffix in (".patternmerge.patternKeySize.txt", ".patternmerge.patternIndex.txt.gz",
+                   ".kmermerge.txt.gz", ".ref_t90.kmeralignmerge.txt.gz", ".ref_t90.kmeralignmerge.count.txt.gz"):
+        (tmp_path / (os.path.basename(prefix) + suffix)).write_text("")
+    (analysis_dir / "x_nucleotide31.patternmerge.presenceCount.txt.gz").write_text("")
+    scriptdir = _isolated_script_dir(tmp_path, "plotManhattan.py", [])
+    for mod in ("sequence_functions.py", "Manhattan_functions.py", "alignmentfunctions.py", "kmercontigalignonly.py", "rcompat.py"):
+        shutil.copy(os.path.join(SCRIPTS_DIR, mod), scriptdir / mod)
+    sw = _software_file(tmp_path, [("R", "/usr/bin/R"), ("genoPlotR", "/usr/bin"), ("blast", "/usr/bin")])
+    result = _run(scriptdir / "plotManhattan.py",
+                  "--output-prefix", "x", "--analysis-dir", str(analysis_dir), "--kmerfile-prefix", prefix,
+                  "--ref-gb", str(ref_gb), "--ref-fa", str(ref_fa), "--gene-lookup-file", str(gene_lookup_file),
+                  "--id-file", str(id_file), "--nucmerident", "90", "--plot-min-genomes", "1",
+                  "--kmer-type", "nucleotide", "--kmer-length", "31", "--minor-allele-threshold", "0.01",
+                  "--software-file", sw, "--blastident", "70", "--ngenes", "20")
+    assert "script location directory" not in result.stderr, result.stderr
+    assert "missing required software path" not in result.stderr, result.stderr

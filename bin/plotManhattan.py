@@ -278,13 +278,17 @@ def run(args, bowtie):
     names = [rcompat.r_as_character(v) for v in software_paths["name"]]
     paths = [rcompat.r_as_character(v) for v in software_paths["path"]]
     # R draws the figures (plot_figures.R, run by Nextflow after this step), so its entry is required
-    required_software = ["scriptpath", "genoPlotR", "blast", "R"]
+    required_software = ["genoPlotR", "blast", "R"]
     if any(r not in names for r in required_software):
         r_stop("Error: missing required software path in the software file - requires " + ", ".join(required_software), "\n")
 
     def software(name):
         return [pth for nm, pth in zip(names, paths) if nm.lower() == name][0]
-    script_location = software("scriptpath")
+    # scriptpath defaults to this script's own directory, same as every other script's sibling-
+    # module lookup (createfullkmerlist.py had the identical gap, B10) - this one was also missed
+    # when bin/ became native and scriptpath stopped being required everywhere else (B2).
+    script_location = software("scriptpath") if "scriptpath" in [n.lower() for n in names] \
+        else os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(script_location):
         r_stop("Error: script location directory specified in the software paths file doesn't exist", "\n")
     for mod in ("sequence_functions.py", "Manhattan_functions.py", "alignmentfunctions.py"):
