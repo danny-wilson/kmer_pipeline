@@ -18,6 +18,25 @@ import groovy.json.JsonSlurper
 REPO_CONFIG_KEYS = ['container', 'extra_binds'] as Set
 USER_KEYS = new TreeSet(params.keySet() - REPO_CONFIG_KEYS)
 
+// OQ-S3-5 (PLAN.md Part C, C2 - a clean break with a guided migration error, not silent
+// acceptance or a deprecation period): releases up to 2026-10-06 built their own container
+// command from these; nextflow.config's -profile/-params-file/-c (Part B) replaced all of it, so
+// a config still setting one of these would silently run under different containerisation than
+// the user intended. Checked first, before anything else in the script runs (guards P27-adjacent:
+// the point is to fail loudly here rather than proceed on a half-migrated config).
+LEGACY_CONTAINER_KEYS = ['container_type', 'container_file', 'container_args', 'container_cmd',
+	'container_mount', 'container_script_dir'] as Set
+def checkLegacyContainerKeys() {
+	def found = new TreeSet(params.keySet().intersect(LEGACY_CONTAINER_KEYS))
+	if(found.isEmpty()) return
+	throw new Exception("${found.join(', ')} ${found.size() > 1 ? 'are' : 'is'} no longer used.\n" +
+		"Releases from the idiomatic-Nextflow refactor on use Nextflow's own container support:\n" +
+		"  -profile apptainer   (or docker, slurm, sge)\n" +
+		"  -params-file example/tb20_nucleotide31.yaml\n" +
+		"See docs/manual.md, \"Migrating from releases up to 2026-10-06\".")
+}
+checkLegacyContainerKeys()
+
 // Set (once) inside the preflight process's own .map{} closure, only once preflight.py's checks
 // have actually passed; read in workflow.onComplete to decide whether to update the run manifest
 // (guards P5(b) - see onComplete below).

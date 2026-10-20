@@ -36,11 +36,14 @@ Public License v3.0.
 ## Contents
 
 - [Installation](#installation)
-- [Example commands: Singularity](#example-commands-singularity)
+- [Example commands: launcher](#example-commands-launcher)
+- [Example commands: host, with Apptainer/Singularity](#example-commands-host-with-apptainersingularity)
+- [Example commands: host, with Apptainer/Singularity, on a cluster](#example-commands-host-with-apptainersingularity-on-a-cluster)
 - [Example commands: Docker](#example-commands-docker)
 - [Example output: Candidate gene analysis of rifampicin resistance in *M. tuberculosis*](#example-output-candidate-gene-analysis-of-rifampicin-resistance-in-m-tuberculosis)
 - [Running Nextflow](#running-nextflow)
-- [nextflow.config file](#nextflowconfig-file)
+- [Configuration](#configuration)
+- [Migrating from releases up to 2026-10-06](#migrating-from-releases-up-to-2026-10-06)
 - [Step 1 Count kmers](#step-1-count-kmers)
 - [Step 2 Create unique kmer list](#step-2-create-unique-kmer-list)
 - [Step 3 Create kmer presence/absence patterns and kinship matrix](#step-3-create-kmer-presenceabsence-patterns-and-kinship-matrix)
@@ -61,8 +64,7 @@ Public License v3.0.
 
 | Output |
 |---|
-| Docker image `dannywilson/kmer_pipeline:2026-10-06` or Singularity image `kmer_pipeline_2026-10-06.sif`, and the Nextflow pipeline `kmer_pipeline.nf`. |
-
+| A clone of this repository (`kmer_pipeline.nf`, `nextflow.config`, `bin/`, `example/`) and the toolchain image (`dannywilson/kmer_pipeline`, pulled as a Singularity/Apptainer `.sif` or used directly with Docker). |
 
 **Platform:** the image is built for x86-64 (amd64) Linux, as used by most servers, clusters and
 Intel Macs. On a Mac with Apple Silicon (arm64), Docker runs it under emulation, which works but
@@ -77,406 +79,148 @@ stops at its first step, which requires a step to print nothing on the error str
 Singularity (or its successor Apptainer, which provides the same `singularity` command) needs an
 x86-64 Linux machine.
 
-The examples edit files with `sed -i.bak`, which works with both the Linux and the macOS
-versions of `sed` and keeps a copy of each original file ending `.bak`.
+First, clone the repository. The pipeline code (`kmer_pipeline.nf`, `nextflow.config`, `bin/`,
+`example/`) comes from this clone, not from inside the image: the image holds only the toolchain
+(Python, R, GEMMA, the compiled C++ tools, and Nextflow itself), pinned by `nextflow.config`'s own
+`params.container` (by digest, so it never changes under you) and overridable with `--container`.
 
-**1. Singularity container: pull from DockerHub (*recommended*)**
-
----
-
-**Prerequisites**: Singularity installation, up to 10 GiB storage, 1 CPU.
-
-Open a terminal session where Singularity is available, e.g. via ssh.
-
-Build a Singularity image by pulling the DockerHub image.
-
-```sh install-singularity
-singularity pull -F docker://dannywilson/kmer_pipeline:2026-10-06
-```
-
-Copy the Nextflow pipeline to a local file
-
-```sh install-singularity
-singularity exec --containall --cleanenv kmer_pipeline_2026-10-06.sif cat \
-    /usr/local/bin/kmer_pipeline.nf > ./kmer_pipeline.nf
-```
-
-**2. Docker container: pull from DockerHub (*recommended*)**
-
----
-
-**Prerequisites**: Docker installation, up to 10 GiB storage, 1 CPU.
-
-Open a terminal session where Docker is available, e.g. via ssh.
-
-Pull the Docker image from DockerHub
-
-```sh install-docker
-docker pull dannywilson/kmer_pipeline:2026-10-06
-```
-
-Copy the Nextflow pipeline to a local file
-
-```sh install-docker
-docker run --rm dannywilson/kmer_pipeline:2026-10-06 cat /usr/local/bin/kmer_pipeline.nf > \
-    ./kmer_pipeline.nf
-```
-
-**3. Docker container: manual build (*not recommended*)**
-
----
-
-**Prerequisites**: Docker and Git installations, up to 10 GiB storage, 1 CPU.
-
-Open a terminal session where Docker and Git are available, e.g. via ssh.
-
-Create a local directory and clone a specific release of the repository
-
-```sh install-build
-git clone --depth 1 --branch 2026-10-06 https://github.com/danny-wilson/kmer_pipeline.git
-```
-
-Build the Docker image from the Dockerfile. The
-Dockerfile adds this release's scripts to the image of release 2022-10-26, which provides R, the
-external tools and the compiled C++ tools.
-
-```sh install-build
+```sh install-clone
+git clone --depth 1 -b <release> https://github.com/danny-wilson/kmer_pipeline.git
 cd kmer_pipeline
-docker build -t dannywilson/kmer_pipeline:2026-10-06 .
 ```
 
-Copy the Nextflow pipeline to a local file
+*Replace `<release>` with a release tag, e.g. `2026-10-06`, or omit `-b <release>` to get the
+latest `main`.*
 
-```sh install-build
-docker run --rm dannywilson/kmer_pipeline:2026-10-06 cat /usr/local/bin/kmer_pipeline.nf > \
-    ./kmer_pipeline.nf
+**Two ways to run it, depending on whether you have Nextflow installed:**
+
+- **You have Nextflow (22.04.5; Java 11-17), or can install it.** Run the clone directly with
+  `-profile apptainer` or `-profile docker`, against the image `nextflow.config` already pins.
+  This scales from a laptop to a cluster (`-profile apptainer,slurm` or `-profile apptainer,sge`),
+  and is the recommended path — see **Example commands: host, with Apptainer/Singularity** below.
+- **You don't have Nextflow and don't want to install it.** The image bundles its own pinned
+  Nextflow and Java, so Apptainer or Docker alone is enough — see **Example commands: launcher**
+  below. Simplest to try, but limited to one machine.
+
+Apptainer/Docker pull the pinned image automatically on first use (`NXF_SINGULARITY_CACHEDIR`
+controls where Apptainer caches it). To pull it yourself first — to inspect it, or to prime a
+shared cache before a cluster run — check `nextflow.config` for the exact image reference it
+currently pins, then
+
+```sh install-pull
+singularity pull -F docker://dannywilson/kmer_pipeline@sha256:<digest>
 ```
 
-## Example commands: Singularity
+or for Docker, `docker pull dannywilson/kmer_pipeline@sha256:<digest>`.
+
+## Example commands: launcher
 
 | Output |
 |---|
 | Executes the kmer pipeline end-to-end, producing one file ending `.report.html` and one directory ending `_kmergenealign_figures`. Together they contain a summary of the GWAS results readable in a web browser, including Manhattan plots, QQ plots, tables of significant regions and kmers. |
 
+The image runs its own bundled Nextflow, so nothing but Apptainer or Docker needs to be
+installed. This is the "quickstart" path: no `-profile`, no `--container` — the image you launch
+*is* the environment the pipeline runs in, so Nextflow needs no container support of its own.
 
-See the previous section for installation of the Singularity container.
+**With Apptainer/Singularity:**
 
-**1. Nextflow inside Singularity (*quick start*)**
-
----
-
-**Prerequisites**: Singularity, kmer_pipeline Singularity container
-
-*If you have Nextflow installed, it is recommended to start with Nextflow outside Singularity
-(next example). That makes it simpler to understand the configuration files, in which file paths
-are specified relative to the user file system, rather than the container file system as here.*
-
-Begin by defining the location, on the user file system, of the Singularity container. E.g.
-
-```sh singularity-inside
-CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-06.sif
+```sh launcher-apptainer
+apptainer exec docker://dannywilson/kmer_pipeline@sha256:<digest> \
+    nextflow run kmer_pipeline.nf -params-file example/tb20_nucleotide31.yaml
 ```
 
-*Replace the above with the full path and filename of the Singularity container on your system.*
+**With Docker:**
 
-Next locate the mountpoint: the directory to share with the container that allows it read/write
-access. This directory must contain, directly or through its subdirectories, all the input
-files, and the location for the output files in your analysis. E.g.
-
-```sh singularity-inside
-MNT_DIR=/users/username/kmer_pipeline
+```sh launcher-docker
+docker run --rm --cgroupns=host -u $(id -u):$(id -g) \
+    -e NXF_HOME=/tmp/.nextflow -e NXF_OPTS=-XX:-UseContainerSupport \
+    -v "$PWD":"$PWD" -w "$PWD" \
+    dannywilson/kmer_pipeline@sha256:<digest> \
+    nextflow run kmer_pipeline.nf -params-file example/tb20_nucleotide31.yaml
 ```
 
-*Replace the above with the full path of the desired mountpoint on your system.*
+*`-u $(id -u):$(id -g)` makes the output files yours, not root's; because that also makes the
+image's own `$HOME` unwritable, `NXF_HOME` points Nextflow's cache somewhere it can write
+instead. `NXF_OPTS=-XX:-UseContainerSupport` avoids a JDK 11/cgroups-v2 `NullPointerException`
+(confirmed in CI, `jdk.internal.platform.cgroupv2.CgroupV2Subsystem.getInstance`, hit when
+Nextflow's own startup reads container resource limits — `--cgroupns=host` alone did not reliably
+avoid it) by turning off the JVM's own container-resource detection, which Nextflow does not
+need.* Apptainer runs as your own user already, so it needs neither.
 
-Within the container, `MNT_DIR` will be visible as `/home/jovyan`. Within `MNT_DIR` create a
-subdirectory called `tb20` to act as the base directory for the example analysis; this is the
-`base_dir` that is specified in the example `nextflow.config`.
+*Replace `<digest>` with whatever `nextflow.config` currently pins (or your own build/pull).* This
+runs the bundled `example/tb20_nucleotide31.yaml` dataset (the CRYPTIC 2022 TB data, nucleotide
+k=31); swap in `example/tb20_protein11.yaml` for the protein k=11 equivalent, or your own params
+file (see [Configuration](#configuration)).
 
-```sh singularity-inside
-BASE_DIR=$MNT_DIR/tb20
-mkdir -p $BASE_DIR
-```
-
-Open an interactive bash shell within the container.
-
-```sh singularity-inside
-singularity exec --containall --cleanenv --home $MNT_DIR:/home/jovyan $CONTAINER bash
-```
-
-Now within the container, copy the example configuration file to the base directory, renaming it
-`nextflow.config`
-
-```sh singularity-inside:container
-cp /usr/share/kmer_pipeline/example/baremetal.nextflow.config ~/tb20/nextflow.config
-```
-
-Navigate to the base directory and launch the analysis; Nextflow automatically reads the
-`nextflow.config` file in the current directory.
-
-```sh singularity-inside:container
-cd tb20 && kmer_pipeline.nf
-```
-
-In testing, this took about 6 minutes with two CPUs. When the analysis
-is done, type `exit` to close the interactive container. The output files will be in `$BASE_DIR`
-on the user file system.
-
-To view the results, use a web browser to open the `*.report.html` file in `$BASE_DIR/kmergwas`
-(i.e. the location on the user file system implied by `analysis_dir` in `nextflow.config`). If
-downloading the results from a remote server, make sure to download all files matching
-`*report*` in `$BASE_DIR/kmergwas` plus the subdirectory `*_kmergenealign_figures`.
-
-***Adapting this example for your data:*** In this example, the entire analysis is run *within*
-the container. Output files are mutually visible because `$MNT_DIR` on the user file system is
-*mounted* to `/home/jovyan` on the container file system. For your own analysis, you need to:
-
-- Modify `nextflow.config` as required, for example varying file locations and setting `maxp` to
-  the number of CPUs available. Make sure `nextflow.config` is situated in the base directory,
-  from which you will launch Nextflow.
-- Modify the `id_file` specified in `nextflow.config` to contain your own sample IDs, genome
-  assembly paths, and phenotypes.
-- **NB: when running kmer_pipeline *inside* a container,** file locations in `nextflow.config`,
-  and the `paths` column in `id_file` must all contain the full absolute paths for the location
-  of genome assemblies on the *container file system* because **the container cannot directly
-  see the user file system**. For example, if the assembly
-  `/usr/username/kmer_pipeline/contigs/assembly1.fa.gz` is the full absolute path on the *user
-  file system*, and if `MNT_DIR=/usr/username/kmer_pipeline` then the full absolute path on the
-  *container file system* will be `/home/jovyan/contigs/assembly1.fa.gz`. Likewise, if
-  `nextflow.config` specifies `base_dir = "/home/jovyan/tb20"`, that implies the base directory
-  on the user file system will be `$MNT_DIR/tb20`.
-
-**2. Nextflow outside Singularity (*recommended on bare metal machines*)**
-
----
-
-**Prerequisites**: Nextflow, Singularity, kmer_pipeline Singularity container
-
-*In this approach, Singularity is called by Nextflow, and the contents of `nextflow.config` and
-`id_file` refer to files in the user file system, which is simpler. However, Nextflow must now be
-installed on the user machine. This approach is limited by the number of CPUs and the amount of
-RAM available on the user machine. For larger scale analysis, Nextflow on a cluster (next
-example) is recommended.*
-
-Begin by defining the location, on the user file system, of the Singularity container. E.g.
-
-```sh singularity-host
-CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-06.sif
-```
-
-*Replace the above with the full path and filename of the Singularity container on your system.*
-
-Next locate the base directory for the analysis. Nextflow will automatically make this the
-mountpoint: the directory to share with the container that allows it read/write access. This
-directory must contain, directly or through its subdirectories, all the input files, and the
-location for the output files in your analysis. E.g.
-
-```sh singularity-host
-BASE_DIR=/users/username/kmer_pipeline
-```
-
-*Replace the above with the full path of the desired base directory/mountpoint on your system.*
-
-If it does not already exist, create the base directory and a subdirectory called `tb20` to
-contain the example data.
-
-```sh singularity-host
-mkdir -p $BASE_DIR/tb20
-```
-
-Next extract the example files to `$BASE_DIR/tb20` in the user file system.
-
-```sh singularity-host
-cd $BASE_DIR/tb20 && singularity exec --containall --cleanenv $CONTAINER bash -c \
-    'cd /usr/share/kmer_pipeline/example && tar -c .' | tar -x
-```
-
-Now edit the example configuration file to point to the correct locations on the user file
-system. First edit the location of the container path:
-
-```sh singularity-host
-sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-06.sif,$CONTAINER,g" \
-    singularity.nextflow.config > $BASE_DIR/nextflow.config
-```
-
-Next substitute the correct base directory in the configuration file:
-
-```sh singularity-host
-sed -i.bak "s,YOUR_PATH_HERE,$BASE_DIR,g" $BASE_DIR/nextflow.config
-```
-
-The `id_file` must also be updated to give the location of the example genome assemblies on the
-user file system:
-
-```sh singularity-host
-sed -i.bak "s,/usr/share/kmer_pipeline/example/,$BASE_DIR/tb20/,g" $BASE_DIR/tb20/id_file.txt
-```
-
-Extract the kmer_pipeline Nextflow script to the base directory:
-
-```sh singularity-host
-singularity exec --containall --cleanenv $CONTAINER cat /usr/local/bin/kmer_pipeline.nf > \
-    $BASE_DIR/kmer_pipeline.nf
-```
-
-Navigate to the base directory and launch the analysis; Nextflow automatically reads the
-`nextflow.config` file in the current directory.
-
-```sh singularity-host
-cd $BASE_DIR && nextflow kmer_pipeline.nf
-```
-
-In testing, this took about 9 minutes with two CPUs. The output files
-will be in `$BASE_DIR` on the user file system.
-
-To view the results, use a web browser to open the `*.report.html` file in
-`$BASE_DIR/tb20/kmergwas` (i.e. the location on the user file system specified by
-`analysis_dir` in `nextflow.config`). If downloading the results from a remote server, make sure
-to download all files matching `*report*` in `$BASE_DIR/tb20/kmergwas` plus the subdirectory
+To view the results, open the `*.report.html` file that appears under `tb20_nucleotide31/`
+(`analysis_dir` in `example/tb20_nucleotide31.yaml`) in a web browser. If downloading the results
+from a remote server, download every file matching `*report*` plus the subdirectory
 `*_kmergenealign_figures`.
 
-***Adapting this example for your data:*** In this example, the user interacts with Nextflow
-directly, which handles calls to the container. The locations of input and output files are
-clear because in `nextflow.config` and `id_file` they are specified in full absolute paths on the
-*user file system*. For your own analysis, you need to:
+***Adapting this for your own data:*** copy `example/tb20_nucleotide31.yaml`, point
+`id_file`/`ref_fa`/`ref_gb`/`analysis_dir` at your own files (paths resolve relative to wherever
+you run `nextflow run` from), and set `maxp` to the CPUs you want to use.
 
-- Modify `nextflow.config` as required, for example varying file locations and setting `maxp` to
-  the number of CPUs available. Make sure `nextflow.config` is situated in the base directory,
-  from which you will launch Nextflow.
-- Modify the `id_file` specified in `nextflow.config` to contain your own sample IDs, genome
-  assembly paths, and phenotypes.
+## Example commands: host, with Apptainer/Singularity
 
-Refer to [nextflow.config file](#nextflowconfig-file) for an explanation of all parameters in
-`nextflow.config`.
+| Output |
+|---|
+| Executes the kmer pipeline end-to-end, producing one file ending `.report.html` and one directory ending `_kmergenealign_figures`. Together they contain a summary of the GWAS results readable in a web browser, including Manhattan plots, QQ plots, tables of significant regions and kmers. |
 
-**3. Nextflow on a cluster using Singularity (*recommended at scale*)**
+With Nextflow installed on the host, Nextflow itself calls Apptainer/Singularity once per process,
+rather than running everything inside one long-lived container session. `base_dir` and the
+repository clone are bound into the container at their own paths (no translation between a host
+and a container spelling of a path, unlike pre-2026-10 releases — see
+[Migrating from releases up to 2026-10-06](#migrating-from-releases-up-to-2026-10-06)).
 
----
-
-**Prerequisites**: Cluster environment supported by Nextflow (e.g. Sun Grid Engine, SLURM),
-Nextflow, Singularity, kmer_pipeline Singularity container
-
-*This approach is recommended for analysis at scale (e.g. hundreds or more genomes). However, for
-troubleshooting, the simpler approach of the previous example is suggested (Nextflow outside
-Singularity), starting with ensuring that the example analysis can be run. Like in the previous
-example, all file names are specified with full absolute paths on the user file system.*
-
-Begin by defining the location, on the user file system, of the Singularity container. E.g.
-
-```sh singularity-cluster
-CONTAINER=/users/username/kmer_pipeline/kmer_pipeline_2026-10-06.sif
+```sh host-apptainer
+nextflow run kmer_pipeline.nf -profile apptainer -params-file example/tb20_nucleotide31.yaml
 ```
 
-*Replace the above with the full path and filename of the Singularity container on your system.*
+In testing, this took about 6 minutes with two CPUs (`maxp: 2`, the example file's own default).
+The output files are in `tb20_nucleotide31/` (`analysis_dir`).
 
-Next locate the base directory for the analysis. Nextflow will automatically make this the
-mountpoint: the directory to share with the container that allows it read/write access. This
-directory must contain, directly or through its subdirectories, all the input files, and the
-location for the output files in your analysis. E.g.
+***Adapting this for your own data:*** copy `example/tb20_nucleotide31.yaml`, as above, and keep it
+beneath `base_dir` with your other inputs. If an input or output needs to live outside `base_dir`
+entirely — for example an assembly store shared read-only across a cluster — add it to
+`params.extra_binds` in your own `-c` file (see `example/site.config` and
+[Configuration](#configuration)); every input and output must be beneath `base_dir` or named there.
 
-```sh singularity-cluster
-BASE_DIR=/users/username/kmer_pipeline
+## Example commands: host, with Apptainer/Singularity, on a cluster
+
+| Output |
+|---|
+| Executes the kmer pipeline end-to-end, producing one file ending `.report.html` and one directory ending `_kmergenealign_figures`. Together they contain a summary of the GWAS results readable in a web browser, including Manhattan plots, QQ plots, tables of significant regions and kmers. |
+
+**Prerequisites**: a cluster environment supported by Nextflow (Slurm or Sun Grid Engine-like;
+other executors are supported by Nextflow but not wired into `nextflow.config`'s own profiles),
+Nextflow and Apptainer/Singularity on the submission host.
+
+Add the `slurm` or `sge` profile (these set only the executor name) alongside `apptainer`, and
+supply your own site file for anything site-specific — the queue/partition name, resource
+requests, and `maxp`:
+
+```sh host-apptainer-cluster-site
+cp example/site.config mysite.config
+# edit mysite.config: uncomment and set process.queue / process.clusterOptions,
+# and executor.queueSize / executor.cpus (both = params.maxp)
 ```
 
-*Replace the above with the full path of the desired base directory/mountpoint on your system.*
-
-If it does not already exist, create the base directory and a subdirectory called `tb20` to
-contain the example data.
-
-```sh singularity-cluster
-mkdir -p $BASE_DIR/tb20
+```sh host-apptainer-cluster
+nextflow run kmer_pipeline.nf -profile apptainer,slurm -c mysite.config \
+    -params-file example/tb20_nucleotide31.yaml --maxp 30
 ```
 
-Next extract the example files to `$BASE_DIR/tb20` in the user file system.
+*Use `-profile apptainer,sge` for Sun Grid Engine-like systems.* `maxp` above the number of
+genomes gains nothing; not every step parallelizes across all of `maxp` (some are bounded by the
+number of genomes). In testing, 30 genomes took about 8 minutes with `maxp: 30`, though cluster
+queue time varies.
 
-```sh singularity-cluster
-cd $BASE_DIR/tb20 && singularity exec --containall --cleanenv $CONTAINER bash -c \
-    'cd /usr/share/kmer_pipeline/example && tar -c .' | tar -x
-```
-
-Now edit the example configuration file to point to the correct locations on the user file
-system. First edit the location of the container path:
-
-```sh singularity-cluster
-sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-06.sif,$CONTAINER,g" sge.nextflow.config \
-    > $BASE_DIR/nextflow.config
-```
-
-Next substitute the correct base directory in the configuration file:
-
-```sh singularity-cluster
-sed -i.bak "s,YOUR_PATH_HERE,$BASE_DIR,g" $BASE_DIR/nextflow.config
-```
-
-Note the addition of a `process` section in `nextflow.config` which was absent from the previous
-example; this is the only difference in configuration between the two examples. The `process`
-section contains two parameters, `executor` and `queue`. **These must be customized for your
-system, *particularly the queue name*.** Specify the type of cluster, e.g. "sge" or "slurm" and
-the queue (or partition) name; refer to the
-[Nextflow documentation](https://www.nextflow.io/docs/latest/executor.html) for further details.
-
-```sh singularity-cluster
-EXECUTOR="sge"
-QUEUE="short.qc"
-```
-
-Another difference compared to the previous example is that `maxp` is set to `30`, the number of
-genomes. If you have more than 30 CPUs available, you could increase `maxp`, although the gain on
-the example data is likely to be marginal. Note that not all steps in kmer_pipeline can utilize
-all available CPUs. For example, the degree of parallelization in some steps is determined by the
-number of genomes.
-
-Now substitute your customized values into `nextflow.config`:
-
-```sh singularity-cluster
-sed -i.bak "s,sge,$EXECUTOR,g" $BASE_DIR/nextflow.config
-sed -i.bak "s,short.qc,$QUEUE,g" $BASE_DIR/nextflow.config
-```
-
-The `id_file` must also be updated to give the location of the example genome assemblies on the
-user file system:
-
-```sh singularity-cluster
-sed -i.bak "s,/usr/share/kmer_pipeline/example/,$BASE_DIR/tb20/,g" $BASE_DIR/tb20/id_file.txt
-```
-
-Extract the kmer_pipeline Nextflow script to the base directory:
-
-```sh singularity-cluster
-singularity exec --containall --cleanenv $CONTAINER cat /usr/local/bin/kmer_pipeline.nf > \
-    $BASE_DIR/kmer_pipeline.nf
-```
-
-Navigate to the base directory and launch the analysis; Nextflow automatically reads the
-`nextflow.config` file in the current directory.
-
-```sh singularity-cluster
-cd $BASE_DIR && nextflow kmer_pipeline.nf
-```
-
-In testing, this took about 8 minutes with 30 CPUs, but the run time
-can be strongly influenced by time spent queuing on the cluster. The output files will be in
-`$BASE_DIR` on the user file system.
-
-To view the results, use a web browser to open the `*.report.html` file in
-`$BASE_DIR/tb20/kmergwas` (i.e. the location on the user file system specified by
-`analysis_dir` in `nextflow.config`). If downloading the results from a remote server, make sure
-to download all files matching `*report*` in `$BASE_DIR/tb20/kmergwas` plus the subdirectory
-`*_kmergenealign_figures`.
-
-***Adapting this example for your data:*** In this example, the user interacts with Nextflow
-directly, which handles calls to the container via the cluster management software. The
-locations of input and output files are clear because in `nextflow.config` and `id_file` they are
-specified in full absolute paths on the *user file system*. For your own analysis, you need to:
-
-- Modify `nextflow.config` as required, for example varying file locations, setting `maxp` to the
-  number of CPUs available, and ensuring the `queue` name is set correctly. Make sure
-  `nextflow.config` is situated in the base directory, from which you will launch Nextflow.
-- Modify the `id_file` specified in `nextflow.config` to contain your own sample IDs, genome
-  assembly paths, and phenotypes.
-
-Refer to [nextflow.config file](#nextflowconfig-file) for an explanation of all parameters in
-`nextflow.config`.
+***Adapting this for your own data:*** as above (copy and edit the params file), plus your own
+`mysite.config` for the queue and resource settings your cluster needs; refer to the
+[Nextflow documentation](https://www.nextflow.io/docs/latest/executor.html) for executor options
+beyond what `example/site.config` shows.
 
 ## Example commands: Docker
 
@@ -484,330 +228,21 @@ Refer to [nextflow.config file](#nextflowconfig-file) for an explanation of all 
 |---|
 | Executes the kmer pipeline end-to-end, producing one file ending `.report.html` and one directory ending `_kmergenealign_figures`. Together they contain a summary of the GWAS results readable in a web browser, including Manhattan plots, QQ plots, tables of significant regions and kmers. |
 
+See **Example commands: launcher** above for running Docker with no host Nextflow at all. With
+Nextflow installed on the host:
 
-See the earlier section for installation of the Docker container.
-
-**1. Nextflow inside Docker (*quick start*)**
-
----
-
-**Prerequisites**: Docker, kmer_pipeline Docker image
-
-*If you have Nextflow installed, it is recommended to start with Nextflow outside Docker (next
-example). That makes it simpler to understand the configuration files, in which file paths are
-specified relative to the user file system, rather than the container file system as here.*
-
-Begin by defining the name of the Docker image downloaded earlier. E.g.
-
-```sh docker-inside
-CONTAINER="dannywilson/kmer_pipeline:2026-10-06"
+```sh host-docker
+nextflow run kmer_pipeline.nf -profile docker -params-file example/tb20_nucleotide31.yaml
 ```
 
-*Replace the above with the name of the Docker image on your system, if different.*
-
-Next locate the mountpoint: the directory to share with the container that allows it read/write
-access. This directory must contain, directly or through its subdirectories, all the input
-files, and the location for the output files in your analysis. E.g.
-
-```sh docker-inside
-MNT_DIR=/users/username/kmer_pipeline
-```
-
-*Replace the above with the full path of the desired mountpoint on your system.*
-
-Within the container, `MNT_DIR` will be visible as `/home/jovyan`. Within `MNT_DIR` create a
-subdirectory called `tb20` to act as the base directory for the example analysis; this is the
-`base_dir` that is specified in the example `nextflow.config`.
-
-```sh docker-inside
-BASE_DIR=$MNT_DIR/tb20
-mkdir -p $BASE_DIR
-```
-
-Open an interactive bash shell within the container.
-
-```sh docker-inside
-docker run -it --rm -v $MNT_DIR:/home/jovyan $CONTAINER bash
-```
-
-Now within the container, copy the example configuration file to the base directory, renaming it
-`nextflow.config`
-
-```sh docker-inside:container
-cp /usr/share/kmer_pipeline/example/baremetal.nextflow.config ~/tb20/nextflow.config
-```
-
-Navigate to the base directory and launch the analysis; Nextflow automatically reads the
-`nextflow.config` file in the current directory.
-
-```sh docker-inside:container
-cd tb20 && kmer_pipeline.nf
-```
-
-In testing, this took about 7 minutes with two CPUs (on an Apple Silicon Mac, under
-emulation). When the analysis is done, type `exit` to close the interactive container. The output files will be in `$BASE_DIR`
-on the user file system.
-
-To view the results, use a web browser to open the `*.report.html` file in `$BASE_DIR/kmergwas`
-(i.e. the location on the user file system implied by `analysis_dir` in `nextflow.config`). If
-downloading the results from a remote server, make sure to download all files matching
-`*report*` in `$BASE_DIR/kmergwas` plus the subdirectory `*_kmergenealign_figures`.
-
-***Adapting this example for your data:*** In this example, the entire analysis is run *within*
-the container. Output files are mutually visible because `$MNT_DIR` on the user file system is
-*mounted* to `/home/jovyan` on the container file system. For your own analysis, you need to:
-
-- Modify `nextflow.config` as required, for example varying file locations and setting `maxp` to
-  the number of CPUs available. Make sure `nextflow.config` is situated in the base directory,
-  from which you will launch Nextflow.
-- Modify the `id_file` specified in `nextflow.config` to contain your own sample IDs, genome
-  assembly paths, and phenotypes.
-- **NB: when running kmer_pipeline *inside* a container,** file locations in `nextflow.config`,
-  and the `paths` column in `id_file` must all contain the full absolute paths for the location
-  of genome assemblies on the *container file system* because **the container cannot directly
-  see the user file system**. For example, if the assembly
-  `/usr/username/kmer_pipeline/contigs/assembly1.fa.gz` is the full absolute path on the *user
-  file system*, and if `MNT_DIR=/usr/username/kmer_pipeline` then the full absolute path on the
-  *container file system* will be `/home/jovyan/contigs/assembly1.fa.gz`. Likewise, if
-  `nextflow.config` specifies `base_dir = "/home/jovyan/tb20"`, that implies the base directory
-  on the user file system will be `$MNT_DIR/tb20`.
-
-**2. Nextflow outside Docker (*recommended on bare metal machines*)**
-
----
-
-**Prerequisites**: Nextflow, Docker, kmer_pipeline Docker image
-
-*In this approach, Docker is called by Nextflow, and the contents of `nextflow.config` and
-`id_file` refer to files in the user file system, which is simpler. However, Nextflow must now be
-installed on the user machine. This approach is limited by the number of CPUs and the amount of
-RAM available on the user machine. For larger scale analysis, Nextflow on a cluster (next
-example) is recommended.*
-
-Begin by defining the name of the Docker image downloaded earlier. E.g.
-
-```sh docker-host
-CONTAINER="dannywilson/kmer_pipeline:2026-10-06"
-```
-
-*Replace the above with the name of the Docker image on your system, if different.*
-
-Next locate the base directory for the analysis. Nextflow will automatically make this the
-mountpoint: the directory to share with the container that allows it read/write access. This
-directory must contain, directly or through its subdirectories, all the input files, and the
-location for the output files in your analysis. E.g.
-
-```sh docker-host
-BASE_DIR=/users/username/kmer_pipeline
-```
-
-*Replace the above with the full path of the desired base directory/mountpoint on your system.*
-
-If it does not already exist, create the base directory and a subdirectory called `tb20` to
-contain the example data.
-
-```sh docker-host
-mkdir -p $BASE_DIR/tb20
-```
-
-Next extract the example files to `$BASE_DIR/tb20` in the user file system.
-
-```sh docker-host
-cd $BASE_DIR/tb20 && docker run --rm $CONTAINER bash -c \
-    'cd /usr/share/kmer_pipeline/example && tar -c .' | tar -x
-```
-
-Now edit the example configuration file to point to the correct locations on the user file
-system. First edit the location of the container path:
-
-```sh docker-host
-sed "s,dannywilson/kmer_pipeline:2026-10-06,$CONTAINER,g" docker.nextflow.config > \
-    $BASE_DIR/nextflow.config
-```
-
-Next substitute the correct base directory in the configuration file:
-
-```sh docker-host
-sed -i.bak "s,YOUR_PATH_HERE,$BASE_DIR,g" $BASE_DIR/nextflow.config
-```
-
-The `id_file` must also be updated to give the location of the example genome assemblies on the
-user file system:
-
-```sh docker-host
-sed -i.bak "s,/usr/share/kmer_pipeline/example/,$BASE_DIR/tb20/,g" $BASE_DIR/tb20/id_file.txt
-```
-
-Extract the kmer_pipeline Nextflow script to the base directory:
-
-```sh docker-host
-docker run --rm $CONTAINER cat /usr/local/bin/kmer_pipeline.nf > $BASE_DIR/kmer_pipeline.nf
-```
-
-Navigate to the base directory and launch the analysis; Nextflow automatically reads the
-`nextflow.config` file in the current directory.
-
-```sh docker-host
-cd $BASE_DIR && nextflow kmer_pipeline.nf
-```
-
-In testing, this took about 7 minutes with two CPUs (on an Apple Silicon Mac, under
-emulation). The output files will be in `$BASE_DIR` on the user file system.
-
-To view the results, use a web browser to open the `*.report.html` file in
-`$BASE_DIR/tb20/kmergwas` (i.e. the location on the user file system specified by
-`analysis_dir` in `nextflow.config`). If downloading the results from a remote server, make sure
-to download all files matching `*report*` in `$BASE_DIR/tb20/kmergwas` plus the subdirectory
-`*_kmergenealign_figures`.
-
-***Adapting this example for your data:*** In this example, the user interacts with Nextflow
-directly, which handles calls to the container. The locations of input and output files are
-clear because in `nextflow.config` and `id_file` they are specified in full absolute paths on the
-*user file system*. For your own analysis, you need to:
-
-- Modify `nextflow.config` as required, for example varying file locations and setting `maxp` to
-  the number of CPUs available. Make sure `nextflow.config` is situated in the base directory,
-  from which you will launch Nextflow.
-- Modify the `id_file` specified in `nextflow.config` to contain your own sample IDs, genome
-  assembly paths, and phenotypes.
-
-Refer to [nextflow.config file](#nextflowconfig-file) for an explanation of all parameters in
-`nextflow.config`.
-
-**3. Nextflow on a cluster using Docker (*this or Singularity recommended at scale*)**
-
----
-
-**Prerequisites**: Cluster environment supported by Nextflow (e.g. Sun Grid Engine, SLURM),
-Nextflow, Docker, kmer_pipeline Docker image
-
-*NB: often research cluster administrators will not install Docker for security reasons, which is
-why a guide to Singularity is also included. The cluster approach is recommended for analysis at
-scale (e.g. hundreds or more genomes). However, for troubleshooting, the simpler approach of the
-previous example is suggested (Nextflow outside Docker or Singularity), starting with ensuring
-that the example analysis can be run. Like in the previous example, all file names are specified
-with full absolute paths on the user file system. Docker on a cluster has not been tested.*
-
-Begin by defining the name of the Docker image downloaded earlier. E.g.
-
-```sh docker-cluster
-CONTAINER="dannywilson/kmer_pipeline:2026-10-06"
-```
-
-*Replace the above with the name of the Docker image on your system, if different.*
-
-Next locate the base directory for the analysis. Nextflow will automatically make this the
-mountpoint: the directory to share with the container that allows it read/write access. This
-directory must contain, directly or through its subdirectories, all the input files, and the
-location for the output files in your analysis. E.g.
-
-```sh docker-cluster
-BASE_DIR=/users/username/kmer_pipeline
-```
-
-*Replace the above with the full path of the desired base directory/mountpoint on your system.*
-
-If it does not already exist, create the base directory and a subdirectory called `tb20` to
-contain the example data.
-
-```sh docker-cluster
-mkdir -p $BASE_DIR/tb20
-```
-
-Next extract the example files to `$BASE_DIR/tb20` in the user file system.
-
-```sh docker-cluster
-cd $BASE_DIR/tb20 && docker run --rm $CONTAINER bash -c \
-    'cd /usr/share/kmer_pipeline/example && tar -c .' | tar -x
-```
-
-Now edit the example configuration file to point to the correct locations on the user file
-system. First edit the location of the container path:
-
-```sh docker-cluster
-sed "s,YOUR_CONTAINER_PATH_HERE/kmer_pipeline_2026-10-06.sif,$CONTAINER,g" sge.nextflow.config \
-    > $BASE_DIR/nextflow.config
-```
-
-Next substitute the correct base directory in the configuration file:
-
-```sh docker-cluster
-sed -i.bak "s,YOUR_PATH_HERE,$BASE_DIR,g" $BASE_DIR/nextflow.config
-```
-
-Since the template was written with Singularity in mind, it is also necessary to edit the
-container type:
-
-```sh docker-cluster
-sed -i.bak "s,singularity,docker,g" $BASE_DIR/nextflow.config
-```
-
-Note the addition of a `process` section in `nextflow.config` which was absent from the previous
-example; this is the only difference in configuration between the two examples. The `process`
-section contains two parameters, `executor` and `queue`. **These must be customized for your
-system, *particularly the queue name*.** Specify the type of cluster, e.g. "sge" or "slurm" and
-the queue (or partition) name; refer to the
-[Nextflow documentation](https://www.nextflow.io/docs/latest/executor.html) for further details.
-
-```sh docker-cluster
-EXECUTOR="sge"
-QUEUE="short.qc"
-```
-
-Another difference compared to the previous example is that `maxp` is set to `30`, the number of
-genomes. If you have more than 30 CPUs available, you could increase `maxp`, although the gain on
-the example data is likely to be marginal. Note that not all steps in kmer_pipeline can utilize
-all available CPUs. For example, the degree of parallelization in some steps is determined by the
-number of genomes.
-
-Now substitute your customized values into `nextflow.config`:
-
-```sh docker-cluster
-sed -i.bak "s,sge,$EXECUTOR,g" $BASE_DIR/nextflow.config
-sed -i.bak "s,short.qc,$QUEUE,g" $BASE_DIR/nextflow.config
-```
-
-The `id_file` must also be updated to give the location of the example genome assemblies on the
-user file system:
-
-```sh docker-cluster
-sed -i.bak "s,/usr/share/kmer_pipeline/example/,$BASE_DIR/tb20/,g" $BASE_DIR/tb20/id_file.txt
-```
-
-Extract the kmer_pipeline Nextflow script to the base directory:
-
-```sh docker-cluster
-docker run --rm $CONTAINER cat /usr/local/bin/kmer_pipeline.nf > $BASE_DIR/kmer_pipeline.nf
-```
-
-Navigate to the base directory and launch the analysis; Nextflow automatically reads the
-`nextflow.config` file in the current directory.
-
-```sh docker-cluster
-cd $BASE_DIR && nextflow kmer_pipeline.nf
-```
-
-The output files will be in `$BASE_DIR` on the user file system.
-
-To view the results, use a web browser to open the `*.report.html` file in
-`$BASE_DIR/tb20/kmergwas` (i.e. the location on the user file system specified by
-`analysis_dir` in `nextflow.config`). If downloading the results from a remote server, make sure
-to download all files matching `*report*` in `$BASE_DIR/tb20/kmergwas` plus the subdirectory
-`*_kmergenealign_figures`.
-
-***Adapting this example for your data:*** In this example, the user interacts with Nextflow
-directly, which handles calls to the container via the cluster management software. The
-locations of input and output files are clear because in `nextflow.config` and `id_file` they are
-specified in full absolute paths on the *user file system*. For your own analysis, you need to:
-
-- Modify `nextflow.config` as required, for example varying file locations, setting `maxp` to the
-  number of CPUs available, and ensuring the `queue` name is set correctly. Make sure
-  `nextflow.config` is situated in the base directory, from which you will launch Nextflow.
-- Modify the `id_file` specified in `nextflow.config` to contain your own sample IDs, genome
-  assembly paths, and phenotypes.
-
-Refer to [nextflow.config file](#nextflowconfig-file) for an explanation of all parameters in
-`nextflow.config`.
+This binds `base_dir` and the repository clone into each process's container at their own paths,
+the same as the `apptainer` profile. Docker on a cluster is not covered here — compute nodes on a
+shared cluster rarely run a Docker daemon available to ordinary users, which is exactly why
+Apptainer/Singularity, not Docker, is the normal choice for cluster use (previous section). A site
+where Docker genuinely is available on every node could combine `-profile docker,slurm` the same
+way, with its own site file.
+
+***Adapting this for your own data:*** as in the Apptainer section above.
 
 ## Example output: Candidate gene analysis of rifampicin resistance in *M. tuberculosis*
 
@@ -1025,25 +460,39 @@ be more immediately apparent from the protein-based analysis, which can be run b
 |---|
 | Executes the kmer pipeline end-to-end, producing one file ending `.report.html` and one directory ending `_kmergenealign_figures`. Together they contain a summary of the GWAS results readable in a web browser, including Manhattan plots, QQ plots, tables of significant regions and kmers. |
 
-
-**Before proceeding, save a Nextflow configuration file named `nextflow.config` in the current
-working directory to specify the analysis parameters.** See
-[nextflow.config file](#nextflowconfig-file) for details.
-
-General usage:
+General usage, from a clone of this repository:
 
 ```text
-nextflow kmer_pipeline.nf [--parameter_to_override value] [-resume]
+nextflow run kmer_pipeline.nf [-profile apptainer|docker[,slurm|sge]] [-params-file FILE.yaml] \
+    [-c SITE.config] [--parameter value] [-resume]
 ```
 
-Consult [the Nextflow documentation](https://www.nextflow.io/docs/latest/) for more information.
+Use `nextflow run`, not `nextflow kmer_pipeline.nf` (releases up to 2026-10-06 used the latter;
+both still work in 22.04.5, but `run` is the form every current and future Nextflow version
+expects, and the one `-r <tag>` below depends on). Consult
+[the Nextflow documentation](https://www.nextflow.io/docs/latest/) for more information.
+
+**Running without a clone**, by tag, once a release exists:
+
+```text
+nextflow run danny-wilson/kmer_pipeline -r <release> -profile apptainer -params-file FILE.yaml
+```
+
+**Nextflow version and Java:** this release is tested against Nextflow 22.04.5 specifically
+(`manifest.nextflowVersion` in `nextflow.config`; set `NXF_VER=22.04.5` if you have a different
+version installed as your default). It needs Java 11-17 on the host — Java 21 cannot run it. The
+launcher path (**Example commands: launcher**, above) sidesteps this: the image bundles its own
+pinned Java and Nextflow.
+
+**If Nextflow fails immediately with `Unexpected error [NullPointerException]`** naming
+`CgroupV2Subsystem` or similar: seen on GitHub Actions' own `ubuntu-latest` runners (both plain
+host Nextflow and inside a container there), a JDK 11/cgroups-v2 incompatibility in the JVM's own
+container-resource detection, which Nextflow does not need. Set
+`NXF_OPTS=-XX:-UseContainerSupport` (combine with any other `NXF_OPTS` value, space-separated)
+before running Nextflow.
 
 Tips:
 
-- Launch nextflow from within the base_dir sub-directory tree so the nextflow `work` folder and
-  logs are stored alongside the analysis output.
-- Keep `nextflow.config` in the base_dir for future reference. Avoid overriding parameters on the
-  command line for the same reason.
 - **Checks before running**: the inputs are checked before anything runs, and every problem is
   listed at once: the `id_file` header and IDs (unique, and still distinct when read as numbers),
   that each assembly exists and is a FASTA file, and, when step 4, 6 or 7 runs, the phenotypes
@@ -1066,119 +515,63 @@ Univa Grid Engine environment. It does not fully conform to Nextflow design phil
 particularly in writing to a common directory and omitting input/output files as process
 arguments. This could cause unexpected behaviour, for example using the Nextflow -resume option.
 
-**1. Nextflow-inside-Container**
+## Configuration
 
----
+| Output |
+|---|
+| Configures the analysis: what to run, on what data, with what container/executor, and where. |
 
-| Parameter | Value |
-|---|---|
-| `maxp` | Maximum number of cores available for your use on the bare metal machine. |
-| `container_type` | "none" |
-| `container_file` | "" |
+Three layers, loaded in this order (later overrides earlier — Nextflow's own precedence):
 
-This is the simplest set-up: launch the container on a 'bare metal' machine using Docker or
-Singularity, and run Nextflow *inside* the container. Only the container software (Docker or
-Singularity) needs to be pre-installed.
+1. **`nextflow.config`** (committed, repo-owned). The toolchain image (`params.container`, pinned
+   by digest), the `apptainer`/`docker`/`slurm`/`sge` profiles, and BLAS/OpenMP thread pinning.
+   You don't normally edit this file; override what it sets via `--container`, a `-c` file, or a
+   command-line `--param`, as below.
+2. **A params file** (`-params-file`, YAML or JSON) — the analysis itself: `output_prefix`,
+   `analysis_dir`, `kmer_type`, `kmer_length`, `id_file`, `ref_fa`, `ref_gb`, `maxp`, and anything
+   in the advanced tables below. `example/tb20_nucleotide31.yaml` and `tb20_protein11.yaml` are
+   ready-to-run templates for the bundled TB example; copy one for your own analysis. Paths in it
+   resolve relative to wherever you launch `nextflow run` from, not to the params file itself.
+3. **A site file** (`-c`) — anything that depends on *where* you're running, not on the analysis:
+   queue/`clusterOptions`, `executor.queueSize`/`cpus`, `singularity.cacheDir`,
+   `params.extra_binds`. `example/site.config` is a commented template. Values here can reference
+   the params file's own values (e.g. `executor.cpus = params.maxp`), since it loads after
+   `-params-file`.
 
-Run the following command first to launch the Docker container:
+A value can also be set directly on the command line with `--name value`, which overrides all
+three layers (Nextflow's usual precedence, double-hyphen for `params.*`).
 
-```text
-docker run -it --rm -v BASE_DIR:/home/jovyan CONTAINER_NAME bash
-```
+**Samplesheet (`id_file`):** unchanged in format from earlier releases — tab-delimited, header
+`id`/`paths`/`pheno`. One change, deliberate, not incidental: a relative path in the `paths`
+column now resolves against `id_file`'s own directory, not the launch directory (an absolute path
+is unaffected either way) — so `example/id_file.txt` can list bare assembly filenames and work
+straight from a clone, wherever you run `nextflow run` from.
 
-Run the following command first to launch the Singularity container:
+**`base_dir` and binding:** `base_dir` is the root that must contain, directly or through
+subdirectories, every input and output — enforced before anything runs. The `apptainer`/`docker`
+profiles bind `base_dir` (and the repository clone itself) into the container at their own real
+path (identity binding: no path differs between host and container, unlike releases up to
+2026-10-06 — see [Migrating](#migrating-from-releases-up-to-2026-10-06)). Anything genuinely
+outside `base_dir` (e.g. a reference-data store shared read-only across a cluster) needs
+`params.extra_binds` in your own `-c` file.
 
-```text
-singularity exec --containall --cleanenv --home BASE_DIR:/home/jovyan CONTAINER_FILE bash
-```
+**`software_file`/`toolpath`:** defaults to `conf/software_location.txt` in the repository clone,
+which already points at the image's own tool locations — you don't normally need to set this.
+Each pipeline script finds its own location (`scriptpath`) and the C++/R tools it calls
+(`toolpath`) from this file, defaulting to its own directory when either is absent, so a checkout
+works unmodified against the image.
 
-Replace BASE_DIR, and CONTAINER_NAME or CONTAINER_FILE as appropriate above.
+**`NXF_SINGULARITY_CACHEDIR`:** where Apptainer/Singularity caches the pulled image once per
+machine (or shared filesystem), rather than re-converting it on every run. Set it in your shell
+environment, or `singularity.cacheDir` in a site file, to shared, persistent storage.
 
-**NB**: All user filesystem paths must be given *inside* the container (i.e. via /home/jovyan)
-when running Nextflow inside the Docker/Singularity container. This affects `nextflow.config` and
-the `id_file`.
-
-**2. Nextflow running Container on a cluster (*recommended*)**
-
----
-
-| Parameter | Value |
-|---|---|
-| `maxp` | Maximum number of cores available for your use on the cluster. |
-| `container_type` | "singularity" or "docker" |
-| `container_file` | "/full/path/to/container_file" (**for Singularity**) or "container_name:tag" (**for Docker**) |
-
-This is more scalable, but requires pre-installation of both Nextflow and the container software
-(Docker or Singularity) on the cluster. For a slurm cluster add the following to the bottom of
-nextflow.config, substituting "short" for the name of a queue (partition) you have access to. For
-Sun Grid Engine-like systems, replace "slurm" with "sge".
-
-```text
-process {
-    executor = "slurm"
-    queue = "short"
-}
-```
-
-In this setup, Nextflow is to be run directly, without first launching Docker or Singularity.
-
-**3. Nextflow on a cluster with no Container (*not recommended, not supported*)**
-
----
-
-| Parameter | Value |
-|---|---|
-| `maxp` | Maximum number of cores available for your use on the cluster. |
-| `container_type` | "none" |
-| `container_file` | "" |
-
-This is the most optimized setup, and does not require Docker or Singularity, but instead
-requires manual installation of ***all*** pre-requisite software in the kmer_pipeline, including
-Nextflow, Python and its packages, and R (which draws the figures). Refer your system
-administrators to [Dependencies](#dependencies) and the Dockerfile to determine your local
-installation requirements. Warning: this is technical and likely to be time-consuming, and
-therefore not recommended.
-
-Again the following section is needed at the end of nextflow.config:
-
-```text
-process {
-    executor = "slurm"
-    queue = "short"
-}
-```
-
-substituting "slurm" and "short" as required.
-
-## nextflow.config file
-
-The `nextflow.config` file should be copied into the Nextflow working directory, where it will be
-detected automatically. Consult [the documentation](https://www.nextflow.io/docs/latest/config.html)
-to understand where Nextflow looks for `nextflow.config`.
-
-The `nextflow.config` file is structured into named code blocks, e.g. `params { ... }`. The label
-is known as the scope. Arguments are specified by assignment e.g. `kmer_length = 11` inside the
-appropriate scope, e.g. inside `params { ... }`. They can also be defined outside a block by
-explicitly specifying the scope e.g. `params.kmer_length = 11`. Parameters can be overridden at
-the command line using double hyphen, e.g. `nextflow kmer_pipeline.nf --kmer_length 11`.
-
-Strings must be quoted. Double quotes allow cross-referencing of parameters using special
-notation e.g. `analysis_dir = "$base_dir/$output_prefix/kmergwas"`. Single quotes do not allow
-this cross-referencing.
-
-Besides the params scope which specifies pipeline-specific parameters, some Nextflow parameters
-are specified within the executor scope. In what follows, default values are enclosed [as such].
-Parameters with default values do not need to be specified in `nextflow.config`.
-
-**`params {...}` (basic usage)**
-
----
+**Parameter reference:**
 
 | Output files | |
 |---|---|
-| `base_dir` | Directory on the user file system that is parent to all other directories and files involved in the analysis. |
+| `base_dir` | Root directory containing every input and output (see above). |
 | `output_prefix` | Filename prefix for output files. |
-| `analysis_dir` | Directory to store output files. Can be specified relative to base_dir, e.g. "$base_dir/$output_prefix" |
+| `analysis_dir` | Directory to store output files. Can be specified relative to base_dir, e.g. `"$base_dir/$output_prefix"`. |
 
 | Analysis options | |
 |---|---|
@@ -1187,33 +580,29 @@ Parameters with default values do not need to be specified in `nextflow.config`.
 
 | Input files | |
 |---|---|
-| `id_file` | Tab-delimited text file on the user file system containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. |
+| `id_file` | Tab-delimited text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` (resolved relative to `id_file`'s own directory if relative) and a column containing the phenotypes with header `pheno`. |
 
 | Reference genome files | |
 |---|---|
-| `ref_fa` | File path on the user file system for the reference fasta file. |
-| `ref_gb` | File path on the user file system for the reference genbank file. |
+| `ref_fa` | File path for the reference fasta file. |
+| `ref_gb` | File path for the reference genbank file. |
 
 The reference may have several records, for example a chromosome and plasmids, or the contigs of a draft assembly. The FASTA and GenBank files must then have the same records in the same order, with the same lengths (a record named differently in the two files only gives a warning). The records are laid end to end in that order, so positions in the outputs run through the first record, then the second, and so on, and the genome-wide Manhattan plots mark where each record starts. Intergenic regions stay within a record; the region after a record's last gene runs round to the base before its first gene, as for a single circular chromosome. A gene name found in more than one record is given as `name@record`. The reference is named after its first record in file names. The main report gives each region's record. (The bowtie2 branch supports only one record.)
 
 | Deployment | |
 |---|---|
-| `maxp` | Maximum parallelization. The value should reflect the constraints imposed by the compute environment. |
-| `container_type` | ["none"] The type of container in which to run kmer_pipeline: either "none", "singularity" or "docker". |
-| `container_file` | [""] Must be specified if container_type != "none", to be used in generating container_cmd. **Singularity**: the path and filename of the container on the user file system. **Docker**: the name (and tag) of the container to use. |
+| `maxp` | Maximum parallelization. Reflects the constraints of your compute environment; pair with `executor.queueSize`/`cpus` in a site file to actually cap the local executor (see [Configuration](#configuration) above). |
+| `container` | *Advanced use only.* The toolchain image reference, pinned in `nextflow.config`. Override with `--container <ref or local .sif/tag>` to use a different image (e.g. one you built yourself). |
+| `extra_binds` | [[]] Extra `-B`/`-v`-style bind arguments for paths genuinely outside `base_dir`; set in a site file, not the params file. |
 
-**`executor {...}`**
-
----
+**`executor {...}`** (set in a site file, not the params file or `nextflow.config`)
 
 | Parameter | |
 |---|---|
-| `queueSize` | Enter params.maxp to ensure the expected parallelization in most executors. |
-| `cpus` | Enter params.maxp to ensure the expected parallelization in certain executors. |
+| `queueSize` | Set to `params.maxp` to ensure the expected parallelization in most executors. |
+| `cpus` | Set to `params.maxp` to ensure the expected parallelization in certain executors. |
 
-**`params {...}` (advanced usage)**
-
----
+**Advanced analysis options**
 
 | Analysis options | |
 |---|---|
@@ -1240,19 +629,41 @@ The reference may have several records, for example a chromosome and plasmids, o
 
 | Deployment | |
 |---|---|
-| `container_args` | [""] Convenient way to append *additional* arguments to container_cmd, e.g. to specify where to mount temporary directories. For advanced use, edit container_cmd directly. |
-| `container_cmd` | [*Advanced use only*] Specified automatically from other parameters, but can be overridden by advanced users. Command to execute the container. |
-| `container_mount` | [*Advanced use only*] Specified automatically from other parameters, but can be overridden by advanced users. Location in the container file system to mount base_dir. |
-| `software_file` | [*Advanced use only*] Specified automatically, but can be overridden by advanced users for development. File in the user file system containing paths to the pipeline scripts and required software. Needed for container-less installation. |
+| `software_file` | [*Advanced use only*] Specified automatically, but can be overridden by advanced users for development. File containing paths to the pipeline scripts and required software. |
 
 | Workflow parameters | |
 |---|---|
 | `skip1` ... `skip7` | [false] Skip the specified step of the pipeline if true (`true` or `false`, in any case). `skip6` also skips drawing the step 6 figures. A step cannot be skipped if a step before it runs and a step after it needs its outputs, which would be out of date. |
-| `overwrite` | [false] Whether a run may replace the outputs of an earlier run of the same steps in `analysis_dir` (see Running Nextflow). |
+| `overwrite` | [false] Whether a run may replace the outputs of an earlier run of the same steps in `analysis_dir` (see [Running Nextflow](#running-nextflow)). |
 
 `kmer_pipeline.nf` also outputs to screen a list of implied parameters, constructed automatically
 from the parameters detailed above. While some of these could be overridden for debugging
 purposes, that is not recommended.
+
+## Migrating from releases up to 2026-10-06
+
+Releases up to 2026-10-06 built their own container-invocation command (`container_type`,
+`container_file`, `container_args`, `container_cmd`, `container_mount`, `container_script_dir`)
+and ran it by hand around `nextflow kmer_pipeline.nf`. This release replaces all of that with
+Nextflow's own container support. Setting any of the six `container_*` keys now stops the run
+immediately with an error naming the key and pointing back here, rather than silently running
+under the wrong (or no) containerisation.
+
+| Up to 2026-10-06 | From this release |
+|---|---|
+| `container_type = "singularity"` / `"docker"` / `"none"` in `nextflow.config` | `-profile apptainer` / `-profile docker` / no profile, on the command line |
+| `container_file = "/path/to/kmer_pipeline_2026-10-06.sif"` | `nextflow.config` already pins the image; override with `--container <ref or .sif>` only if you need a different one |
+| `container_args`, `container_cmd`, `container_mount` | not needed — Nextflow's own `process.containerOptions` handles binding (`params.extra_binds` in a site file, for anything beyond `base_dir`) |
+| `container_script_dir` | not needed — pipeline scripts come from the repository clone (`bin/`), not from inside the image |
+| File paths given as the *container's* path (e.g. `/home/jovyan/...`) when running inside a container | File paths given as their real, single spelling — host and container paths are now identical |
+| `example/{baremetal,docker,singularity,sge,slurm}.nextflow.config` | `example/tb20_nucleotide31.yaml` / `tb20_protein11.yaml` (analysis) + `example/site.config` (site) + `-profile` (container/executor) |
+| `nextflow kmer_pipeline.nf` | `nextflow run kmer_pipeline.nf` |
+
+Analysis parameter names are unchanged (`kmer_type`, `id_file`, `maxp`, and so on) — move your
+existing lines into a copy of `example/tb20_nucleotide31.yaml`, and you're migrated. Old releases
+and their date-tagged images (`2022-10-26` through `2026-10-06`) are untouched and stay available
+for anyone who needs the previous workflow; only `main` and new releases from this one on use the
+new model.
 
 ## Step 1 Count kmers
 
@@ -1285,7 +696,7 @@ countkmers.py \
 | Argument | Description |
 |---|---|
 | `--task-id` | The task number to run (1 to n). |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--analysis-dir` | Directory location for the analysis. |
 | `--output-prefix` | Output file prefix. |
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
@@ -1327,7 +738,7 @@ createfullkmerlist.py \
 | `--p` | Total number of processes to run at one time. |
 | `--output-prefix` | Output file prefix. |
 | `--analysis-dir` | Directory location for the analysis. Where the subdirectories will be created to store the kmer files. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
 | `--kmer-length` | Kmer length. |
 | `--software-file` | File containing paths to the pipeline scripts and required software, described in [Dependencies](#dependencies). |
@@ -1365,7 +776,7 @@ stringlist2patternandkinship.py \
 |---|---|
 | `--task-id` | The task number to run (1 to p). |
 | `--p` | Number of batches to split the kmer patterns into. Also the maximum number of processes to run at the same time. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--fullkmerlistfile` | File containing the full list of unique kmers in the dataset, created in step 2. File ending `.kmermerge.txt.gz`. |
 | `--kmercountslistfile` | File containing the paths to all kmer count files created in step 1, ending `kmers_filepaths.txt`. |
 | `--analysis-dir` | Directory location for the analysis. Location for the final output files and where the subdirectory will be created to store the pattern batches. |
@@ -1442,7 +853,7 @@ rungemma.py \
 | `--task-id` | The task number to run (1 to p). |
 | `--p` | Number of batches to split the GEMMA runs into. Also the number of processes run at the same time. |
 | `--kmerfile-prefix` | Prefix, including path, of the pattern and kinship files created in step 3, e.g. `/path/to/prefix` (where the files are `/path/to/prefix.patternmerge.patternKey.txt.gz` and so on). |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--output-prefix` | Output file prefix. |
 | `--analysis-dir` | Directory location for the analysis. Where the subdirectory will be created to store the gemma output. |
 | `--kmertype` | Either `protein` or `nucleotide`. |
@@ -1491,7 +902,7 @@ kmercontigalignonly.py \
 | `--n` | Number of samples. |
 | `--output-prefix` | Output file prefix. |
 | `--output-dir` | Directory location for the analysis. Where the subdirectory `kmer_typekmer_length_kmergenealign` will be created to store the output files. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--ref-fa` | File path to the reference fasta file. |
 | `--ref-gb` | File path to the reference genbank file. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
@@ -1536,7 +947,7 @@ kmercontigalign.py \
 | `--n` | Number of samples. |
 | `--output-prefix` | Output file prefix. |
 | `--output-dir` | Directory location for the analysis. Where the subdirectory `kmer_typekmer_length_kmergenealign` will be created to store the output files. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--ref-fa` | File path to the reference fasta file. |
 | `--ref-gb` | File path to the reference genbank file. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
@@ -1645,7 +1056,7 @@ plotManhattan.py \
 | `--ref-gb` | File path to the reference genbank file. |
 | `--ref-fa` | File path to the reference fasta file. |
 | `--gene-lookup-file` | File created in step 5 ending `gene_id_name_lookup.txt` in the subdirectory ending `_kmergenealign`. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--covariate-file` | *Optional.* The covariate file step 4 used, if any: needed only to rebuild the analysed genomes of an analysis made by an earlier release (step 4 now lists them). |
 | `--nucmerident` | Minimum percentage identity threshold for a contig alignment to be used to position a kmer used in step 5, between 0-100. |
 | `--plot-min-genomes` | Minimum number of genomes a kmer/gene combination must be seen in to be plotted in the Manhattan plot. The old name `--min-count` is still accepted. |
@@ -1747,7 +1158,7 @@ plotManhattanbowtie.py \
 | `--kmerfile-prefix` | Prefix, including path, to the kmer files created in step 3. E.g. `/path/to/prefix` (where the full files are e.g. /path/to/prefix.patternmerge.patternKey.txt.gz, /path/to/prefix.patternmerge.patternIndex.txt.gz) |
 | `--ref-gb` | File path to the reference genbank file. |
 | `--ref-fa` | File path to the reference fasta file. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--kmer-type` | Either `protein` or `nucleotide`. |
 | `--kmer-length` | Kmer length. |
 | `--minor-allele-threshold` | Minor allele threshold to exclude kmers below the threshold. If the threshold is between 0-0.5, assumed to be a minor allele frequency (MAF) threshold. If the threshold is greater than or equal to 1, assumed to be a minor allele count (MAC) threshold. |
@@ -1958,7 +1369,7 @@ pattern2presencecount.py \
 |---|---|
 | `--kmerfile-prefix` | Prefix, including path, to the kmer files created in step 3. E.g. `/path/to/prefix` (where the full files are /path/to/prefix.patternmerge.patternKey.txt.gz, /path/to/prefix.patternmerge.patternIndex.txt.gz, /path/to/prefix.patternmerge.patternKeySize.txt) |
 | `--output-dir` | Directory location for the final output file. |
-| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `/usr/share/kmer_pipeline/example/id_file.txt`. |
+| `--id-file` | A text file containing a column of sample names with header `id`, a column containing paths to the genome assemblies with header `paths` and a column containing the phenotypes with header `pheno`. Example: `example/id_file.txt (in a clone of this repository)`. |
 | `--include-na` | *Optional (default `TRUE`).* Whether to count presence across all samples (TRUE) or just those with a non NA phenotype (FALSE). |
 
 ## Dependencies
@@ -1974,7 +1385,7 @@ used, and `R` is used only to check that `Rscript` exists, as R draws the figure
 `plotFigures` step runs the `Rscript` on the `PATH`). The scripts themselves need Python 3 with
 the packages in the second table.
 
-Example file in the scripts example subdirectory: `pipeline_software_location.txt`
+Example file: `conf/software_location.txt` in a clone of this repository.
 
 | Name in software file | Version included with Docker image\* |
 |---|---|
@@ -2009,14 +1420,18 @@ container, Nextflow 22.04.5 is the tested version.
 
 **Testing**
 
-The Singularity examples were tested on the University of Oxford Biomedical Research Computing
-facility, which is supported by the Wellcome Trust Core Award Grant Number 203141/Z/16/Z and the
-NIHR Oxford BRC: Nextflow inside and outside the container (maxp 2) on a node with Intel Xeon
-E5-2640 v4 CPUs @ 2.40GHz, and Nextflow with the SLURM executor (maxp 30), using Apptainer
-1.4.5 (its `singularity` command), Java OpenJDK 11.0.20 and Nextflow 22.04.5 on Rocky Linux
-8.10. The Docker examples (Nextflow inside and outside the container) and the Jupyter notebook
-were tested on an Apple Silicon Mac under amd64 emulation, using Docker Desktop 4.20.1 (Docker
-24.0.2), Java (Temurin) 17.0.20 and Nextflow 22.04.5. Docker on a cluster has not been tested.
+The Apptainer/Singularity examples (launcher, host, and host-on-a-cluster) in this release were
+each run as written on the University of Oxford Biomedical Research Computing facility (Wellcome
+Trust Core Award Grant Number 203141/Z/16/Z, NIHR Oxford BRC), using Apptainer 1.4.5 (its
+`singularity` command), Java OpenJDK 11.0.20 and Nextflow 22.04.5 on Rocky Linux 8.10; the
+cluster example ran as real Slurm jobs. The `docker` profile and the launcher's Docker form are
+checked instead by CI (`.github/workflows/docker-smoke.yml`), on every change that could affect
+them, since Docker is not available on the facility above; Docker on a cluster is not covered at
+all — compute nodes on a shared cluster rarely run a Docker daemon available to ordinary users,
+which is why Apptainer/Singularity, not Docker, is the normal choice there. Releases up to
+2026-10-06 additionally tested the Docker examples and the Jupyter notebook on an Apple Silicon
+Mac under amd64 emulation (Docker Desktop 4.20.1, Docker 24.0.2, Java (Temurin) 17.0.20, Nextflow
+22.04.5); that testing predates this release's container model and is not re-verified here.
 Each example run gave the same results. The image is a 1.9 GiB download.
 
 ## Full list of pipeline scripts

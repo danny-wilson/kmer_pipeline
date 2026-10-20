@@ -1,0 +1,9 @@
+id	paths	pheno
+702	../702.velvet_assembly.contigs.fa.gz	-4.06
+725	../725.velvet_assembly.contigs.fa.gz	3
+791	../791.velvet_assembly.contigs.fa.gz	-4.06
+932	../932.velvet_assembly.contigs.fa.gz	-4.06
+10084	../10084.velvet_assembly.contigs.fa.gz	3
+10536	../10536.velvet_assembly.contigs.fa.gz	-3.06
+11785	../11785.velvet_assembly.contigs.fa.gz	3
+11805	../11805.velvet_assembly.contigs.fa.gz	3

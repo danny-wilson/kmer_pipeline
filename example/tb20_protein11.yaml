@@ -1,0 +1,11 @@
+# Same TB20 example dataset as tb20_nucleotide31.yaml (see that file for the dataset citation and
+# path-resolution notes), run instead as protein k=11.
+base_dir: .
+output_prefix: tb20
+analysis_dir: tb20_protein11
+kmer_type: protein
+kmer_length: 11
+id_file: example/id_file.txt
+ref_fa: example/Mtub_H37Rv_NC000962.3.fasta
+ref_gb: example/Mtub_H37Rv_NC000962.3.gb
+maxp: 2
